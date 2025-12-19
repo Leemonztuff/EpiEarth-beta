@@ -32,6 +32,12 @@ const TRAITS = ['Brave', 'Stoic', 'Reckless', 'Wise', 'Loyal', 'Mystic', 'Brutal
 const NAMES_PREFIX = ['Aer', 'Thal', 'Mor', 'Zyl', 'Kael', 'Vor', 'Lun', 'Pyr', 'Syl', 'Drak', 'Grim', 'Fen'];
 const NAMES_SUFFIX = ['on', 'ia', 'us', 'ar', 'en', 'is', 'a', 'or', 'ix', 'um', 'ash', 'os'];
 
+export interface SummonInfluence {
+    r: number; // STR / Physical
+    g: number; // CON / Nature
+    b: number; // INT / Magic
+}
+
 export interface SummonResult {
     name: string;
     race: CharacterRace;
@@ -44,31 +50,47 @@ export interface SummonResult {
 }
 
 export const SummoningService = {
-    generateFromSeed: (rawData: string, highPotential: boolean = false): SummonResult => {
+    generateFromSeed: (rawData: string, highPotential: boolean = false, influence?: SummonInfluence): SummonResult => {
         const hash = fnv1a(rawData);
         const rng = new SeededRNG(hash);
         const classStats = useContentStore.getState().classStats;
 
-        // 1. Determine Rarity (Improved odds for Dungeon Reward)
+        // 1. Determine Rarity
         const roll = rng.next() * 100;
         let rarity = ItemRarity.COMMON;
         let statBonus = 0;
         
         if (highPotential) {
-            // High Potential Rates: 15% Legendary, 35% Very Rare, 50% Rare
-            if (roll > 85) { rarity = ItemRarity.LEGENDARY; statBonus = 8; }
-            else if (roll > 50) { rarity = ItemRarity.VERY_RARE; statBonus = 5; }
-            else { rarity = ItemRarity.RARE; statBonus = 3; }
+            if (roll > 85) { rarity = ItemRarity.LEGENDARY; statBonus = 10; }
+            else if (roll > 50) { rarity = ItemRarity.VERY_RARE; statBonus = 6; }
+            else { rarity = ItemRarity.RARE; statBonus = 4; }
         } else {
-            // Normal Rates
-            if (roll > 98) { rarity = ItemRarity.LEGENDARY; statBonus = 6; }
-            else if (roll > 90) { rarity = ItemRarity.VERY_RARE; statBonus = 4; }
-            else if (roll > 75) { rarity = ItemRarity.RARE; statBonus = 2; }
-            else if (roll > 50) { rarity = ItemRarity.UNCOMMON; statBonus = 1; }
+            if (roll > 98) { rarity = ItemRarity.LEGENDARY; statBonus = 8; }
+            else if (roll > 90) { rarity = ItemRarity.VERY_RARE; statBonus = 5; }
+            else if (roll > 75) { rarity = ItemRarity.RARE; statBonus = 3; }
+            else if (roll > 40) { rarity = ItemRarity.UNCOMMON; statBonus = 1; }
         }
 
-        const cls = rng.pick(Object.values(CharacterClass));
-        const race = rng.pick(Object.values(CharacterRace));
+        // 2. Influence Class/Race by Color
+        let clsChoices = Object.values(CharacterClass);
+        let raceChoices = Object.values(CharacterRace);
+
+        if (influence) {
+            const { r, g, b } = influence;
+            if (r > g && r > b) { // Red Influence -> Combat
+                clsChoices = [CharacterClass.FIGHTER, CharacterClass.BARBARIAN, CharacterClass.PALADIN];
+                raceChoices = [CharacterRace.HALF_ORC, CharacterRace.DRAGONBORN, CharacterRace.HUMAN];
+            } else if (b > r && b > g) { // Blue Influence -> Magic
+                clsChoices = [CharacterClass.WIZARD, CharacterClass.SORCERER, CharacterClass.WARLOCK];
+                raceChoices = [CharacterRace.ELF, CharacterRace.GNOME, CharacterRace.TIEFLING];
+            } else if (g > r && g > b) { // Green Influence -> Nature/Agility
+                clsChoices = [CharacterClass.RANGER, CharacterClass.DRUID, CharacterClass.ROGUE];
+                raceChoices = [CharacterRace.HALFLING, CharacterRace.ELF, CharacterRace.GNOME];
+            }
+        }
+
+        const cls = rng.pick(clsChoices);
+        const race = rng.pick(raceChoices);
         const name = rng.pick(NAMES_PREFIX) + rng.pick(NAMES_SUFFIX);
 
         const base = { ...(classStats[cls] || { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 }) };
@@ -76,13 +98,20 @@ export const SummoningService = {
         
         (Object.keys(base) as Ability[]).forEach(k => { if (raceBonus[k]) base[k] += raceBonus[k]!; });
 
-        // Add Random Variance
+        // Variance
         (Object.keys(base) as Ability[]).forEach(k => { base[k] += rng.range(-1, 2); });
 
-        // Add Rarity Bonus
+        // Add Rarity Bonus influenced by colors
         for(let i=0; i<statBonus; i++) {
-            const attr = rng.pick(Object.keys(base) as Ability[]);
-            base[attr] += 1;
+            let targetAttr: Ability = rng.pick(Object.keys(base) as Ability[]);
+            if (influence) {
+                const total = influence.r + influence.g + influence.b;
+                const rand = rng.next() * total;
+                if (rand < influence.r) targetAttr = Ability.STR;
+                else if (rand < influence.r + influence.g) targetAttr = Ability.CON;
+                else targetAttr = Ability.INT;
+            }
+            base[targetAttr] += 1;
         }
 
         const affinities = [DamageType.FIRE, DamageType.COLD, DamageType.LIGHTNING, DamageType.RADIANT, DamageType.NECROTIC, DamageType.POISON];
@@ -93,7 +122,7 @@ export const SummoningService = {
         for(let i=0; i<traitCount; i++) { traits.push(rng.pick(TRAITS)); }
 
         const totalStats = (Object.values(base) as number[]).reduce((a, b) => a + b, 0);
-        const potential = Math.min(100, Math.floor((totalStats / 95) * 100));
+        const potential = Math.min(100, Math.floor((totalStats / 100) * 100));
 
         return { name, race, class: cls, baseAttributes: base, rarity, affinity, traits: [...new Set(traits)], potential };
     }

@@ -46,6 +46,7 @@ export interface OverworldSlice {
   setUserSession: (session: any) => void;
   logout: () => Promise<void>;
   resolveNarrativeOption: (optionIndex: number) => void;
+  addQuest: (quest: Quest) => void;
 }
 
 export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (set, get) => ({
@@ -101,6 +102,14 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
         get().addLog("The carriage ride was bumpy but fast.", "narrative");
         sfx.playStep();
     }
+  },
+
+  // ADD QUEST implementation
+  addQuest: (quest) => {
+    const { quests } = get();
+    if (quests.find(q => q.id === quest.id)) return;
+    set({ quests: [...quests, quest] });
+    get().addLog(`New Quest Started: ${quest.title}`, "narrative");
   },
 
   movePlayerOverworld: async (q, r) => {

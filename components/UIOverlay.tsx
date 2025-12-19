@@ -50,9 +50,9 @@ interface UIOverlayProps {
 
 export const UIOverlay: React.FC<UIOverlayProps> = ({ onOpenTownService }) => {
     const { 
-        gameState, supplies, fatigue, worldTime, dimension,
+        gameState, setGameState, supplies, fatigue, worldTime, dimension,
         isInventoryOpen, isMapOpen, toggleInventory, toggleMap,
-        standingOnSettlement, standingOnPort, enterSettlement, camp,
+        standingOnSettlement, standingOnPort, standingOnTemple, enterSettlement, camp,
         party, turnOrder, currentTurnIndex, battleEntities, remainingActions, hasMoved, selectAction
     } = useGameStore();
 
@@ -102,6 +102,11 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({ onOpenTownService }) => {
                                 DESCANSAR EN POSADA 🍻
                             </button>
                         </div>
+                    )}
+                    {standingOnTemple && (
+                        <button onClick={() => setGameState(GameState.TEMPLE_HUB)} className="bg-purple-600 px-8 py-3 rounded-full font-black text-white shadow-2xl border-2 border-purple-400 animate-in slide-in-from-bottom-4 hover:scale-105 transition-transform">
+                            ENTRAR AL TEMPLO 🏛️
+                        </button>
                     )}
                     {standingOnPort && (
                         <button className="bg-blue-600 px-8 py-3 rounded-full font-black text-white shadow-2xl border-2 border-blue-400 animate-in slide-in-from-bottom-4">

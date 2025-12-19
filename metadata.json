@@ -1,5 +1,7 @@
 {
   "name": "Epic Earth 1.0",
   "description": "A tactical RPG where you collect the Shards of Eternum in a fractured world. Optimized for high-fidelity mobile touch exploration.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [
+    "camera"
+  ]
 }

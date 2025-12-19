@@ -42,6 +42,8 @@ export enum StatusEffectType {
   HUNGRY = 'HUNGRY', EXHAUSTED = 'EXHAUSTED'
 }
 
+export enum TileEffectType { FIRE = 'FIRE', POISON_CLOUD = 'POISON_CLOUD', HOLY_GROUND = 'HOLY_GROUND', SLOW_MUD = 'SLOW_MUD' }
+
 export enum Difficulty { EASY = 'EASY', NORMAL = 'NORMAL', HARD = 'HARD' }
 export enum CreatureType { HUMANOID = 'Humanoid', BEAST = 'Beast', UNDEAD = 'Undead', CONSTRUCT = 'Construct', CELESTIAL = 'Celestial', FIEND = 'Fiend', DRAGON = 'Dragon', MONSTROSITY = 'Monstrosity' }
 export enum MagicSchool { ABJURATION = 'Abjuration', CONJURATION = 'Conjuration', DIVINATION = 'Divination', ENCHANTMENT = 'Enchantment', EVOCATION = 'Evocation', ILLUSION = 'Illusion', NECROMANCY = 'Necromancy', TRANSMUTATION = 'Transmutation' }
@@ -51,7 +53,7 @@ export enum EffectType { DAMAGE = 'DAMAGE', HEAL = 'HEAL', STATUS = 'STATUS', BU
 export interface Attributes { STR: number; DEX: number; CON: number; INT: number; WIS: number; CHA: number; }
 export interface PositionComponent { x: number; y: number; }
 export interface VisualComponent { color: string; modelType: 'billboard' | 'voxel'; spriteUrl: string; }
-export interface DerivedStats { atk: number; def: number; mag: number; spd: number; crit: number; mp: number; maxMp: number; }
+export interface DerivedStats { atk: number; def: number; mag: number; spd: number; thriller: number; crit: number; mp: number; maxMp: number; }
 export interface StatusEffect { type: StatusEffectType; duration: number; intensity: number; }
 
 export interface CombatStatsComponent { 
@@ -81,7 +83,7 @@ export enum BattleAction { MOVE='MOVE', ATTACK='ATTACK', MAGIC='MAGIC', SKILL='S
 export interface Item { 
     id: string; name: string; type: 'equipment' | 'consumable' | 'key'; 
     rarity: ItemRarity; description: string; icon: string; 
-    effect?: ActionEffect; // Integración con el motor de efectos
+    effect?: ActionEffect;
     equipmentStats?: {
         slot: EquipmentSlot;
         ac?: number;
@@ -106,6 +108,7 @@ export interface ActionEffect {
   duration?: number;
   chance?: number;
   summonDefId?: string;
+  tileEffect?: TileEffectType;
 }
 
 export interface Spell {
@@ -113,19 +116,12 @@ export interface Spell {
   school: MagicSchool; type: SpellType; effects: ActionEffect[]; 
   description: string; animation: string; icon: string; color?: string; 
   aoeRadius?: number; aoeType?: 'CIRCLE' | 'CONE';
-  // Fallbacks for Admin Dashboard
-  diceCount?: number;
-  diceSides?: number;
-  damageType?: DamageType;
 }
 
 export interface Skill {
   id: string; name: string; description: string; staminaCost: number; 
   cooldown: number; range: number; effects: ActionEffect[]; 
   aoeRadius?: number; aoeType?: 'CIRCLE' | 'CONE'; icon: string;
-  // Fallbacks for Admin Dashboard
-  effect?: string;
-  damageMultiplier?: number;
 }
 
 export interface HexCell {
@@ -134,18 +130,20 @@ export interface HexCell {
   hasPortal?: boolean; hasEncounter?: boolean; movementType?: MovementType;
   poiType?: 'VILLAGE' | 'CASTLE' | 'RUINS' | 'SHOP' | 'INN' | 'PLAZA' | 'EXIT' | 'TEMPLE' | 'DUNGEON' | 'RAID_ENCOUNTER' | 'PORT' | 'MONUMENT'; 
   regionName?: string; encounterId?: string;
+  npcs?: NPCEntity[];
 }
 
-export interface Quest { id: string; title: string; description: string; completed: boolean; type: 'MAIN' | 'SIDE'; }
-export interface EnemyDefinition { id: string; name: string; type: CreatureType; sprite: string; hp: number; ac: number; xpReward: number; damage: number; initiativeBonus: number; attackDamageType?: DamageType; resistances?: DamageType[]; vulnerabilities?: DamageType[]; immunities?: DamageType[]; lootTable?: { itemId: string, chance: number }[]; validDimensions?: Dimension[]; aiBehavior?: AIBehavior; }
+export interface NPCEntity { id: string; name: string; role: string; sprite: string; dialogue: string[]; questId?: string; }
 
-export interface BattleCell { x: number; z: number; height: number; offsetY: number; color: string; textureUrl: string; isObstacle: boolean; blocksSight: boolean; movementCost: number; }
-
-export interface ProgressionNode {
-  level: number; featureName?: string; unlocksSpell?: string; unlocksSkill?: string; passiveEffect?: string;
-  choices?: { id: string; featureName: string; description?: string; unlocksSkill?: string; unlocksSpell?: string; passiveEffect?: string; magicSchool?: MagicSchool; }[];
-  description?: string; magicSchool?: MagicSchool;
+export interface Quest { 
+    id: string; title: string; description: string; completed: boolean; type: 'MAIN' | 'SIDE' | 'BOUNTY'; 
+    objective: { type: 'KILL' | 'VISIT' | 'COLLECT', targetId: string, count: number, current: number };
+    reward: { xp: number, gold: number, itemId?: string };
 }
+
+export interface BattleCell { x: number; z: number; height: number; offsetY: number; color: string; textureUrl: string; isObstacle: boolean; blocksSight: boolean; movementCost: number; effect?: { type: TileEffectType, duration: number }; }
+
+export enum AIBehavior { BASIC_MELEE = 'BASIC_MELEE', ARCHER = 'ARCHER', CASTER = 'CASTER', BOSS_LICH = 'BOSS_LICH' }
 
 export interface GameStateData {
     gameState: GameState; dimension: Dimension; difficulty: Difficulty;
@@ -161,14 +159,27 @@ export interface GameStateData {
     inspectedEntityId: string | null;
 }
 
-export interface DamagePopup { id: string; position: [number, number, number]; amount: string | number; color: string; isCrit: boolean; timestamp: number; damageType?: DamageType; }
-export interface SpellEffectData { id: string; type: string; startPos: [number, number, number]; endPos: [number, number, number]; color: string; duration: number; timestamp: number; }
-export interface LootDrop { id: string; position: { x: number, y: number }; items: Item[]; gold: number; rarity: ItemRarity; }
-
-export enum AIBehavior { BASIC_MELEE = 'BASIC_MELEE', ARCHER = 'ARCHER', CASTER = 'CASTER', BOSS_LICH = 'BOSS_LICH' }
+/**
+ * EnemyDefinition interface for bestiary and enemy generation.
+ */
+export interface EnemyDefinition {
+  id: string;
+  name: string;
+  sprite: string;
+  hp: number;
+  ac: number;
+  damage: string;
+  initiativeBonus: number;
+  type: CreatureType;
+  xpReward: number;
+  aiBehavior?: AIBehavior;
+  resistances?: DamageType[];
+  vulnerabilities?: DamageType[];
+  immunities?: DamageType[];
+}
 
 /**
- * Metadata for a saved game slot.
+ * SaveMetadata interface for save slot management.
  */
 export interface SaveMetadata {
   slotIndex: number;

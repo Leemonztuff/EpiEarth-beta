@@ -1,5 +1,5 @@
 
-import { Attributes, Ability, PositionComponent, BattleCell, Entity, CombatStatsComponent, CharacterClass, EquipmentSlot, Difficulty, DamageType, ItemRarity, CharacterRace, CreatureType, EnemyDefinition, DerivedStats, MovementType, Dimension } from '../types';
+import { Attributes, Ability, PositionComponent, BattleCell, Entity, CombatStatsComponent, CharacterClass, EquipmentSlot, Difficulty, DamageType, ItemRarity, CharacterRace, CreatureType, EnemyDefinition, DerivedStats, MovementType, Dimension, StatusEffectType } from '../types';
 import { DIFFICULTY_SETTINGS, BASE_STATS, XP_TABLE, CORRUPTION_THRESHOLDS } from '../constants';
 
 export const getModifier = (score: number): number => {
@@ -53,7 +53,8 @@ export const calculateDerivedStats = (attributes: Attributes, cls: CharacterClas
         spd: Math.floor(spd),
         crit: Math.floor(crit),
         mp: maxMp,
-        maxMp: maxMp
+        maxMp: maxMp,
+        thriller: 0 // Added default for DerivedStats
     };
 };
 
@@ -76,18 +77,39 @@ export const calculateHp = (level: number, con: number, hitDie: number, race?: C
   return Math.floor((baseHp + raceBonus) * 1.5);
 };
 
-export const calculateAttackRoll = (attacker: any, target?: any, dimension: Dimension = Dimension.NORMAL) => {
-    const stats = attacker?.stats || {};
+export const isFlanking = (attacker: Entity, target: Entity, allies: Entity[]): boolean => {
+    if (!attacker.position || !target.position) return false;
+    // Un flanqueo ocurre si hay un aliado del atacante exactamente al otro lado del objetivo
+    const dx = target.position.x - attacker.position.x;
+    const dy = target.position.y - attacker.position.y;
+    
+    // El aliado debe estar en (target.x + dx, target.y + dy)
+    const allyPos = { x: target.position.x + dx, y: target.position.y + dy };
+    return allies.some(a => a.id !== attacker.id && a.stats.hp > 0 && a.position?.x === allyPos.x && a.position?.y === allyPos.y);
+};
+
+// FIX: Improved typing for calculateAttackRoll and added missing getCorruptionPenalty
+export const getCorruptionPenalty = (corruption: number): number => {
+  return Math.floor((corruption || 0) / 25);
+};
+
+export const calculateAttackRoll = (attacker: Entity, target?: Entity, dimension: Dimension = Dimension.NORMAL, allEntities: Entity[] = []) => {
+    const stats = attacker.stats;
     let hasAdvantage = false;
     let hasDisadvantage = false;
     
-    if (stats.activeStatusEffects?.some(s => s.type === 'HASTE')) hasAdvantage = true;
-    if (stats.activeStatusEffects?.some(s => s.type === 'SLOW')) hasDisadvantage = true;
+    if (stats.activeStatusEffects?.some(s => s.type === StatusEffectType.HASTE)) hasAdvantage = true;
+    if (stats.activeStatusEffects?.some(s => s.type === StatusEffectType.SLOW)) hasDisadvantage = true;
 
-    // MECÁNICA DE PENUMBRA (Shadow Realm)
-    if (dimension === Dimension.UPSIDE_DOWN && target) {
+    // BONO DE FLANQUEO (Regla Táctica)
+    if (target && allEntities.length > 0) {
+        const allies = allEntities.filter(e => e.type === attacker.type);
+        if (isFlanking(attacker, target, allies)) hasAdvantage = true;
+    }
+
+    if (dimension === Dimension.UPSIDE_DOWN && target && attacker.position && target.position) {
         const dist = Math.max(Math.abs(attacker.position.x - target.position.x), Math.abs(attacker.position.y - target.position.y));
-        if (dist > 3) hasDisadvantage = true; // El aura oscura oculta a enemigos lejanos
+        if (dist > 3) hasDisadvantage = true; 
     }
 
     let rollType: 'normal' | 'advantage' | 'disadvantage' = 'normal';
@@ -101,15 +123,7 @@ export const calculateAttackRoll = (attacker: any, target?: any, dimension: Dime
     
     const total = roll.result + mod + prof;
 
-    return { 
-        total, 
-        isCrit: roll.result >= critThreshold, 
-        isAutoMiss: roll.result === 1, 
-        roll: roll.result, 
-        mod, 
-        prof, 
-        rollType
-    };
+    return { total, isCrit: roll.result >= critThreshold, isAutoMiss: roll.result === 1, roll: roll.result, mod, prof, rollType };
 };
 
 export const calculateHitChance = (attacker: any, target: any, dimension: Dimension = Dimension.NORMAL): number => {
@@ -128,13 +142,7 @@ export const calculateHitChance = (attacker: any, target: any, dimension: Dimens
     return Math.round(Math.max(5, Math.min(99, probability * 100)));
 };
 
-export const calculateDamage = (
-    attacker: any, 
-    weaponSlot: EquipmentSlot = EquipmentSlot.MAIN_HAND, 
-    isCrit: boolean = false,
-    target?: any,
-    isFlanking?: boolean
-): { amount: number, type: DamageType, isMagical: boolean, isSneakAttack?: boolean } => {
+export const calculateDamage = (attacker: any, weaponSlot: EquipmentSlot = EquipmentSlot.MAIN_HAND, isCrit: boolean = false, target?: any, isFlanking?: boolean): { amount: number, type: DamageType, isMagical: boolean, isSneakAttack?: boolean } => {
     if (!attacker || !attacker.stats) return { amount: 0, type: DamageType.BLUDGEONING, isMagical: false };
 
     let extraDamage = 0;
@@ -179,7 +187,6 @@ export const calculateFinalDamage = (amount: number, type: DamageType, target: a
 
 export const getRelevantAbilityMod = (attacker: any, weapon: any): number => {
     const attributes = attacker?.stats?.attributes || { STR: 10, DEX: 10 };
-    // Ranged weapons and Finesse weapons use DEX if higher
     if (weapon?.equipmentStats?.properties?.includes('Range')) return getModifier(attributes.DEX);
     if (weapon?.equipmentStats?.properties?.includes('Finesse')) return Math.max(getModifier(attributes.STR), getModifier(attributes.DEX));
     return getModifier(attributes.STR);
@@ -188,17 +195,9 @@ export const getRelevantAbilityMod = (attacker: any, weapon: any): number => {
 export const getAttackRange = (entity: any): number => {
     if (!entity) return 1.5;
     const weapon = entity.equipment?.[EquipmentSlot.MAIN_HAND];
-    
     let baseRange = 1.5;
-    if (weapon?.equipmentStats?.properties?.includes('Range')) {
-        baseRange = 8; // Rango estándar de arcos en grilla
-    }
-    
-    // Bono de Clase: Rangers tienen mejor ojo y precisión
-    if (entity.stats?.class === CharacterClass.RANGER) {
-        baseRange += 2;
-    }
-
+    if (weapon?.equipmentStats?.properties?.includes('Range')) baseRange = 8; 
+    if (entity.stats?.class === CharacterClass.RANGER) baseRange += 2;
     return baseRange;
 };
 
@@ -222,54 +221,19 @@ export const getDamageRange = (attacker: any): string => {
     const mod = getRelevantAbilityMod(attacker, weapon);
     return `${diceCount + mod}-${(diceCount * diceSides) + mod}`;
 };
-export const isFlanking = (attacker: any, target: any, all: any[]): boolean => {
-    const dist = Math.abs(attacker.position.x - target.position.x) + Math.abs(attacker.position.y - target.position.y);
-    return dist === 1; 
-};
 
 export const calculateVisionRange = (wis: number, corruption: number = 0): number => {
   const mod = getModifier(wis);
-  const corruptionPenalty = Math.floor(corruption / 25);
+  const corruptionPenalty = getCorruptionPenalty(corruption);
   return Math.max(2, 4 + mod - corruptionPenalty);
-};
-
-export const getCorruptionPenalty = (corruption: number): number => {
-  if (corruption >= 100) return 10;
-  if (corruption >= 75) return 5;
-  if (corruption >= 50) return 2;
-  return 0;
 };
 
 export const calculateEnemyStats = (def: EnemyDefinition, playerLevel: number, difficulty: Difficulty): CombatStatsComponent => {
     const diffMod = DIFFICULTY_SETTINGS[difficulty].enemyStatMod;
     const levelMod = 1 + (playerLevel - 1) * 0.15;
-    
     const finalHp = Math.floor(def.hp * levelMod * diffMod);
     const attributes: Attributes = { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 };
-
     return {
-        level: playerLevel,
-        class: CharacterClass.FIGHTER,
-        xp: 0,
-        xpToNextLevel: 1000,
-        hp: finalHp,
-        maxHp: finalHp,
-        stamina: 50,
-        maxStamina: 50,
-        ac: def.ac,
-        initiativeBonus: def.initiativeBonus,
-        speed: 30,
-        movementType: MovementType.WALK,
-        attributes,
-        baseAttributes: attributes,
-        spellSlots: { current: 0, max: 0 },
-        activeCooldowns: {},
-        activeStatusEffects: [],
-        resistances: def.resistances || [],
-        vulnerabilities: def.vulnerabilities || [],
-        immunities: def.immunities || [],
-        xpReward: def.xpReward,
-        creatureType: def.type,
-        derived: calculateDerivedStats(attributes, CharacterClass.FIGHTER, playerLevel)
+        level: playerLevel, class: CharacterClass.FIGHTER, xp: 0, xpToNextLevel: 1000, hp: finalHp, maxHp: finalHp, stamina: 50, maxStamina: 50, ac: def.ac, initiativeBonus: def.initiativeBonus, speed: 30, movementType: MovementType.WALK, attributes, baseAttributes: attributes, spellSlots: { current: 0, max: 0 }, activeCooldowns: {}, activeStatusEffects: [], resistances: def.resistances || [], vulnerabilities: def.vulnerabilities || [], immunities: def.immunities || [], xpReward: def.xpReward, creatureType: def.type, derived: calculateDerivedStats(attributes, CharacterClass.FIGHTER, playerLevel)
     };
 };

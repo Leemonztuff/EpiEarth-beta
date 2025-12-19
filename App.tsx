@@ -17,13 +17,11 @@ import { LevelUpScreen } from './components/LevelUpScreen';
 import { SummoningScreen } from './components/SummoningScreen';
 import { TempleScreen } from './components/TempleScreen';
 import { PartyManager } from './components/PartyManager';
-import { NarrativeEventModal } from './components/NarrativeEventModal';
-import { getReachableTiles } from './services/pathfinding';
-import { getAttackRange } from './services/dndRules';
+import { DialogueOverlay } from './components/DialogueOverlay';
 import { getSupabase } from './services/supabaseClient';
 
 const App = () => {
-  const [isAdmin, setIsAdmin] = useState(() => window.location.pathname === '/admin');
+  const [isAdmin] = useState(() => window.location.pathname === '/admin');
   const [activeTownService, setActiveTownService] = useState<'NONE' | 'SHOP' | 'INN'>('NONE');
   
   const gameState = useGameStore(s => s.gameState);
@@ -34,13 +32,7 @@ const App = () => {
   const battleTerrain = useGameStore(s => s.battleTerrain);
   const battleWeather = useGameStore(s => s.battleWeather);
   const battleRewards = useGameStore(s => s.battleRewards);
-  const selectedAction = useGameStore(s => s.selectedAction);
-  const hasMoved = useGameStore(s => s.hasMoved);
-  const hasActed = useGameStore(s => s.hasActed);
   const dimension = useGameStore(s => s.dimension);
-  const townMapData = useGameStore(s => s.townMapData);
-  const mapDimensions = useGameStore(s => s.mapDimensions || {width: 40, height: 30});
-  const battleMap = useGameStore(s => s.battleMap);
   const isSleeping = useGameStore(s => s.isSleeping);
   const isScreenShaking = useGameStore(s => s.isScreenShaking);
   const isScreenFlashing = useGameStore(s => s.isScreenFlashing);
@@ -59,60 +51,27 @@ const App = () => {
   useEffect(() => {
     initializeWorld(); 
     fetchContentFromCloud().catch(() => {});
-    
     const supabase = getSupabase();
     if (supabase) {
       supabase.auth.getSession().then(({ data: { session } }) => setUserSession(session));
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => setUserSession(session));
-      return () => subscription.unsubscribe();
+      supabase.auth.onAuthStateChange((_e, session) => setUserSession(session));
     }
   }, []);
 
-  const activeEntityId = turnOrder?.[currentTurnIndex];
-  const activeEntity = useMemo(() => 
-    battleEntities?.find(e => e.id === activeEntityId) || null, 
-    [battleEntities, activeEntityId]
-  );
-
-  const validMoves = useMemo(() => {
-    if (gameState !== GameState.BATTLE_TACTICAL || selectedAction !== BattleAction.MOVE || hasMoved || !activeEntity || activeEntity.type !== 'PLAYER' || !activeEntity.position || !battleMap) return [];
-    const speedInTiles = Math.floor((activeEntity.stats?.speed || 30) / 5);
-    const occupied = new Set<string>();
-    battleEntities.forEach(e => { if (e.id !== activeEntity.id && e.stats?.hp > 0 && e.position) occupied.add(`${e.position.x},${e.position.y}`); });
-    return getReachableTiles({ x: activeEntity.position.x, y: activeEntity.position.y }, speedInTiles, battleMap, occupied, activeEntity.stats.class);
-  }, [gameState, selectedAction, hasMoved, battleEntities, activeEntity, battleMap]);
-
-  const validTargets = useMemo(() => {
-    if (gameState !== GameState.BATTLE_TACTICAL || !activeEntity || activeEntity.type !== 'PLAYER' || hasActed || !activeEntity.position) return [];
-    const targets: any[] = [];
-    const range = getAttackRange(activeEntity);
-    if (selectedAction === BattleAction.ATTACK) {
-      battleEntities.forEach(e => {
-        if (e.id === activeEntity.id || e.type === 'PLAYER' || (e.stats?.hp || 0) <= 0 || !e.position) return;
-        const dist = Math.max(Math.abs(activeEntity.position!.x - e.position.x), Math.abs(activeEntity.position!.y - e.position.y));
-        if (dist <= range) targets.push({ x: e.position.x, y: e.position.y });
-      });
-    }
-    return targets;
-  }, [gameState, selectedAction, hasActed, battleEntities, activeEntity]);
-
   return (
     <main className={`relative w-screen h-screen overflow-hidden bg-black text-white transition-transform duration-75 ${isScreenShaking ? 'animate-shake' : ''}`}>
-      {/* Flash Effect Layer */}
       <div className={`fixed inset-0 z-[999] bg-white pointer-events-none transition-opacity duration-150 ${isScreenFlashing ? 'opacity-40' : 'opacity-0'}`} />
 
-      {isAdmin ? (
-        <AdminDashboard />
-      ) : (
+      {isAdmin ? <AdminDashboard /> : (
         <div className="w-full h-full">
           <div className={`fixed inset-0 z-[998] bg-black transition-opacity duration-1000 pointer-events-none ${isSleeping ? 'opacity-100' : 'opacity-0'}`} />
           {gameState === GameState.TITLE && <TitleScreen onComplete={createCharacter} />}
           {gameState === GameState.GAME_WON && <EndingScreen />}
           {(gameState === GameState.OVERWORLD || gameState === GameState.TOWN_EXPLORATION || gameState === GameState.DUNGEON || gameState === GameState.DIALOGUE) && (
-            <OverworldMap mapData={townMapData} playerPos={playerPos} onMove={movePlayerOverworld} dimension={dimension} width={mapDimensions.width} height={mapDimensions.height} />
+            <OverworldMap playerPos={playerPos} onMove={movePlayerOverworld} dimension={dimension} />
           )}
           {(gameState === GameState.BATTLE_TACTICAL || gameState === GameState.BATTLE_INIT) && (
-            <BattleScene entities={battleEntities} weather={battleWeather} terrainType={battleTerrain} currentTurnEntityId={activeEntityId} onTileClick={handleTileInteraction} validMoves={validMoves} validTargets={validTargets} />
+            <BattleScene entities={battleEntities} weather={battleWeather} terrainType={battleTerrain} currentTurnEntityId={turnOrder[currentTurnIndex]} onTileClick={handleTileInteraction} />
           )}
           <UIOverlay onOpenTownService={setActiveTownService} />
           {gameState === GameState.BATTLE_INIT && <BattleInitModal />}
@@ -126,7 +85,7 @@ const App = () => {
           {gameState === GameState.SUMMONING && <SummoningScreen />}
           {gameState === GameState.TEMPLE_HUB && <TempleScreen />}
           {gameState === GameState.PARTY_MANAGEMENT && <PartyManager />}
-          {gameState === GameState.DIALOGUE && <NarrativeEventModal />}
+          {gameState === GameState.DIALOGUE && <DialogueOverlay />}
           <InspectionPanel />
         </div>
       )}
