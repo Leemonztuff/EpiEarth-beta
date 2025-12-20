@@ -2,7 +2,6 @@
 // @ts-nocheck
 import React, { useRef, useLayoutEffect, useMemo } from 'react';
 import * as THREE from 'three';
-import { useLoader } from '@react-three/fiber';
 import { TileEffectType, TerrainType } from '../../types';
 import { AssetManager } from '../../services/AssetManager';
 
@@ -10,17 +9,14 @@ const _tempObj = new THREE.Object3D();
 const _tempColor = new THREE.Color();
 
 /**
- * Standard material for terrain blocks. 
- * Efficient instantiation by grouping blocks with the same texture.
+ * Standard material for terrain blocks using bridged textures.
  */
-const TexturedTerrainBlock = React.memo(({ blocks, textureUrl, isShadowRealm, onTileClick, onTileHover }: any) => {
+const TexturedTerrainBlock = React.memo(({ blocks, textureUrl, onTileClick, onTileHover }: any) => {
     const meshRef = useRef<THREE.InstancedMesh>(null);
     const count = blocks.length;
 
-    // Load texture from Supabase
-    const texture = useLoader(THREE.TextureLoader, AssetManager.getSafeSprite(textureUrl), (loader) => {
-        loader.setCrossOrigin('anonymous');
-    });
+    // Use Bridged Texture (Guaranteed to be ready because of Preloader)
+    const texture = useMemo(() => AssetManager.getTexture(textureUrl), [textureUrl]);
 
     useLayoutEffect(() => {
         if (!meshRef.current || count === 0) return;
@@ -28,14 +24,14 @@ const TexturedTerrainBlock = React.memo(({ blocks, textureUrl, isShadowRealm, on
         blocks.forEach((block, i) => {
             const y = (block.offsetY || 0) + (block.height || 1) / 2;
             _tempObj.position.set(block.x || 0, y, block.z || 0);
-            _tempObj.scale.set(0.98, block.height || 1, 0.98);
+            _tempObj.scale.set(1.0, block.height || 1, 1.0); // Full size for better overlap
             _tempObj.updateMatrix();
             meshRef.current.setMatrixAt(i, _tempObj.matrix);
             
-            let color = block.color || '#fff';
+            let color = block.color || '#ffffff';
             if (block.effect) {
-                if (block.effect.type === TileEffectType.FIRE) color = '#ff4444';
-                if (block.effect.type === TileEffectType.POISON_CLOUD) color = '#44ff44';
+                if (block.effect.type === TileEffectType.FIRE) color = '#ff8888';
+                if (block.effect.type === TileEffectType.POISON_CLOUD) color = '#88ff88';
             }
             _tempColor.set(color);
             meshRef.current.setColorAt(i, _tempColor);
@@ -59,6 +55,8 @@ const TexturedTerrainBlock = React.memo(({ blocks, textureUrl, isShadowRealm, on
                 if (e.instanceId !== undefined && blocks[e.instanceId])
                     onTileHover(blocks[e.instanceId].x, blocks[e.instanceId].z);
             }}
+            castShadow
+            receiveShadow
         >
             <boxGeometry args={[1, 1, 1]} />
             <meshStandardMaterial map={texture} roughness={1} metalness={0} vertexColors={true} />
@@ -67,7 +65,6 @@ const TexturedTerrainBlock = React.memo(({ blocks, textureUrl, isShadowRealm, on
 });
 
 export const TerrainLayer = React.memo(({ mapData, isShadowRealm, onTileClick, onTileHover }: any) => {
-    // Group blocks by texture to use efficient instantiation
     const groups = useMemo(() => {
         const g: Record<string, any[]> = {};
         if (!mapData) return g;
@@ -86,7 +83,6 @@ export const TerrainLayer = React.memo(({ mapData, isShadowRealm, onTileClick, o
                     key={texUrl} 
                     textureUrl={texUrl} 
                     blocks={blocks} 
-                    isShadowRealm={isShadowRealm} 
                     onTileClick={onTileClick} 
                     onTileHover={onTileHover} 
                 />

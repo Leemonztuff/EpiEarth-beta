@@ -5,7 +5,6 @@ import { TerrainType, CharacterClass, Attributes, CharacterRace, ItemRarity, Mov
 // Supabase Configuration
 export const SUPABASE_PROJECT_URL = "https://iukchvkoumfwaxlgfhso.supabase.co";
 export const ASSET_BUCKET = "game-assets";
-// Apunta a la raíz del bucket 'game-assets'
 export const WESNOTH_BASE_URL = `${SUPABASE_PROJECT_URL}/storage/v1/object/public/${ASSET_BUCKET}`; 
 
 // CDN Configuration for Units (Wesnoth Repository)
@@ -18,7 +17,7 @@ export const BATTLE_MAP_SIZE = 16;
 export const DEFAULT_MAP_WIDTH = 40;
 export const DEFAULT_MAP_HEIGHT = 30;
 
-// Terrain Visual Mapping
+// Terrain Visual Mapping (Colors used as fallback)
 export const TERRAIN_COLORS: Record<TerrainType, string> = {
     [TerrainType.GRASS]: '#4ade80', [TerrainType.PLAINS]: '#bef264', [TerrainType.FOREST]: '#15803d',
     [TerrainType.JUNGLE]: '#064e3b', [TerrainType.MOUNTAIN]: '#57534e', [TerrainType.WATER]: '#3b82f6',
@@ -31,14 +30,51 @@ export const TERRAIN_COLORS: Record<TerrainType, string> = {
     [TerrainType.SAVANNAH]: '#d97706', [TerrainType.WASTELAND]: '#7f1d1d', [TerrainType.BADLANDS]: '#c2410c'
 };
 
+export const ASSETS = { 
+    TERRAIN: { 
+        [TerrainType.GRASS]: `terrain/grass/green.png`, 
+        [TerrainType.PLAINS]: `terrain/grass/semi-dry.png`, 
+        [TerrainType.FOREST]: `terrain/forest/deciduous-summer-tile.png`, 
+        [TerrainType.JUNGLE]: `terrain/forest/rainforest-tile.png`, 
+        [TerrainType.MOUNTAIN]: `terrain/mountains/basic.png`, 
+        [TerrainType.WATER]: `terrain/water/coast-tile.png`, 
+        [TerrainType.OCEAN]: `terrain/water/ocean-tile.png`, 
+        [TerrainType.VILLAGE]: `terrain/village/human-cottage.png`, 
+        [TerrainType.DESERT]: `terrain/sand/desert.png`, 
+        [TerrainType.SWAMP]: `terrain/swamp/water-tile.png`,
+        [TerrainType.TUNDRA]: `terrain/frozen/snow.png`,
+        [TerrainType.TAIGA]: `terrain/forest/pine-tile.png`,
+        [TerrainType.DIRT_ROAD]: `terrain/flat/dirt.png`,
+        [TerrainType.COBBLESTONE]: `terrain/flat/stone.png`,
+        [TerrainType.STONE_FLOOR]: `terrain/flat/stone.png`,
+        [TerrainType.CAVE_FLOOR]: `terrain/cave/floor.png`,
+        [TerrainType.DUNGEON_FLOOR]: `terrain/cave/floor.png`,
+        [TerrainType.CASTLE]: `terrain/castle/castle-tile.png`,
+        [TerrainType.RUINS]: `terrain/castle/ruin-tile.png`,
+        [TerrainType.FUNGUS]: `terrain/cave/fungus-tile.png`,
+        [TerrainType.LAVA]: `terrain/chasm/lava.png`,
+        [TerrainType.CHASM]: `terrain/chasm/earthy-tile.png`,
+        [TerrainType.SAVANNAH]: `terrain/grass/dry.png`,
+        [TerrainType.WASTELAND]: `terrain/grass/dry.png`,
+        [TerrainType.BADLANDS]: `terrain/flat/dirt.png`,
+        [TerrainType.VOID]: `terrain/chasm/abyss.png`
+    },
+    VFX: {
+        FIREBALL: `projectiles/fireball-n.png`,
+        MAGIC_MISSILE: `projectiles/magic-missile-n.png`,
+        HEAL_HALO: `halo/elven/druid-healing1.png`,
+        RAIN: `weather/rain-heavy.png`
+    },
+    UI: {
+        SHARD_ICON: `items/gem-large-blue.png`,
+        GOLD_ICON: `items/gold-coins.png`
+    }
+};
+
 export const TERRAIN_MOVEMENT_COST: Record<MovementType, Partial<Record<TerrainType, number>>> = {
     [MovementType.WALK]: { 
-        [TerrainType.GRASS]: 1, 
-        [TerrainType.MOUNTAIN]: 5, 
-        [TerrainType.WATER]: 99, 
-        [TerrainType.OCEAN]: 99, 
-        [TerrainType.DIRT_ROAD]: 0.7, 
-        [TerrainType.COBBLESTONE]: 0.8
+        [TerrainType.GRASS]: 1, [TerrainType.MOUNTAIN]: 5, [TerrainType.WATER]: 99, 
+        [TerrainType.OCEAN]: 99, [TerrainType.DIRT_ROAD]: 0.7, [TerrainType.COBBLESTONE]: 0.8
     },
     [MovementType.SAIL]: { [TerrainType.WATER]: 1, [TerrainType.OCEAN]: 0.8, [TerrainType.GRASS]: 99 },
     [MovementType.FLY]: { [TerrainType.MOUNTAIN]: 1, [TerrainType.WATER]: 1, [TerrainType.OCEAN]: 1, [TerrainType.GRASS]: 1 }
@@ -72,40 +108,6 @@ export const RACE_ICONS: Record<string, string> = {
   [CharacterRace.HALF_ORC]: `units/orcs/warrior.png` 
 };
 
-export const ASSETS = { 
-    TERRAIN: { 
-        // Actualizado: Ahora apunta a terrain/flat/ para las capas base
-        [TerrainType.GRASS]: `terrain/flat/grass.png`, 
-        [TerrainType.PLAINS]: `terrain/flat/plains.png`, 
-        [TerrainType.FOREST]: `terrain/forest/deciduous-summer-tile.png`, 
-        [TerrainType.MOUNTAIN]: `terrain/mountains/basic.png`, 
-        [TerrainType.WATER]: `terrain/water/coast.png`, 
-        [TerrainType.OCEAN]: `terrain/water/ocean.png`, 
-        [TerrainType.VILLAGE]: `terrain/village/human-cottage.png`, 
-        [TerrainType.DESERT]: `terrain/flat/sand.png`, 
-        [TerrainType.TUNDRA]: `terrain/flat/snow.png`,
-        [TerrainType.DIRT_ROAD]: `terrain/flat/dirt.png`,
-        [TerrainType.COBBLESTONE]: `terrain/flat/cobble.png`,
-        [TerrainType.STONE_FLOOR]: `terrain/flat/stone.png`,
-        [TerrainType.CASTLE]: `terrain/castle/castle.png`,
-        [TerrainType.RUINS]: `terrain/castle/ruin.png`,
-        [TerrainType.DUNGEON_FLOOR]: `terrain/flat/stone.png`
-    },
-    VFX: {
-        FIREBALL: `projectiles/fireball-n.png`,
-        MAGIC_MISSILE: `projectiles/magic-missile-n.png`,
-        HEAL_HALO: `halo/elven/druid-healing1.png`,
-        RAIN: `weather/rain-heavy.png`
-    },
-    UI: {
-        SHARD_ICON: `items/gem-large-blue.png`,
-        GOLD_ICON: `items/gold-coins.png`
-    }
-};
-
-/**
- * Returns the relative path for a unit sprite.
- */
 export const getSprite = (race: CharacterRace, cls: CharacterClass): string => {
     return CLASS_CONFIG[cls]?.icon || RACE_ICONS[race];
 };
@@ -160,13 +162,5 @@ export const CLASS_TREES: Record<string, any> = {
             { id: 'abjuration', featureName: 'Abjuration Savant', description: 'Specialized in protective magic.', magicSchool: MagicSchool.ABJURATION, passiveEffect: 'ARCANE_WARD' }
         ]}
     ],
-    [CharacterClass.RANGER]: [],
-    [CharacterClass.CLERIC]: [],
-    [CharacterClass.ROGUE]: [],
-    [CharacterClass.BARBARIAN]: [],
-    [CharacterClass.PALADIN]: [],
-    [CharacterClass.SORCERER]: [],
-    [CharacterClass.WARLOCK]: [],
-    [CharacterClass.DRUID]: [],
-    [CharacterClass.BARD]: []
+    [CharacterClass.RANGER]: [], [CharacterClass.CLERIC]: [], [CharacterClass.ROGUE]: [], [CharacterClass.BARBARIAN]: [], [CharacterClass.PALADIN]: [], [CharacterClass.SORCERER]: [], [CharacterClass.WARLOCK]: [], [CharacterClass.DRUID]: [], [CharacterClass.BARD]: []
 };
