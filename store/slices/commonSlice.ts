@@ -11,9 +11,11 @@ export interface CommonSlice {
   isScreenShaking: boolean;
   isScreenFlashing: boolean;
   isAssetsLoaded: boolean;
+  isAdmin: boolean;
   assetLoadingProgress: number;
   addLog: (message: string, type?: GameLogEntry['type']) => void;
   setGameState: (state: GameState) => void;
+  setAdminMode: (admin: boolean) => void;
   quitToMenu: () => void;
   toggleMap: () => void;
   setAssetsLoaded: (loaded: boolean) => void;
@@ -32,6 +34,7 @@ export const createCommonSlice: StateCreator<any, [], [], CommonSlice> = (set, g
   isScreenShaking: false,
   isScreenFlashing: false,
   isAssetsLoaded: false,
+  isAdmin: typeof window !== 'undefined' ? window.location.pathname.startsWith('/admin') : false,
   assetLoadingProgress: 0,
   
   addLog: (message, type = 'info') => {
@@ -41,6 +44,15 @@ export const createCommonSlice: StateCreator<any, [], [], CommonSlice> = (set, g
   },
   
   setGameState: (gs) => set({ gameState: gs }),
+  setAdminMode: (admin) => {
+      set({ isAdmin: admin });
+      if (typeof window !== 'undefined') {
+          const newPath = admin ? '/admin' : '/';
+          if (window.location.pathname !== newPath) {
+              window.history.pushState({}, '', newPath);
+          }
+      }
+  },
   setAssetsLoaded: (loaded) => set({ isAssetsLoaded: loaded }),
   setAssetLoadingProgress: (progress) => set({ assetLoadingProgress: progress }),
   

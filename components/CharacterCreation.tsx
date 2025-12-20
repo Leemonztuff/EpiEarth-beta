@@ -37,7 +37,7 @@ export const TitleScreen: React.FC<{ onComplete: any }> = ({ onComplete }) => {
   const [showAuth, setShowAuth] = useState(false);
   const [showLoad, setShowLoad] = useState(false);
   
-  const { userSession } = useGameStore();
+  const { userSession, setAdminMode } = useGameStore();
   const { isLoading } = useContentStore();
 
   const currentStats: Attributes = useMemo(() => {
@@ -50,9 +50,12 @@ export const TitleScreen: React.FC<{ onComplete: any }> = ({ onComplete }) => {
 
   const spriteUrl = useMemo(() => AssetManager.getSafeSprite(getSprite(race, cls)), [race, cls]);
 
-  const handleAdminPortal = () => {
+  const handleAdminPortal = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     sfx.playUiClick();
-    window.location.pathname = '/admin';
+    // Navegación client-side para evitar el 404 en el servidor de Vercel
+    setAdminMode(true);
   };
 
   if (view === 'MENU') {
@@ -71,15 +74,15 @@ export const TitleScreen: React.FC<{ onComplete: any }> = ({ onComplete }) => {
                 <button onClick={() => setShowLoad(true)} className="bg-slate-900 text-white border border-slate-700 py-3 rounded-xl font-bold uppercase tracking-widest text-xs hover:bg-slate-800 transition-colors">Continue</button>
             </div>
 
-            {/* Hidden Admin Access */}
+            {/* Hidden Admin Access - Better for touch devices */}
             <div className="absolute bottom-6 right-6 z-20">
                 <button 
                     onClick={handleAdminPortal}
-                    className="p-3 bg-slate-900/40 hover:bg-slate-800 border border-white/5 rounded-full text-slate-600 hover:text-amber-500 transition-all group"
+                    className="p-4 bg-slate-900/60 hover:bg-slate-800 border border-white/10 rounded-2xl text-slate-500 hover:text-amber-500 transition-all flex items-center gap-3 group"
                     title="Admin Portal"
                 >
-                    <span className="text-xs font-black uppercase tracking-tighter opacity-0 group-hover:opacity-100 mr-2 transition-opacity">Master Registry</span>
-                    ⚙️
+                    <span className="text-[10px] font-black uppercase tracking-widest opacity-40 group-hover:opacity-100 transition-opacity hidden md:inline">Master Registry</span>
+                    <span className="text-2xl">⚙️</span>
                 </button>
             </div>
 

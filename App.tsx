@@ -22,7 +22,8 @@ import { AssetLoaderOverlay } from './components/AssetLoaderOverlay';
 import { getSupabase } from './services/supabaseClient';
 
 const App = () => {
-  const [isAdmin] = useState(() => window.location.pathname === '/admin');
+  const isAdmin = useGameStore(s => s.isAdmin);
+  const setAdminMode = useGameStore(s => s.setAdminMode);
   const [activeTownService, setActiveTownService] = useState<'NONE' | 'SHOP' | 'INN'>('NONE');
   
   const gameState = useGameStore(s => s.gameState);
@@ -58,6 +59,13 @@ const App = () => {
       supabase.auth.getSession().then(({ data: { session } }) => setUserSession(session));
       supabase.auth.onAuthStateChange((_e, session) => setUserSession(session));
     }
+
+    // Listener para navegación manual del navegador
+    const handleLocationChange = () => {
+        setAdminMode(window.location.pathname.startsWith('/admin'));
+    };
+    window.addEventListener('popstate', handleLocationChange);
+    return () => window.removeEventListener('popstate', handleLocationChange);
   }, []);
 
   return (

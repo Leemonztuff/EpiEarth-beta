@@ -149,10 +149,11 @@ export interface NPCEntity {
   questId?: string; 
 }
 
-export interface Quest { 
-    id: string; title: string; description: string; completed: boolean; type: 'MAIN' | 'SIDE' | 'BOUNTY'; 
-    objective: { type: 'KILL' | 'VISIT' | 'COLLECT', targetId: string, count: number, current: number };
-    reward: { xp: number, gold: number, itemId?: string };
+export interface HexDecoration {
+    assetPath: string;
+    scale: number;
+    rotation: number;
+    offsetY: number;
 }
 
 export interface HexCell {
@@ -162,12 +163,7 @@ export interface HexCell {
   poiType?: 'VILLAGE' | 'TOWN' | 'CITY' | 'CASTLE' | 'RUINS' | 'SHOP' | 'INN' | 'PLAZA' | 'EXIT' | 'TEMPLE' | 'DUNGEON' | 'RAID_ENCOUNTER' | 'PORT' | 'MONUMENT'; 
   regionName?: string; encounterId?: string;
   npcs?: NPCEntity[];
-}
-
-export interface Quest { 
-    id: string; title: string; description: string; completed: boolean; type: 'MAIN' | 'SIDE' | 'BOUNTY'; 
-    objective: { type: 'KILL' | 'VISIT' | 'COLLECT', targetId: string, count: number, current: number };
-    reward: { xp: number, gold: number, itemId?: string };
+  decorations?: HexDecoration[]; // NUEVO
 }
 
 export interface BattleCell { x: number; z: number; height: number; offsetY: number; color: string; textureUrl: string; isObstacle: boolean; blocksSight: boolean; movementCost: number; effect?: { type: TileEffectType, duration: number }; }
@@ -181,6 +177,26 @@ export interface Incursion {
     difficulty: number;
     rewardShards: number;
     description: string;
+}
+
+// Added missing Quest interface
+export interface Quest {
+  id: string;
+  title: string;
+  description: string;
+  completed: boolean;
+  type: 'MAIN' | 'BOUNTY' | 'SIDE' | 'FETCH' | 'TALK';
+  objective: {
+    type: 'KILL' | 'COLLECT' | 'VISIT' | 'TALK';
+    targetId: string;
+    count: number;
+    current: number;
+  };
+  reward: {
+    xp: number;
+    gold: number;
+    items?: Item[];
+  };
 }
 
 export interface GameStateData {

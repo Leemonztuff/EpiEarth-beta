@@ -1,519 +1,364 @@
 
-import React, { useState, useRef } from 'react';
-import { useContentStore } from '../../store/contentStore';
-import { Item, ItemRarity, EquipmentSlot, CharacterClass, Ability, TerrainType, CreatureType, EnemyDefinition, Spell, Skill, SpellType, DamageType, MagicSchool, NPCEntity, Quest, DialogueNode, DialogueOption } from '../../types';
-import { RARITY_COLORS } from '../../constants';
+import React, { useState, useRef, useMemo, useEffect, Suspense } from 'react';
+import { Canvas, useThree, useFrame } from '@react-three/fiber';
+import { OrbitControls, Billboard, Text, Html } from '@react-three/drei';
+import * as THREE from 'three';
+import { useContentStore, CustomMap } from '../../store/contentStore';
+import { useGameStore } from '../../store/gameStore';
+import { 
+    Item, ItemRarity, TerrainType, EnemyDefinition, HexCell, WeatherType, NPCEntity, HexDecoration, DialogueNode, DialogueOption
+} from '../../types';
+import { RARITY_COLORS, TERRAIN_COLORS, ASSETS } from '../../constants';
 import { uploadAsset } from '../../services/supabaseClient';
+import { AssetManager } from '../../services/AssetManager';
 
-const TABS = ['DASHBOARD', 'ITEMS', 'UNITS & SPAWNS', 'SPELLS', 'SKILLS', 'NPCs', 'QUESTS', 'CLASSES', 'MAP CONFIG', 'EXPORT / SYNC'];
+// --- UI COMPONENTS ---
+
+const AdminCard = ({ children, className = "" }: { children?: React.ReactNode, className?: string }) => (
+    <div className={`bg-slate-900/60 backdrop-blur-md border border-white/5 rounded-2xl overflow-hidden shadow-xl ${className}`}>
+        {children}
+    </div>
+);
+
+const SectionHeader = ({ title, subtitle, icon }: { title: string, subtitle?: string, icon?: string }) => (
+    <div className="mb-6 flex items-center gap-4">
+        {icon && <span className="text-3xl">{icon}</span>}
+        <div>
+            <h3 className="text-xl font-bold text-white tracking-tight">{title}</h3>
+            {subtitle && <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">{subtitle}</p>}
+        </div>
+    </div>
+);
+
+const FormInput = ({ label, ...props }: any) => (
+    <div className="flex flex-col gap-1.5 w-full">
+        <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider ml-1">{label}</label>
+        <input {...props} className="bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-200 outline-none focus:border-amber-500/50 transition-all" />
+    </div>
+);
+
+// --- 3D EDITOR ENGINE ---
+
+const VoxelBlock = ({ cell, onAction, brushType }: any) => {
+    const texture = useMemo(() => AssetManager.getTexture(ASSETS.TERRAIN[cell.terrain]), [cell.terrain]);
+    const height = cell.height || 1;
+    const yPos = height / 2;
+
+    // Axial to pixel coords
+    const px = cell.q * 1.5;
+    const pz = (cell.r + cell.q / 2) * Math.sqrt(3);
+
+    return (
+        <group position={[px, yPos, pz]}>
+            <mesh 
+                onClick={(e) => { e.stopPropagation(); onAction(cell, false); }}
+                onContextMenu={(e) => { e.stopPropagation(); e.nativeEvent.preventDefault(); onAction(cell, true); }}
+                castShadow receiveShadow
+            >
+                <boxGeometry args={[0.98, height, 0.98]} />
+                <meshStandardMaterial map={texture} roughness={1} />
+            </mesh>
+            {cell.decorations?.map((deco: HexDecoration, i: number) => (
+                <Billboard key={i} position={[0, height/2 + deco.offsetY, 0]}>
+                    <mesh>
+                        <planeGeometry args={[1 * deco.scale, 1 * deco.scale]} />
+                        <meshBasicMaterial map={AssetManager.getTexture(deco.assetPath)} transparent alphaTest={0.5} />
+                    </mesh>
+                </Billboard>
+            ))}
+        </group>
+    );
+};
+
+const SceneEditor3D = ({ map, onUpdate }: { map: CustomMap, onUpdate: (m: CustomMap) => void }) => {
+    const [brushMode, setBrushMode] = useState<'TERRAIN' | 'HEIGHT' | 'DECO'>('HEIGHT');
+    const [activeTerrain, setActiveTerrain] = useState<TerrainType>(TerrainType.COBBLESTONE);
+    const [activeDeco, setActiveDeco] = useState<string>('scenery/monolith.png');
+
+    const handleCellAction = (cell: HexCell, secondary = false) => {
+        const newCells = [...map.cells];
+        const idx = newCells.findIndex(c => c.q === cell.q && c.r === cell.r);
+        if (idx === -1) return;
+
+        const updated = { ...newCells[idx] };
+
+        if (brushMode === 'HEIGHT') {
+            const currentHeight = updated.height || 1;
+            updated.height = Math.max(0.2, currentHeight + (secondary ? -0.5 : 0.5));
+        } else if (brushMode === 'TERRAIN') {
+            updated.terrain = activeTerrain;
+        } else if (brushMode === 'DECO') {
+            if (secondary) {
+                updated.decorations = [];
+            } else {
+                updated.decorations = [{ assetPath: activeDeco, scale: 1, rotation: 0, offsetY: 0.5 }];
+            }
+        }
+
+        newCells[idx] = updated;
+        onUpdate({ ...map, cells: newCells });
+    };
+
+    return (
+        <div className="flex flex-col h-full gap-4">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 min-h-0">
+                {/* 3D Viewport */}
+                <AdminCard className="lg:col-span-9 relative bg-black/80 h-[500px] lg:h-auto border-amber-500/20">
+                    <Canvas shadows camera={{ position: [12, 12, 12], fov: 40 }}>
+                        <ambientLight intensity={0.7} />
+                        <pointLight position={[10, 20, 10]} intensity={1.5} castShadow />
+                        <OrbitControls makeDefault />
+                        <Suspense fallback={null}>
+                            {map.cells.map(cell => (
+                                <VoxelBlock 
+                                    key={`${cell.q},${cell.r}`} 
+                                    cell={cell} 
+                                    onAction={handleCellAction}
+                                    brushType={brushMode}
+                                />
+                            ))}
+                        </Suspense>
+                        <gridHelper args={[30, 30, 0x444444, 0x222222]} position={[0, -0.01, 0]} />
+                    </Canvas>
+                    
+                    {/* Control Legend */}
+                    <div className="absolute bottom-4 left-4 flex gap-4">
+                         <div className="bg-black/80 px-3 py-1.5 rounded-lg border border-white/10 text-[9px] font-black uppercase text-slate-400">
+                             <span className="text-amber-500">LMB:</span> Apply Action
+                         </div>
+                         <div className="bg-black/80 px-3 py-1.5 rounded-lg border border-white/10 text-[9px] font-black uppercase text-slate-400">
+                             <span className="text-amber-500">RMB:</span> Negative / Erase
+                         </div>
+                    </div>
+
+                    <div className="absolute top-4 left-4 bg-black/80 px-4 py-2 rounded-xl border border-amber-500/30">
+                        <span className="text-[10px] font-black uppercase text-amber-500 tracking-widest">Active Reality: {map.name}</span>
+                    </div>
+                </AdminCard>
+
+                {/* Toolbox */}
+                <div className="lg:col-span-3 flex flex-col gap-4 overflow-y-auto custom-scrollbar">
+                    <AdminCard className="p-6 space-y-6">
+                        <SectionHeader title="Construct" subtitle="Scene Tools" />
+                        
+                        <div className="flex bg-black/40 p-1 rounded-xl">
+                            {(['HEIGHT', 'TERRAIN', 'DECO'] as const).map(m => (
+                                <button key={m} onClick={() => setBrushMode(m)} className={`flex-1 py-2 text-[8px] font-black uppercase rounded-lg transition-all ${brushMode === m ? 'bg-amber-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>{m}</button>
+                            ))}
+                        </div>
+
+                        {brushMode === 'TERRAIN' && (
+                            <div className="space-y-4">
+                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Biome Palette</label>
+                                <div className="grid grid-cols-4 gap-2">
+                                    {Object.values(TerrainType).slice(0, 16).map(t => (
+                                        <button key={t} onClick={() => setActiveTerrain(t)} className={`aspect-square rounded-lg border-2 transition-all ${activeTerrain === t ? 'border-white scale-110 shadow-lg' : 'border-transparent opacity-40 hover:opacity-70'}`} style={{ backgroundColor: TERRAIN_COLORS[t] }} title={t} />
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {brushMode === 'DECO' && (
+                            <div className="space-y-4">
+                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Asset Stamp</label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {['scenery/monolith.png', 'terrain/forest/pine-tile.png', 'terrain/village/human-cottage.png', 'items/gem-large-blue.png', 'scenery/summoning-center.png', 'terrain/castle/ruin.png'].map(path => (
+                                        <button key={path} onClick={() => setActiveDeco(path)} className={`aspect-square bg-black/40 rounded-xl border-2 flex items-center justify-center p-2 transition-all group ${activeDeco === path ? 'border-amber-500 bg-amber-500/10' : 'border-white/5 opacity-50 hover:opacity-100'}`}>
+                                            <img src={AssetManager.getSafeSprite(path)} className="w-full h-full object-contain invert group-hover:scale-110 transition-transform" />
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {brushMode === 'HEIGHT' && (
+                            <div className="bg-amber-500/5 p-4 rounded-xl border border-amber-500/20 text-[10px] text-amber-200/60 leading-relaxed font-bold uppercase italic tracking-tighter">
+                                "Click to EXTRUDE heights. Create vantage points for archers or pits for the unwary."
+                            </div>
+                        )}
+                    </AdminCard>
+
+                    <AdminCard className="p-4">
+                        <button onClick={() => {}} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black uppercase text-[10px] py-3 rounded-xl tracking-widest shadow-xl transition-all">Export Blueprint</button>
+                    </AdminCard>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// --- MAIN DASHBOARD TABS ---
+
+const TABS = [
+    { id: 'DASHBOARD', label: 'Overview', icon: '📊' },
+    { id: 'SCENES', label: 'Builder 3D', icon: '🏗️' },
+    { id: 'ITEMS', label: 'Artifacts', icon: '⚔️' },
+    { id: 'UNITS', label: 'Bestiary', icon: '💀' },
+    { id: 'SYNC', label: 'Cloud Flux', icon: '☁️' }
+];
 
 export const AdminDashboard: React.FC = () => {
     const [activeTab, setActiveTab] = useState('DASHBOARD');
+    const { maps, updateMap, createMap } = useContentStore();
+    const [selectedMapId, setSelectedMapId] = useState<string | null>(null);
+    const setAdminMode = useGameStore(s => s.setAdminMode);
 
-    const exitAdmin = () => {
-        window.location.pathname = '/';
+    const handleNewMap = () => {
+        const id = `scene_${Date.now()}`;
+        const cells: HexCell[] = [];
+        const radius = 6;
+        for(let q = -radius; q <= radius; q++) {
+            for(let r = -radius; r <= radius; r++) {
+                if (Math.abs(q) + Math.abs(r) + Math.abs(-q - r) <= radius * 2) {
+                    cells.push({ q, r, terrain: TerrainType.STONE_FLOOR, height: 1, weather: WeatherType.NONE, isExplored: true, isVisible: true, decorations: [] });
+                }
+            }
+        }
+        createMap({ id, name: 'Arena Táctica', type: 'DUNGEON', width: radius * 2, height: radius * 2, cells });
+        setSelectedMapId(id);
     };
 
     return (
-        <div className="flex h-screen w-screen bg-slate-900 text-slate-200 font-sans overflow-hidden">
-            <div className="w-64 bg-slate-950 border-r border-slate-800 flex flex-col shrink-0">
-                <div className="p-6 border-b border-slate-800">
-                    <h1 className="font-serif text-2xl text-amber-500 font-bold">Epic Admin</h1>
-                    <p className="text-xs text-slate-500 uppercase tracking-widest mt-1">Tactical RPG Editor</p>
+        <div className="flex h-screen w-screen bg-[#020617] text-slate-200 font-sans overflow-hidden">
+             <aside className="w-72 bg-slate-950/80 backdrop-blur-2xl border-r border-white/5 flex flex-col">
+                <div className="p-8 border-b border-white/5 flex items-center gap-3">
+                    <div className="w-10 h-10 bg-gradient-to-br from-amber-400 to-amber-600 rounded-xl flex items-center justify-center text-xl shadow-lg shadow-amber-500/20">⚒️</div>
+                    <div>
+                        <h1 className="font-serif text-lg text-white font-black leading-none uppercase">Architect</h1>
+                        <p className="text-[8px] text-slate-500 uppercase tracking-widest font-black mt-1">Epic Earth Core</p>
+                    </div>
                 </div>
-                <nav className="flex-1 p-4 space-y-2 overflow-y-auto custom-scrollbar">
+                <nav className="flex-1 p-6 space-y-1">
                     {TABS.map(tab => (
-                        <button
-                            key={tab}
-                            onClick={() => setActiveTab(tab)}
-                            className={`w-full text-left px-4 py-3 rounded-lg text-xs font-bold tracking-wide transition-all ${activeTab === tab ? 'bg-amber-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'}`}
-                        >
-                            {tab}
+                        <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`w-full flex items-center gap-4 px-5 py-3.5 rounded-2xl text-xs font-bold transition-all relative ${activeTab === tab.id ? 'bg-amber-500/10 text-amber-400' : 'text-slate-400 hover:bg-white/5'}`}>
+                            <span className="text-lg">{tab.icon}</span>
+                            <span className="tracking-wide uppercase font-black">{tab.label}</span>
+                            {activeTab === tab.id && <div className="absolute left-0 w-1.5 h-6 bg-amber-500 rounded-r-full" />}
                         </button>
                     ))}
                 </nav>
-                <div className="p-4 border-t border-slate-800">
-                    <button onClick={exitAdmin} className="w-full border border-slate-700 text-slate-400 px-4 py-2 rounded hover:bg-slate-800 hover:text-white transition-colors text-xs uppercase font-bold">
-                        ← Back to Game
-                    </button>
+                <div className="p-6 border-t border-white/5">
+                    <button onClick={() => setAdminMode(false)} className="w-full bg-slate-900 border border-white/10 text-slate-400 px-6 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:text-white transition-all">← Return to Reality</button>
                 </div>
-            </div>
+            </aside>
 
-            <div className="flex-1 flex flex-col overflow-hidden">
-                <header className="h-16 bg-slate-900 border-b border-slate-800 flex items-center px-8 justify-between shrink-0">
-                    <h2 className="text-xl font-bold text-slate-100">{activeTab}</h2>
+            <main className="flex-1 flex flex-col overflow-hidden relative">
+                <header className="h-20 bg-slate-950/20 border-b border-white/5 flex items-center px-8 justify-between shrink-0 backdrop-blur-md">
+                    <h2 className="text-2xl font-black text-white uppercase tracking-tighter">{TABS.find(t => t.id === activeTab)?.label}</h2>
                     <div className="flex items-center gap-4">
-                        <span className="w-3 h-3 rounded-full bg-green-500 animate-pulse"></span>
-                        <span className="text-xs text-green-400 font-mono uppercase tracking-widest">Master Mode</span>
+                         <div className="px-3 py-1 bg-green-500/10 border border-green-500/20 rounded-full flex items-center gap-2">
+                            <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                            <span className="text-[8px] text-green-400 font-black uppercase tracking-widest">Logic Engine Online</span>
+                         </div>
                     </div>
                 </header>
                 
-                <main className="flex-1 overflow-y-auto bg-slate-900 p-8 custom-scrollbar">
+                <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
                     {activeTab === 'DASHBOARD' && <DashboardHome changeTab={setActiveTab} />}
-                    {activeTab === 'ITEMS' && <ItemEditor />}
-                    {activeTab === 'UNITS & SPAWNS' && <UnitAndEncounterEditor />}
-                    {activeTab === 'SPELLS' && <SpellEditor />}
-                    {activeTab === 'SKILLS' && <SkillEditor />}
-                    {activeTab === 'NPCs' && <NPCEditor />}
-                    {activeTab === 'QUESTS' && <QuestEditor />}
-                    {activeTab === 'CLASSES' && <ClassEditor />}
-                    {activeTab === 'MAP CONFIG' && <MapConfigurator />}
-                    {activeTab === 'EXPORT / SYNC' && <ExportView />}
-                </main>
-            </div>
-        </div>
-    );
-};
-
-const DashboardHome = ({ changeTab }: { changeTab: (t: string) => void }) => {
-    const { items, enemies, spells, skills, npcs, quests } = useContentStore();
-    const StatCard = ({ title, count, color, tab }: any) => (
-        <div onClick={() => changeTab(tab)} className={`bg-slate-800 p-6 rounded-xl border border-slate-700 hover:border-${color}-500 cursor-pointer transition-all group`}>
-            <h3 className={`text-lg font-bold text-${color}-100 group-hover:text-${color}-400`}>{title}</h3>
-            <div className="mt-4 text-3xl font-bold text-slate-200">{count}</div>
-        </div>
-    );
-    return (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <StatCard title="Items" count={Object.keys(items).length} color="amber" tab="ITEMS" />
-            <StatCard title="Enemies" count={Object.keys(enemies).length} color="red" tab="UNITS & SPAWNS" />
-            <StatCard title="NPCs" count={Object.keys(npcs).length} color="green" tab="NPCs" />
-            <StatCard title="Quests" count={Object.keys(quests).length} color="blue" tab="QUESTS" />
-        </div>
-    );
-};
-
-const QuestEditor = () => {
-    const { quests, updateQuest, createQuest, deleteQuest, enemies, items } = useContentStore();
-    const [selectedId, setSelectedId] = useState<string | null>(null);
-    const [editForm, setEditForm] = useState<Partial<Quest>>({});
-
-    const handleSelect = (id: string) => { setSelectedId(id); setEditForm({ ...quests[id] }); };
-    const handleSave = () => { if (selectedId && editForm.title) { updateQuest(selectedId, editForm as Quest); alert('Quest Saved'); } };
-    const handleCreate = () => {
-        const newId = `quest_${Date.now()}`;
-        const newQuest: Quest = {
-            id: newId, title: 'New Quest', description: 'Help the village.', completed: false, type: 'SIDE',
-            objective: { type: 'KILL', targetId: 'ANY', count: 5, current: 0 },
-            reward: { xp: 500, gold: 100 }
-        };
-        createQuest(newQuest);
-        handleSelect(newId);
-    };
-
-    return (
-        <div className="flex gap-6 h-full">
-            <div className="w-1/3 bg-slate-950 rounded-lg border border-slate-800 flex flex-col shrink-0">
-                <div className="p-4 border-b border-slate-800 flex justify-between items-center"><span className="text-xs font-bold text-blue-500 uppercase">Mission Logs</span><button onClick={handleCreate} className="bg-blue-600 hover:bg-blue-500 text-white px-2 py-1 rounded text-xs">+</button></div>
-                <div className="flex-1 overflow-y-auto p-2 space-y-1">
-                    {Object.values(quests).map((q: any) => (
-                        <div key={q.id} onClick={() => handleSelect(q.id)} className={`p-3 rounded cursor-pointer border ${selectedId === q.id ? 'bg-slate-800 border-blue-500' : 'bg-transparent border-transparent hover:bg-slate-900'}`}>
-                            <div className="text-sm font-bold text-slate-200">{q.title}</div>
-                            <div className="text-[10px] text-slate-500 uppercase tracking-tighter">{q.type} • {q.objective.type}</div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-            <div className="flex-1 bg-slate-800 rounded-lg border border-slate-700 p-6 overflow-y-auto custom-scrollbar">
-                {selectedId ? (
-                    <div className="space-y-6 max-w-xl mx-auto">
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="col-span-2"><label className="text-xs font-bold text-slate-500 uppercase">Title</label><input type="text" value={editForm.title} onChange={e => setEditForm({...editForm, title: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white" /></div>
-                        </div>
-                        <div><label className="text-xs font-bold text-slate-500 uppercase">Description</label><textarea value={editForm.description} onChange={e => setEditForm({...editForm, description: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white h-20" /></div>
-                        
-                        <div className="p-4 bg-slate-950 rounded-lg border border-slate-700">
-                             <h4 className="text-xs font-black text-blue-400 uppercase mb-4 tracking-widest border-b border-white/5 pb-2">Objective Settings</h4>
-                             <div className="grid grid-cols-2 gap-4">
-                                 <div>
-                                     <label className="text-[10px] font-bold text-slate-500 uppercase">Type</label>
-                                     <select value={editForm.objective?.type} onChange={e => setEditForm({...editForm, objective: {...editForm.objective!, type: e.target.value as any}})} className="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs">
-                                         <option value="KILL">Kill Enemy</option>
-                                         <option value="VISIT">Visit Location</option>
-                                         <option value="COLLECT">Collect Item</option>
-                                     </select>
-                                 </div>
-                                 <div>
-                                     <label className="text-[10px] font-bold text-slate-500 uppercase">Target Count</label>
-                                     <input type="number" value={editForm.objective?.count} onChange={e => setEditForm({...editForm, objective: {...editForm.objective!, count: parseInt(e.target.value)}})} className="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs" />
-                                 </div>
-                             </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                            <div><label className="text-[10px] font-bold text-slate-500 uppercase">Gold Reward</label><input type="number" value={editForm.reward?.gold} onChange={e => setEditForm({...editForm, reward: {...editForm.reward!, gold: parseInt(e.target.value)}})} className="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs" /></div>
-                            <div><label className="text-[10px] font-bold text-slate-500 uppercase">XP Reward</label><input type="number" value={editForm.reward?.xp} onChange={e => setEditForm({...editForm, reward: {...editForm.reward!, xp: parseInt(e.target.value)}})} className="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs" /></div>
-                        </div>
-
-                        <button onClick={handleSave} className="w-full bg-blue-600 py-3 rounded font-bold hover:bg-blue-500 shadow-lg transition-all">SAVE MISSION</button>
-                    </div>
-                ) : <div className="flex h-full items-center justify-center text-slate-500 italic">Select a quest to begin the chronicles.</div>}
-            </div>
-        </div>
-    );
-};
-
-const NPCEditor = () => {
-    const { npcs, updateNPC, createNPC, deleteNPC, quests } = useContentStore();
-    const [selectedId, setSelectedId] = useState<string | null>(null);
-    const [editForm, setEditForm] = useState<Partial<NPCEntity>>({});
-    
-    // Editor de nodos de diálogo
-    const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
-
-    const handleSelect = (id: string) => { 
-        setSelectedId(id); 
-        setEditForm({ ...npcs[id] }); 
-        setActiveNodeId(npcs[id].startNodeId || null);
-    };
-
-    const handleSave = () => { if (selectedId && editForm.name) { updateNPC(selectedId, editForm as NPCEntity); alert('NPC Saved'); } };
-    
-    const handleCreate = () => { 
-        const newId = `npc_${Date.now()}`; 
-        createNPC({ 
-            id: newId, 
-            name: 'New NPC', 
-            role: 'Villager', 
-            sprite: 'units/human-magi/white-mage.png', 
-            dialogue: [], 
-            startNodeId: 'root',
-            dialogueNodes: {
-                'root': { id: 'root', text: "Hello there!", options: [{ label: "Goodbye", action: 'CLOSE' }] }
-            }
-        }); 
-        handleSelect(newId); 
-    };
-
-    const updateNode = (nodeId: string, data: Partial<DialogueNode>) => {
-        // Fix: Explicitly cast dialogueNodes to ensure type safety when updating a node
-        const nodes = { ...editForm.dialogueNodes } as Record<string, DialogueNode>;
-        nodes[nodeId] = { ...nodes[nodeId], ...data };
-        setEditForm({ ...editForm, dialogueNodes: nodes });
-    };
-
-    const addNode = () => {
-        const id = `node_${Date.now()}`;
-        updateNode(id, { id, text: "New text...", options: [] });
-        setActiveNodeId(id);
-    };
-
-    const addOption = (nodeId: string) => {
-        // Fix: Explicitly cast dialogueNodes to ensure type safety when adding an option
-        const nodes = { ...editForm.dialogueNodes } as Record<string, DialogueNode>;
-        const node = nodes[nodeId];
-        if (node) {
-            node.options.push({ label: "New Option", action: 'CLOSE' });
-            setEditForm({ ...editForm, dialogueNodes: nodes });
-        }
-    };
-
-    return (
-        <div className="flex gap-6 h-full">
-            <div className="w-1/3 bg-slate-950 rounded-lg border border-slate-800 flex flex-col shrink-0">
-                <div className="p-4 border-b border-slate-800 flex justify-between items-center"><span className="text-xs font-bold text-green-500 uppercase">Citizens</span><button onClick={handleCreate} className="bg-green-600 hover:bg-green-500 text-white px-2 py-1 rounded text-xs">+</button></div>
-                <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
-                    {Object.values(npcs).map((npc: any) => (
-                        <div key={npc.id} onClick={() => handleSelect(npc.id)} className={`p-3 rounded cursor-pointer flex items-center gap-3 border ${selectedId === npc.id ? 'bg-slate-800 border-green-500' : 'bg-transparent border-transparent hover:bg-slate-900'}`}>
-                            <div className="w-8 h-8 flex items-center justify-center bg-black/40 rounded">
-                                <img src={`https://cdn.jsdelivr.net/gh/wesnoth/wesnoth@master/data/core/images/${npc.sprite}`} className="w-6 h-6 object-contain pixelated" />
+                    {activeTab === 'SCENES' && (
+                        <div className="h-full flex flex-col gap-6">
+                            <div className="flex gap-4 items-center bg-slate-900/40 p-4 rounded-2xl border border-white/5">
+                                <select 
+                                    value={selectedMapId || ''} 
+                                    onChange={e => setSelectedMapId(e.target.value)}
+                                    className="bg-black/60 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-200 outline-none focus:border-amber-500/50"
+                                >
+                                    <option value="">Select Tactical Blueprint...</option>
+                                    {(Object.values(maps) as CustomMap[]).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                                </select>
+                                <button onClick={handleNewMap} className="bg-amber-600 hover:bg-amber-500 px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-xl transition-all">+ New Arena</button>
                             </div>
-                            <div><div className="text-sm font-bold text-slate-200">{npc.name}</div><div className="text-[10px] text-slate-500 uppercase">{npc.role}</div></div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-            <div className="flex-1 bg-slate-800 rounded-lg border border-slate-700 p-6 overflow-y-auto custom-scrollbar">
-                {selectedId ? (
-                    <div className="space-y-8">
-                        <div className="grid grid-cols-2 gap-4">
-                            <div><label className="text-xs font-bold text-slate-500 uppercase">Name</label><input type="text" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white" /></div>
-                            <div><label className="text-xs font-bold text-slate-500 uppercase">Role</label><input type="text" value={editForm.role} onChange={e => setEditForm({...editForm, role: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white" /></div>
-                        </div>
-                        <div><label className="text-xs font-bold text-slate-500 uppercase">Sprite Path (Wesnoth relative)</label><input type="text" value={editForm.sprite} onChange={e => setEditForm({...editForm, sprite: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white font-mono text-xs" /></div>
-
-                        {/* Dialogue Graph Editor Lite */}
-                        <div className="bg-slate-950 p-6 rounded-xl border border-slate-700 shadow-inner">
-                            <div className="flex justify-between items-center mb-6">
-                                <h4 className="text-sm font-black text-amber-500 uppercase tracking-widest">Dialogue Designer</h4>
-                                <button onClick={addNode} className="bg-amber-600 px-3 py-1 rounded text-[10px] font-black uppercase text-white hover:bg-amber-500">Add Node</button>
-                            </div>
-
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                {/* Lista de Nodos */}
-                                <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
-                                    {/* Fix: Explicitly cast dialogueNodes to ensure type safety when mapping nodes */}
-                                    {(Object.values(editForm.dialogueNodes || {}) as DialogueNode[]).map(node => (
-                                        <div 
-                                            key={node.id} 
-                                            onClick={() => setActiveNodeId(node.id)}
-                                            className={`p-3 rounded border cursor-pointer transition-all ${activeNodeId === node.id ? 'bg-amber-900/20 border-amber-500' : 'bg-slate-900 border-slate-800'}`}
-                                        >
-                                            <div className="flex justify-between text-[8px] font-black uppercase text-slate-500 mb-1">
-                                                <span>Node ID: {node.id}</span>
-                                                {editForm.startNodeId === node.id && <span className="text-amber-500">★ START</span>}
-                                            </div>
-                                            <div className="text-xs text-slate-300 truncate italic">"{node.text}"</div>
-                                        </div>
-                                    ))}
+                            {selectedMapId && maps[selectedMapId] ? (
+                                <SceneEditor3D map={maps[selectedMapId]} onUpdate={(m) => updateMap(m.id, m)} />
+                            ) : (
+                                <div className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-white/5 rounded-3xl text-slate-700 bg-white/2">
+                                    <span className="text-6xl mb-4 opacity-10">🏛️</span>
+                                    <p className="font-black uppercase text-xs tracking-[0.4em] opacity-40">Initialize Scene to Begin</p>
                                 </div>
-
-                                {/* Editor de Nodo Activo */}
-                                {activeNodeId && editForm.dialogueNodes?.[activeNodeId] && (
-                                    <div className="bg-slate-900 p-4 rounded border border-slate-700 space-y-4 animate-in fade-in zoom-in-95">
-                                        <div>
-                                            <label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">NPC Text</label>
-                                            <textarea 
-                                                value={editForm.dialogueNodes[activeNodeId].text} 
-                                                onChange={e => updateNode(activeNodeId, { text: e.target.value })}
-                                                className="w-full bg-black border border-slate-700 rounded px-2 py-1 text-xs text-amber-100 h-20"
-                                            />
-                                        </div>
-                                        
-                                        <div>
-                                            <div className="flex justify-between items-center mb-2">
-                                                <label className="text-[10px] font-bold text-slate-500 uppercase">Options</label>
-                                                <button onClick={() => addOption(activeNodeId)} className="text-[8px] font-bold text-amber-500 hover:text-white uppercase">+ Add Option</button>
-                                            </div>
-                                            <div className="space-y-3">
-                                                {editForm.dialogueNodes[activeNodeId].options.map((opt, i) => (
-                                                    <div key={i} className="p-2 bg-black/40 rounded border border-slate-800 space-y-2">
-                                                        <input 
-                                                            placeholder="Label" 
-                                                            value={opt.label} 
-                                                            onChange={e => {
-                                                                // Fix: Explicitly cast dialogueNodes to ensure type safety when updating option label
-                                                                const nodes = {...editForm.dialogueNodes} as Record<string, DialogueNode>;
-                                                                nodes[activeNodeId].options[i].label = e.target.value;
-                                                                setEditForm({...editForm, dialogueNodes: nodes});
-                                                            }}
-                                                            className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-[10px]"
-                                                        />
-                                                        <div className="flex gap-2">
-                                                            <select 
-                                                                value={opt.action || 'NEXT'}
-                                                                onChange={e => {
-                                                                    // Fix: Explicitly cast dialogueNodes to ensure type safety when updating option action
-                                                                    const nodes = {...editForm.dialogueNodes} as Record<string, DialogueNode>;
-                                                                    const val = e.target.value;
-                                                                    nodes[activeNodeId].options[i].action = (val === 'NEXT' ? undefined : val as any);
-                                                                    setEditForm({...editForm, dialogueNodes: nodes});
-                                                                }}
-                                                                className="flex-1 bg-slate-900 border border-slate-800 rounded px-2 py-1 text-[8px] font-black"
-                                                            >
-                                                                <option value="NEXT">GO TO NODE</option>
-                                                                <option value="CLOSE">CLOSE DIALOGUE</option>
-                                                                <option value="SHOP">OPEN SHOP</option>
-                                                                <option value="SAVE">SAVE GAME</option>
-                                                                <option value="REWARD">GIVE REWARD</option>
-                                                            </select>
-                                                            {!opt.action && (
-                                                                <select 
-                                                                    value={opt.nextNodeId || ''}
-                                                                    onChange={e => {
-                                                                        // Fix: Explicitly cast dialogueNodes to ensure type safety when updating nextNodeId
-                                                                        const nodes = {...editForm.dialogueNodes} as Record<string, DialogueNode>;
-                                                                        nodes[activeNodeId].options[i].nextNodeId = e.target.value;
-                                                                        setEditForm({...editForm, dialogueNodes: nodes});
-                                                                    }}
-                                                                    className="flex-1 bg-slate-900 border border-slate-800 rounded px-2 py-1 text-[8px]"
-                                                                >
-                                                                    <option value="">Select Destination...</option>
-                                                                    {Object.keys(editForm.dialogueNodes).map(id => <option key={id} value={id}>{id}</option>)}
-                                                                </select>
-                                                            )}
-                                                        </div>
-                                                        <div className="flex items-center gap-2 mt-1">
-                                                            <label className="text-[8px] font-black text-slate-600 uppercase">Quest Trigger:</label>
-                                                            <select 
-                                                                value={opt.questTriggerId || ''}
-                                                                onChange={e => {
-                                                                    // Fix: Explicitly cast dialogueNodes to ensure type safety when updating questTriggerId
-                                                                    const nodes = {...editForm.dialogueNodes} as Record<string, DialogueNode>;
-                                                                    nodes[activeNodeId].options[i].questTriggerId = e.target.value;
-                                                                    setEditForm({...editForm, dialogueNodes: nodes});
-                                                                }}
-                                                                className="flex-1 bg-slate-900 border border-slate-800 rounded px-1 py-0.5 text-[8px]"
-                                                            >
-                                                                <option value="">No Quest</option>
-                                                                {Object.keys(quests).map(id => <option key={id} value={id}>{quests[id].title}</option>)}
-                                                            </select>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
+                            )}
                         </div>
+                    )}
+                    {activeTab === 'ITEMS' && <ItemEditorPro />}
+                    {activeTab === 'UNITS' && <UnitEditorPro />}
+                    {activeTab === 'SYNC' && <SyncCenterPro />}
+                </div>
+            </main>
+        </div>
+    );
+};
 
-                        <button onClick={handleSave} className="w-full bg-green-600 py-3 rounded font-bold hover:bg-green-500 shadow-lg transition-all uppercase tracking-widest">SAVE WORLD CITIZEN</button>
+// --- SIMPLIFIED TABS FOR INTEGRATION ---
+
+const DashboardHome = ({ changeTab }: any) => {
+    const { items, enemies, maps } = useContentStore();
+    const stats = [
+        { label: 'Artifacts', count: Object.keys(items).length, icon: '⚔️', tab: 'ITEMS' },
+        { label: 'Threats', count: Object.keys(enemies).length, icon: '👾', tab: 'UNITS' },
+        { label: 'Blueprints', count: Object.keys(maps).length, icon: '🏗️', tab: 'SCENES' }
+    ];
+    return (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {stats.map(s => (
+                <button key={s.label} onClick={() => changeTab(s.tab)} className="bg-slate-900/40 p-10 rounded-3xl border border-white/5 text-left hover:bg-slate-800/60 transition-all hover:-translate-y-1">
+                    <div className="text-5xl mb-4">{s.icon}</div>
+                    <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">{s.label}</div>
+                    <div className="text-4xl font-black text-white">{s.count}</div>
+                </button>
+            ))}
+        </div>
+    );
+};
+
+const ItemEditorPro = () => {
+    const items = useContentStore(s => s.items);
+    return (
+        <AdminCard className="p-8">
+            <SectionHeader title="Artifact Registry" subtitle="Item Catalog" />
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {(Object.values(items) as Item[]).map(item => (
+                    <div key={item.id} className="bg-black/40 p-4 rounded-xl border border-white/5 flex items-center gap-4">
+                        <div className="w-10 h-10 bg-slate-800 rounded flex items-center justify-center shrink-0">
+                            <img src={AssetManager.getSafeSprite(item.icon)} className="w-8 h-8 object-contain invert" />
+                        </div>
+                        <span className="text-xs font-bold text-white truncate">{item.name}</span>
                     </div>
-                ) : <div className="flex h-full items-center justify-center text-slate-500 italic">Select an NPC to start writing destiny.</div>}
+                ))}
             </div>
-        </div>
+        </AdminCard>
     );
 };
 
-const ItemEditor = () => {
-    const { items, updateItem, createItem, deleteItem } = useContentStore();
-    const [selectedId, setSelectedId] = useState<string | null>(null);
-    const [editForm, setEditForm] = useState<Partial<Item>>({});
-    const [uploading, setUploading] = useState(false);
-    const fileInputRef = useRef<HTMLInputElement>(null);
-
-    const handleSelect = (id: string) => { setSelectedId(id); setEditForm({ ...items[id] }); };
-    const handleSave = () => { if (selectedId && editForm.name) { updateItem(selectedId, editForm as Item); alert('Item Saved'); } };
-    
-    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        setUploading(true);
-        const url = await uploadAsset(file, 'items');
-        if (url) setEditForm({ ...editForm, icon: url });
-        setUploading(false);
-    };
-
+const UnitEditorPro = () => {
+    const enemies = useContentStore(s => s.enemies);
     return (
-        <div className="flex gap-6 h-full">
-            <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept="image/*" />
-            <div className="w-1/3 bg-slate-950 rounded-lg border border-slate-800 flex flex-col shrink-0">
-                <div className="p-4 border-b border-slate-800 flex justify-between items-center"><span className="text-xs font-bold text-amber-500 uppercase">Items</span></div>
-                <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">{Object.values(items).map((item: any) => (<div key={item.id} onClick={() => handleSelect(item.id)} className={`p-3 rounded cursor-pointer flex items-center gap-3 border ${selectedId === item.id ? 'bg-slate-800 border-amber-500' : 'bg-transparent border-transparent hover:bg-slate-900'}`}><img src={item.icon} className="w-6 h-6 object-contain invert" /><div><div className="text-sm font-bold text-slate-200">{item.name}</div></div></div>))}</div>
-            </div>
-            <div className="flex-1 bg-slate-800 rounded-lg border border-slate-700 p-6 overflow-y-auto custom-scrollbar">
-                {selectedId ? (
-                    <div className="space-y-6 max-w-xl mx-auto">
-                         <div className="bg-slate-900/50 p-4 rounded border border-slate-700 flex flex-col items-center gap-4">
-                            <div className="w-24 h-24 bg-black/50 border border-slate-600 rounded flex items-center justify-center relative overflow-hidden">
-                                <img src={editForm.icon} className="w-16 h-16 object-contain invert" />
-                                {uploading && <div className="absolute inset-0 bg-black/60 flex items-center justify-center"><div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div></div>}
-                            </div>
-                            <button onClick={() => fileInputRef.current?.click()} className="text-[10px] bg-slate-700 hover:bg-slate-600 px-4 py-1 rounded font-bold uppercase">Upload Icon</button>
+        <AdminCard className="p-8">
+             <SectionHeader title="Threat Analysis" subtitle="Bestiary Database" />
+             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {(Object.values(enemies) as EnemyDefinition[]).map(e => (
+                    <div key={e.id} className="bg-black/40 p-4 rounded-xl border border-white/5 flex items-center gap-4">
+                         <div className="w-10 h-10 bg-red-900/20 rounded flex items-center justify-center shrink-0">
+                            <img src={AssetManager.getSafeSprite(e.sprite)} className="w-8 h-8 object-contain pixelated" />
                         </div>
-                        <div className="space-y-4">
-                            <div><label className="text-xs font-bold text-slate-500 uppercase">Name</label><input type="text" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white" /></div>
-                            <div><label className="text-xs font-bold text-slate-500 uppercase">Description</label><textarea value={editForm.description} onChange={e => setEditForm({...editForm, description: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white h-20" /></div>
-                        </div>
-                        <button onClick={handleSave} className="w-full bg-amber-600 py-3 rounded font-bold hover:bg-amber-500 shadow-lg">SAVE ITEM</button>
+                        <span className="text-xs font-bold text-white truncate">{e.name}</span>
                     </div>
-                ) : <div className="flex h-full items-center justify-center text-slate-500">Select an item</div>}
+                ))}
             </div>
-        </div>
+        </AdminCard>
     );
 };
 
-const SpellEditor = () => {
-    const { spells, updateSpell, createSpell } = useContentStore();
-    const [selectedId, setSelectedId] = useState<string | null>(null);
-    const [editForm, setEditForm] = useState<Partial<Spell>>({});
-    const handleSelect = (id: string) => { setSelectedId(id); setEditForm({ ...spells[id] }); };
-    const handleSave = () => { if (selectedId && editForm.name) { updateSpell(selectedId, editForm as Spell); alert('Spell Saved'); } };
-    const handleCreate = () => { const newId = `spell_${Date.now()}`; createSpell({ id: newId, name: 'New Spell', level: 1, range: 5, school: MagicSchool.EVOCATION, type: SpellType.DAMAGE, effects: [], description: '', animation: 'MAGIC', icon: '' }); handleSelect(newId); };
-    return (
-        <div className="flex gap-6 h-full">
-            <div className="w-1/3 bg-slate-950 rounded-lg border border-slate-800 flex flex-col shrink-0">
-                <div className="p-4 border-b border-slate-800 flex justify-between items-center"><span className="font-bold text-purple-400 text-sm">GRIMOIRE</span><button onClick={handleCreate} className="bg-purple-600 hover:bg-purple-500 text-white px-2 py-1 rounded text-sm font-bold">+</button></div>
-                <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">{Object.values(spells).map((spell: any) => (<div key={spell.id} onClick={() => handleSelect(spell.id)} className={`p-3 rounded cursor-pointer flex items-center gap-3 border ${selectedId === spell.id ? 'bg-slate-800 border-purple-500' : 'bg-transparent border-transparent hover:bg-slate-900'}`}><div className="text-sm font-bold text-slate-200">{spell.name}</div></div>))}</div>
-            </div>
-            {selectedId && <div className="flex-1 bg-slate-800 p-6 rounded-lg border border-slate-700 overflow-y-auto"><div className="grid grid-cols-2 gap-4"><div><label className="text-xs text-slate-500 font-bold uppercase">Name</label><input type="text" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white" /></div></div><button onClick={handleSave} className="mt-6 w-full bg-purple-600 py-3 rounded font-bold">SAVE SPELL</button></div>}
-        </div>
-    );
-};
-
-const SkillEditor = () => {
-    const { skills, updateSkill, createSkill } = useContentStore();
-    const [selectedId, setSelectedId] = useState<string | null>(null);
-    const [editForm, setEditForm] = useState<Partial<Skill>>({});
-    const handleSelect = (id: string) => { setSelectedId(id); setEditForm({ ...skills[id] }); };
-    const handleSave = () => { if (selectedId && editForm.name) { updateSkill(selectedId, editForm as Skill); alert('Skill Saved'); } };
-    const handleCreate = () => { const newId = `skill_${Date.now()}`; createSkill({ id: newId, name: 'New Skill', description: '', staminaCost: 5, cooldown: 3, range: 1, effects: [], icon: '' }); handleSelect(newId); };
-    return (
-        <div className="flex gap-6 h-full">
-            <div className="w-1/3 bg-slate-950 rounded-lg border border-slate-800 flex flex-col shrink-0">
-                <div className="p-4 border-b border-slate-800 flex justify-between items-center"><span className="font-bold text-blue-400 text-sm">TECHNIQUES</span><button onClick={handleCreate} className="bg-blue-600 hover:bg-blue-500 text-white px-2 py-1 rounded text-sm font-bold">+</button></div>
-                <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">{Object.values(skills).map((skill: any) => (<div key={skill.id} onClick={() => handleSelect(skill.id)} className={`p-3 rounded cursor-pointer flex items-center gap-3 border ${selectedId === skill.id ? 'bg-slate-800 border-blue-500' : 'bg-transparent border-transparent hover:bg-slate-900'}`}><div className="text-sm font-bold text-slate-200">{skill.name}</div></div>))}</div>
-            </div>
-            {selectedId && <div className="flex-1 bg-slate-800 p-6 rounded-lg border border-slate-700 overflow-y-auto"><div className="grid grid-cols-2 gap-4"><div><label className="text-xs text-slate-500 font-bold uppercase">Name</label><input type="text" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white" /></div></div><button onClick={handleSave} className="mt-6 w-full bg-blue-600 py-3 rounded font-bold">SAVE SKILL</button></div>}
-        </div>
-    );
-};
-
-const UnitAndEncounterEditor = () => {
-    const { enemies, updateEnemy, encounters, updateEncounterTable } = useContentStore();
-    const [selectedId, setSelectedId] = useState<string | null>(null);
-    const [editForm, setEditForm] = useState<Partial<EnemyDefinition>>({});
-    const [activeTerrain, setActiveTerrain] = useState<TerrainType>(TerrainType.GRASS);
-    const [uploading, setUploading] = useState(false);
-    const fileInputRef = useRef<HTMLInputElement>(null);
-
-    const handleSelect = (id: string) => { setSelectedId(id); setEditForm({ ...enemies[id] }); };
-    const handleSave = () => { if (selectedId && editForm.name) { updateEnemy(selectedId, editForm as EnemyDefinition); alert('Unit Saved'); } };
-    
-    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        setUploading(true);
-        const url = await uploadAsset(file, 'enemies');
-        if (url) setEditForm({ ...editForm, sprite: url });
-        setUploading(false);
-    };
-
-    return (
-        <div className="flex gap-6 h-full">
-            <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept="image/*" />
-            <div className="w-64 bg-slate-950 rounded-lg border border-slate-800 flex flex-col shrink-0">
-                <div className="p-4 border-b border-slate-800"><span className="font-bold text-red-500 text-sm uppercase">Bestiary</span></div>
-                <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">{Object.values(enemies).map((enemy: any) => (<div key={enemy.id} onClick={() => handleSelect(enemy.id)} className={`p-2 rounded cursor-pointer flex items-center gap-3 border ${selectedId === enemy.id ? 'bg-slate-800 border-red-500' : 'bg-transparent border-transparent hover:bg-slate-900'}`}><img src={enemy.sprite} className="w-8 h-8 object-contain pixelated" /><div className="text-sm font-bold text-slate-200 truncate">{enemy.name}</div></div>))}</div>
-            </div>
-            <div className="flex-1 bg-slate-800 rounded-lg border border-slate-700 p-6 overflow-y-auto custom-scrollbar">
-                {selectedId ? (
-                    <div className="space-y-6 max-w-xl mx-auto">
-                        <div className="bg-slate-900/50 p-6 rounded border border-slate-700 flex flex-col items-center gap-4">
-                            <div className="w-32 h-32 bg-black/50 border border-slate-600 rounded flex items-center justify-center relative overflow-hidden">
-                                <img src={editForm.sprite} className="w-24 h-24 object-contain pixelated" />
-                                {uploading && <div className="absolute inset-0 bg-black/60 flex items-center justify-center"><div className="w-8 h-8 border-4 border-white border-t-transparent rounded-full animate-spin"></div></div>}
-                            </div>
-                            <button onClick={() => fileInputRef.current?.click()} className="text-xs bg-red-600 hover:bg-red-500 px-6 py-2 rounded font-bold uppercase shadow-lg">Upload Sprite</button>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="col-span-2"><label className="text-xs text-slate-500 font-bold uppercase">Name</label><input type="text" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white" /></div>
-                            <div><label className="text-xs text-slate-500 font-bold uppercase">HP</label><input type="number" value={editForm.hp} onChange={e => setEditForm({...editForm, hp: parseInt(e.target.value)})} className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white" /></div>
-                            <div><label className="text-xs text-slate-500 font-bold uppercase">AC</label><input type="number" value={editForm.ac} onChange={e => setEditForm({...editForm, ac: parseInt(e.target.value)})} className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white" /></div>
-                        </div>
-                        <button onClick={handleSave} className="w-full bg-green-600 py-3 rounded font-bold hover:bg-green-500 shadow-lg">SAVE UNIT</button>
-                    </div>
-                ) : <div className="h-full flex items-center justify-center text-slate-500">Select a unit to edit</div>}
-            </div>
-        </div>
-    );
-};
-
-const ClassEditor = () => {
-    const { classStats, updateClassStats } = useContentStore();
-    return (<div className="grid grid-cols-1 xl:grid-cols-2 gap-6">{Object.keys(classStats).map(key => { const cls = key as CharacterClass; const stats = classStats[cls]; return (<div key={cls} className="bg-slate-800 border border-slate-700 rounded-lg p-6"><div className="flex justify-between items-center mb-4"><h3 className="text-xl font-bold text-amber-100">{cls}</h3></div><div className="grid grid-cols-6 gap-2">{Object.values(Ability).map(ability => (<div key={ability} className="flex flex-col items-center"><label className="text-[10px] font-bold text-slate-500 mb-1">{ability}</label><input type="number" value={stats[ability]} onChange={(e) => updateClassStats(cls, { ...stats, [ability]: parseInt(e.target.value) })} className="w-full bg-slate-900 border border-slate-600 rounded text-center py-1 font-mono text-amber-400 focus:border-amber-500 outline-none" /></div>))}</div></div>) })}</div>);
-};
-
-const MapConfigurator = () => {
-    const { gameConfig, updateConfig } = useContentStore();
-    return (<div className="max-w-2xl mx-auto bg-slate-800 border border-slate-700 rounded-lg p-8"><h3 className="text-2xl font-bold text-white mb-6">World Generation</h3><div className="space-y-8"><div><label className="font-bold text-slate-300">Noise Scale (Zoom)</label><input type="range" min="0.05" max="0.3" step="0.01" value={gameConfig.mapScale} onChange={e => updateConfig({ mapScale: parseFloat(e.target.value) })} className="w-full h-2 bg-slate-900 rounded-lg appearance-none cursor-pointer" /></div></div></div>);
-};
-
-const ExportView = () => {
+const SyncCenterPro = () => {
     const { fetchContentFromCloud, publishContentToCloud, isLoading } = useContentStore();
     return (
-        <div className="h-full flex flex-col gap-6">
-            <div className="bg-blue-900/20 border border-blue-600/30 p-8 rounded-xl flex items-center justify-between">
-                <div>
-                    <h3 className="text-2xl font-bold text-blue-200 mb-1">☁️ Cloud Synchronization</h3>
-                    <p className="text-sm text-blue-300">Publish your changes to Supabase so players can experience them.</p>
+        <div className="max-w-2xl mx-auto space-y-8">
+            <AdminCard className="p-12 text-center bg-gradient-to-br from-blue-900/20 to-black relative">
+                <div className="text-6xl mb-8">☁️</div>
+                <h3 className="text-3xl font-serif font-black text-white mb-8 uppercase tracking-widest">Eternum Cloud Sync</h3>
+                <div className="flex gap-4 justify-center">
+                    <button onClick={fetchContentFromCloud} disabled={isLoading} className="px-8 py-4 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all">Pull Dimensions</button>
+                    <button onClick={publishContentToCloud} disabled={isLoading} className="px-8 py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-2xl shadow-blue-900/40 transition-all">{isLoading ? 'Synchronizing...' : 'Push Reality'}</button>
                 </div>
-                <div className="flex gap-4">
-                    <button onClick={fetchContentFromCloud} disabled={isLoading} className="bg-slate-700 hover:bg-slate-600 text-white px-8 py-3 rounded font-bold uppercase transition-all disabled:opacity-50">Pull Data</button>
-                    <button onClick={publishContentToCloud} disabled={isLoading} className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-3 rounded font-bold uppercase shadow-xl transition-all disabled:opacity-50">{isLoading ? 'Publishing...' : 'Publish to DB'}</button>
-                </div>
-            </div>
+            </AdminCard>
         </div>
     );
 };
