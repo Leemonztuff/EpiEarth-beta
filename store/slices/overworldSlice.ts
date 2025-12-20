@@ -58,6 +58,7 @@ export interface OverworldSlice {
   talkToNPC: () => void;
   updateQuestProgress: (type: string, targetId: string, amount: number) => void;
   spawnIncursion: () => void;
+  clearCurrentEncounter: () => void;
 }
 
 export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (set, get) => ({
@@ -129,6 +130,14 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
       }
   },
 
+  clearCurrentEncounter: () => {
+      const { playerPos, dimension } = get();
+      const tile = WorldGenerator.getTile(playerPos.x, playerPos.y, dimension);
+      if (tile) {
+          tile.hasEncounter = false; // Mutamos la instancia del cache para este mapa
+      }
+  },
+
   updateQuestProgress: (type, targetId, amount) => {
       const { quests } = get();
       const updated = { ...quests };
@@ -191,7 +200,6 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
         const isNight = hours < 6 || hours >= 22;
 
         const cost = TERRAIN_MOVEMENT_COST[moveType][tile.terrain] || 1;
-        
         const fatigueMult = (isNight ? 2.0 : 1.0) * (isVoid ? 1.5 : 1.0);
         currentFatigue += (cost * 0.15 * fatigueMult);
         
@@ -224,24 +232,12 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
             currentRegionName: isLocal ? state.currentRegionName : tile.regionName
         });
 
-        // ENCUENTROS: Probabilidad aumentada
-        if (!isLocal && (tile.hasEncounter || isVoid)) {
-            let baseChance = isNight ? 0.12 : 0.05; 
-            if (isVoid) baseChance = 0.25; 
-
-            if (Math.random() < baseChance) {
-                 set({ isPlayerMoving: false });
-                 const isAmbush = (isNight || isVoid) ? (Math.random() > 0.4) : (Math.random() > 0.8);
-                 
-                 if (isAmbush) {
-                     set({ isAmbushed: true });
-                     const ambushText = await GeminiService.generateAmbushFlavor(tile.terrain, isNight || isVoid);
-                     get().addLog(`PELIGRO: ${ambushText}`, "combat");
-                 }
-                 
-                 get().startBattle(tile.terrain, tile.weather);
-                 return;
-            }
+        if (!isLocal && tile.hasEncounter) {
+            set({ isPlayerMoving: false });
+            const isAmbush = (isNight || isVoid) ? (Math.random() > 0.3) : (Math.random() > 0.8);
+            if (isAmbush) set({ isAmbushed: true });
+            get().startBattle(tile.terrain, tile.weather);
+            return;
         }
 
         if (isLocal && tile.poiType === 'EXIT') {
@@ -270,7 +266,6 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
         currentSettlementName: tile.regionName,
         standingOnSettlement: false
     });
-    get().addLog(`Entrando en ${tile.regionName}...`, "narrative");
   },
 
   enterDungeon: () => {
@@ -287,7 +282,6 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
         currentSettlementName: tile.regionName || "Cripta Antigua",
         standingOnDungeon: false
     });
-    get().addLog(`Descendiendo a las profundidades de ${tile.regionName}...`, "narrative");
   },
 
   exitSettlement: () => {
@@ -311,7 +305,6 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
     set({ isSleeping: true, supplies: get().supplies - 5 });
     await new Promise(r => setTimeout(r, 1500));
     set({ fatigue: 0, worldTime: (get().worldTime + 480) % 1440, isSleeping: false });
-    get().addLog("El grupo descansa bajo las estrellas de Aethelgard.", "narrative");
     get().party.forEach(p => p.stats.hp = Math.min(p.stats.maxHp, p.stats.hp + Math.floor(p.stats.maxHp * 0.4)));
   },
 

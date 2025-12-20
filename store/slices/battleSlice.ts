@@ -129,11 +129,9 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
       let grid: BattleCell[] = [];
       const customArena = arenaId ? contentState.maps[arenaId] : null;
 
-      // --- FALLBACK TÁCTICO LORE-COHESIVO ---
       if (customArena && customArena.type === 'BATTLE_ARENA' && customArena.battleCells) {
           grid = customArena.battleCells;
       } else {
-          // Generación dinámica basada en bioma y dimensión
           grid = WorldGenerator.generateBattleArena(terrain, isVoid);
       }
 
@@ -275,8 +273,12 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
           });
       }
       set({ battleEntities: newEntities, damagePopups: [...get().damagePopups, ...allPopups], isActionAnimating: false, activeSpellEffect: null, hasActed: true, selectedAction: null, selectedSpell: null, selectedSkill: null, validTargets: [] });
+      
       const aliveEnemies = newEntities.filter(e => e.type === 'ENEMY' && e.stats.hp > 0);
       if (aliveEnemies.length === 0) {
+          // LIMPIAR ENCUENTRO DEL MAPA
+          get().clearCurrentEncounter();
+          
           if (state.gameState === GameState.DUNGEON || state.gameState === GameState.TOWN_EXPLORATION) {
               const currentTile = state.townMapData.find(c => c.q === state.playerPos.x && c.r === state.playerPos.y);
               if (currentTile) {

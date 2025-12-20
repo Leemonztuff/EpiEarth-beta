@@ -101,7 +101,6 @@ export class WorldGenerator {
     }
 
     private static getPOITypeAt(q: number, r: number, dimension: Dimension): string | undefined {
-        // GARANTÍAS DE INICIO
         if (q === 0 && r === 0 && dimension === Dimension.NORMAL) return 'CITY';
         if (q === 1 && r === 1 && dimension === Dimension.NORMAL) return 'TEMPLE';
 
@@ -140,12 +139,15 @@ export class WorldGenerator {
         const poiType = this.getPOITypeAt(q, r, dimension);
         const rng = new Mulberry32(fnv1a(`${q},${r},${dimension}`));
         
-        // PORTALES: 15% de probabilidad para encontrarlos fácil
         const hasPortal = rng.next() > 0.85; 
+        
+        // ENCUENTROS VISIBLES: Guardamos el estado en el hexágono
+        const encounterRoll = rng.next();
+        const hasEncounter = !poiType && (dimension === Dimension.UPSIDE_DOWN ? encounterRoll > 0.80 : encounterRoll > 0.92);
 
         return {
             q, r, terrain, weather, isExplored: false, isVisible: false, hasPortal,
-            hasEncounter: !poiType && rng.next() > 0.90,
+            hasEncounter,
             regionName: this.getRegionName(q, r, poiType),
             poiType
         };

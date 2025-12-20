@@ -145,6 +145,17 @@ export const OverworldMap = ({ playerPos, onMove, dimension }: any) => {
             }
         }
 
+        // ENCUENTROS VISIBLES: Humo de batalla o icono
+        if (tile.hasEncounter && !isLocal) {
+            ctx.fillStyle = 'rgba(239, 68, 68, 0.4)';
+            ctx.beginPath();
+            ctx.arc(cx, cy, s * 0.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.font = '16px serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('💀', cx, cy + 5);
+        }
+
         ctx.strokeStyle = 'rgba(255,255,255,0.05)';
         ctx.lineWidth = 1;
         ctx.stroke();
