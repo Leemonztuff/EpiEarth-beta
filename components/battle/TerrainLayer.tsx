@@ -2,6 +2,7 @@
 // @ts-nocheck
 import React, { useRef, useLayoutEffect } from 'react';
 import * as THREE from 'three';
+import { TileEffectType } from '../../types';
 
 const _tempObj = new THREE.Object3D();
 const _tempColor = new THREE.Color();
@@ -21,8 +22,15 @@ export const TerrainLayer = React.memo(({ mapData, isShadowRealm, onTileClick, o
             _tempObj.updateMatrix();
             meshRef.current.setMatrixAt(i, _tempObj.matrix);
             
-            _tempColor.set(block.color || '#444');
-            if (((block.x || 0) + (block.z || 0)) % 2 === 0) _tempColor.multiplyScalar(0.8);
+            // Lógica de color de terreno + efectos
+            let color = block.color || '#444';
+            if (block.effect) {
+                if (block.effect.type === TileEffectType.FIRE) color = '#ef4444';
+                if (block.effect.type === TileEffectType.POISON_CLOUD) color = '#22c55e';
+            }
+
+            _tempColor.set(color);
+            if (((block.x || 0) + (block.z || 0)) % 2 === 0 && !block.effect) _tempColor.multiplyScalar(0.8);
             meshRef.current.setColorAt(i, _tempColor);
         });
         

@@ -5,6 +5,7 @@ import { GameState, BattleAction, Dimension } from '../types';
 import { useGameStore } from '../store/gameStore';
 import { InventoryScreen } from './InventoryScreen';
 import { WorldMapScreen } from './WorldMapScreen';
+import { WorldGenerator } from '../services/WorldGenerator';
 
 const SolarClock = ({ time }: { time: number }) => {
     const hours = Math.floor(time / 60);
@@ -50,14 +51,17 @@ interface UIOverlayProps {
 
 export const UIOverlay: React.FC<UIOverlayProps> = ({ onOpenTownService }) => {
     const { 
-        gameState, setGameState, supplies, fatigue, worldTime, dimension,
-        isInventoryOpen, isMapOpen, toggleInventory, toggleMap,
+        gameState, setGameState, supplies, fatigue, worldTime, dimension, playerPos,
+        isInventoryOpen, isMapOpen, toggleInventory, toggleMap, talkToNPC,
         standingOnSettlement, standingOnPort, standingOnTemple, enterSettlement, camp,
         party, turnOrder, currentTurnIndex, battleEntities, remainingActions, hasMoved, selectAction
     } = useGameStore();
 
     const isBattle = gameState === GameState.BATTLE_TACTICAL || gameState === GameState.BATTLE_INIT;
     const activeEntity = isBattle ? battleEntities.find(e => e.id === turnOrder[currentTurnIndex]) : null;
+
+    const currentTile = WorldGenerator.getTile(playerPos.x, playerPos.y, dimension);
+    const hasNPC = currentTile.npcs && currentTile.npcs.length > 0;
 
     if (gameState === GameState.TITLE) return null;
 
@@ -95,6 +99,11 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({ onOpenTownService }) => {
                 <div className="mt-auto p-10 flex flex-col items-center gap-4 pointer-events-auto">
                     {standingOnSettlement && (
                         <div className="flex flex-col gap-2">
+                            {hasNPC && (
+                                <button onClick={talkToNPC} className="bg-emerald-600 px-8 py-3 rounded-full font-black text-white shadow-2xl border-2 border-emerald-400 animate-in slide-in-from-bottom-4 mb-2">
+                                    HABLAR CON NPC 💬
+                                </button>
+                            )}
                              <button onClick={() => { enterSettlement(); onOpenTownService('SHOP'); }} className="bg-amber-600 px-8 py-3 rounded-full font-black text-white shadow-2xl border-2 border-amber-400 animate-in slide-in-from-bottom-4">
                                 VISITAR MERCADO 🛒
                             </button>

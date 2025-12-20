@@ -151,7 +151,8 @@ export interface GameStateData {
     clearedEncounters: Set<string>; townMapData: HexCell[] | null;
     playerPos: PositionComponent; isPlayerMoving: boolean;
     lastOverworldPos: PositionComponent | null; mapDimensions: { width: number; height: number };
-    quests: Quest[]; standingOnPortal: boolean; standingOnSettlement: boolean;
+    quests: Record<string, Quest>; // Unify with OverworldSlice
+    standingOnPortal: boolean; standingOnSettlement: boolean;
     standingOnTemple: boolean; standingOnDungeon: boolean; isMapOpen: boolean;
     gracePeriodEndTime: number; supplies: number; fatigue: number; worldTime: number; 
     currentRegionName: string | null; activeNarrativeEvent: any | null; activeIncursion: any | null;

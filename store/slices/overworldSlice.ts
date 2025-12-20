@@ -7,7 +7,7 @@ import { findPath } from '../../services/pathfinding';
 import { calculateVisionRange } from '../../services/dndRules';
 import { sfx } from '../../services/SoundSystem';
 import { getSupabase } from '../../services/supabaseClient';
-import { TERRAIN_MOVEMENT_COST, ITEMS } from '../../constants';
+import { TERRAIN_MOVEMENT_COST, ITEMS, WESNOTH_BASE_URL } from '../../constants';
 
 export interface OverworldSlice {
   gameState: GameState;
@@ -23,7 +23,7 @@ export interface OverworldSlice {
   fatigue: number;
   supplies: number; 
   worldTime: number; 
-  quests: Quest[];
+  quests: Record<string, Quest>; // Consistent with Record usage
   currentRegionName: string | null;
   standingOnPortal: boolean;
   standingOnSettlement: boolean;
@@ -47,6 +47,8 @@ export interface OverworldSlice {
   logout: () => Promise<void>;
   resolveNarrativeOption: (optionIndex: number) => void;
   addQuest: (quest: Quest) => void;
+  talkToNPC: () => void;
+  updateQuestProgress: (type: string, targetId: string, amount: number) => void;
 }
 
 export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (set, get) => ({
@@ -63,7 +65,7 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
   fatigue: 0,
   supplies: 20, 
   worldTime: 480,
-  quests: [],
+  quests: {},
   currentRegionName: null,
   standingOnPortal: false,
   standingOnSettlement: false,
@@ -87,29 +89,60 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
 
   initializeWorld: () => { WorldGenerator.init(12345); },
 
-  buySupplies: (amount, cost) => {
-    if (get().spendGold(cost)) {
-        set(s => ({ supplies: s.supplies + amount }));
-        sfx.playUiClick();
-        get().addLog(`Bought ${amount} Supplies.`, "info");
-    }
+  talkToNPC: () => {
+      const { playerPos, dimension } = get();
+      const tile = WorldGenerator.getTile(playerPos.x, playerPos.y, dimension);
+      if (tile.npcs && tile.npcs.length > 0) {
+          const npc = tile.npcs[0];
+          set({ 
+              gameState: GameState.DIALOGUE, 
+              activeNarrativeEvent: {
+                  npc,
+                  options: [
+                      { 
+                        label: npc.questId && !get().quests[npc.questId] ? "Aceptar Misión" : "Continuar", 
+                        quest: (npc.questId && !get().quests[npc.questId]) ? {
+                          id: npc.questId,
+                          title: "Caza de Trasgos",
+                          description: "Limpia la zona de enemigos cercanos.",
+                          completed: false,
+                          type: 'BOUNTY',
+                          objective: { type: 'KILL', targetId: 'goblin_spearman', count: 3, current: 0 },
+                          reward: { xp: 500, gold: 100 }
+                        } : null 
+                      },
+                      { label: "Cerrar", quest: null }
+                  ]
+              }
+          });
+          sfx.playUiClick();
+      }
   },
 
-  hireCarriage: (q, r) => {
-    const cost = 50;
-    if (get().spendGold(cost)) {
-        set({ playerPos: { x: q, y: r }, worldTime: (get().worldTime + 180) % 1440, fatigue: Math.min(100, get().fatigue + 10) });
-        get().addLog("The carriage ride was bumpy but fast.", "narrative");
-        sfx.playStep();
-    }
+  updateQuestProgress: (type, targetId, amount) => {
+      const { quests } = get();
+      const updated = { ...quests };
+      let changed = false;
+      Object.values(updated).forEach(q => {
+          if (!q.completed && q.objective.type === type && (q.objective.targetId === targetId || q.objective.targetId === 'ANY')) {
+              q.objective.current = Math.min(q.objective.count, q.objective.current + amount);
+              if (q.objective.current >= q.objective.count) {
+                  q.completed = true;
+                  get().addLog(`Misión Completada: ${q.title}`, "levelup");
+                  get().addGold(q.reward.gold);
+                  get().addPartyXp(q.reward.xp);
+              }
+              changed = true;
+          }
+      });
+      if (changed) set({ quests: updated });
   },
 
-  // ADD QUEST implementation
   addQuest: (quest) => {
     const { quests } = get();
-    if (quests.find(q => q.id === quest.id)) return;
-    set({ quests: [...quests, quest] });
-    get().addLog(`New Quest Started: ${quest.title}`, "narrative");
+    if (quests[quest.id]) return;
+    set({ quests: { ...quests, [quest.id]: quest } });
+    get().addLog(`Nueva Misión: ${quest.title}`, "narrative");
   },
 
   movePlayerOverworld: async (q, r) => {
@@ -138,19 +171,15 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
         if (Math.random() > 0.7) currentSupplies = Math.max(0, currentSupplies - 1);
         currentTime = (currentTime + (cost * 15)) % 1440;
 
-        const isNight = currentTime < 360 || currentTime > 1260;
-        if (isNight && tile.hasEncounter && Math.random() > 0.8) {
-            get().addLog("Ambushed in the dead of night!", "combat");
-            get().startBattle(tile.terrain, tile.weather);
-            break;
-        }
-
-        if (tile.poiType === 'VILLAGE' || tile.poiType === 'CASTLE') {
-            const townKey = `${step.q},${step.r}`;
-            if (!state.visitedTowns.has(townKey)) {
-                set(s => ({ visitedTowns: new Set(s.visitedTowns).add(townKey) }));
-                get().addLog(`New settlement discovered: ${tile.regionName}`, "narrative");
-            }
+        if (tile.poiType === 'VILLAGE' && !tile.npcs) {
+            tile.npcs = [{
+                id: `npc_${step.q}_${step.r}`,
+                name: "Aldeano Aterrorizado",
+                role: "Superviviente",
+                sprite: `${WESNOTH_BASE_URL}/units/human-loyalists/peasant.png`,
+                dialogue: ["¡Por favor, ayúdanos! Los trasgos han rodeado el asentamiento."],
+                questId: `q_hunt_${step.q}_${step.r}`
+            }];
         }
 
         const vision = calculateVisionRange(leader.stats.attributes.WIS, leader.stats.corruption || 0);
@@ -184,11 +213,6 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
         sfx.playStep();
         await new Promise(res => setTimeout(res, 100));
     }
-    
-    if (currentSupplies <= 0) {
-        get().addLog("Running low on supplies! The party is starving.", "info");
-    }
-
     set({ isPlayerMoving: false });
   },
 
@@ -210,5 +234,22 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
     sfx.playUiClick();
     set({ activeNarrativeEvent: null });
     get().addLog(`You chose: ${event.options[idx].label}`, "narrative");
-  }
+  },
+
+  buySupplies: (amount, cost) => {
+    if (get().spendGold(cost)) {
+        set(s => ({ supplies: s.supplies + amount }));
+        sfx.playUiClick();
+        get().addLog(`Bought ${amount} Supplies.`, "info");
+    }
+  },
+
+  hireCarriage: (q, r) => {
+    const cost = 50;
+    if (get().spendGold(cost)) {
+        set({ playerPos: { x: q, y: r }, worldTime: (get().worldTime + 180) % 1440, fatigue: Math.min(100, get().fatigue + 10) });
+        get().addLog("The carriage ride was bumpy but fast.", "narrative");
+        sfx.playStep();
+    }
+  },
 });

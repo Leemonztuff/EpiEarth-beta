@@ -1,4 +1,3 @@
-
 import { create } from 'zustand';
 import { Item, TerrainType, Spell, Skill, EnemyDefinition, Attributes, CharacterClass } from '../types';
 import { getSupabase } from '../services/supabaseClient';
@@ -107,11 +106,12 @@ export const useContentStore = create<ContentState>((set, get) => ({
         const state = get();
         
         // Transformamos el estado en filas para la DB
+        // FIX: Added explicit type casting for map function parameters to resolve "property does not exist on type unknown" errors
         const rows = [
-            ...Object.values(state.items).map(v => ({ id: v.id, category: 'ITEM', data: v })),
-            ...Object.values(state.enemies).map(v => ({ id: v.id, category: 'ENEMY', data: v })),
-            ...Object.values(state.spells).map(v => ({ id: v.id, category: 'SPELL', data: v })),
-            ...Object.values(state.skills).map(v => ({ id: v.id, category: 'SKILL', data: v })),
+            ...Object.values(state.items).map((v: any) => ({ id: v.id, category: 'ITEM', data: v })),
+            ...Object.values(state.enemies).map((v: any) => ({ id: v.id, category: 'ENEMY', data: v })),
+            ...Object.values(state.spells).map((v: any) => ({ id: v.id, category: 'SPELL', data: v })),
+            ...Object.values(state.skills).map((v: any) => ({ id: v.id, category: 'SKILL', data: v })),
             ...Object.entries(state.encounters).map(([k, v]) => ({ id: k, category: 'ENCOUNTER_TABLE', data: v })),
             { id: 'all_classes', category: 'CLASS_STATS', data: state.classStats },
             { id: 'main_config', category: 'SYSTEM_CONFIG', data: state.gameConfig }

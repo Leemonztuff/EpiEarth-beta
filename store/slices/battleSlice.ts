@@ -8,7 +8,7 @@ import {
     EquipmentSlot, Dimension, InventorySlot, CharacterRace, DamageType, Ability, Skill, CreatureType, Difficulty, StatusEffectType, MovementType, ActionEffect, EffectType, TileEffectType
 } from '../../types';
 import { findBattlePath, getReachableTiles } from '../../services/pathfinding';
-import { rollDice, calculateAttackRoll, calculateFinalDamage, calculateEnemyStats, getAttackRange, getAoETiles, calculateDerivedStats, isFlanking } from '../../services/dndRules';
+import { rollDice, calculateAttackRoll, calculateFinalDamage, calculateEnemyStats, getAttackRange, getAoETiles, calculateDerivedStats, isFlanking, calculateHitChance } from '../../services/dndRules';
 import { sfx } from '../../services/SoundSystem';
 import { TERRAIN_COLORS, ASSETS, WESNOTH_BASE_URL } from '../../constants';
 import { useContentStore } from '../contentStore';
@@ -29,9 +29,13 @@ export interface BattleSlice {
   lootDrops: LootDrop[];
   isActionAnimating: boolean;
   isUnitMenuOpen: boolean;
-  isScreenShaking: boolean;
-  isScreenFlashing: boolean; 
-  inspectedEntityId: string | null;
+  selectedAction: BattleAction | null;
+  selectedSpell: Spell | null;
+  selectedSkill: Skill | null;
+  hasMoved: boolean;
+  hasActed: boolean;
+  remainingActions: number;
+  selectedTile: PositionComponent | null;
 
   startBattle: (terrain: TerrainType, weather: WeatherType, enemyId?: string) => void;
   confirmBattle: () => void;
@@ -53,27 +57,10 @@ export interface BattleSlice {
 const applyResolutionToEntities = (res: ActionResolution, actor: Entity, target: Entity, entities: Entity[]) => {
     const enemiesDB = useContentStore.getState().enemies;
     return entities.map(e => {
-        if (e.id === target.id && res.transformation) {
-            const def = enemiesDB[res.transformation];
-            if (def) {
-                const oldStats = { ...e.stats };
-                const oldVisual = { ...e.visual };
-                const newStats: CombatStatsComponent = { ...oldStats, hp: def.hp, maxHp: def.hp, ac: def.ac, initiativeBonus: def.initiativeBonus, originalStats: oldStats, originalVisual: oldVisual };
-                const newVisual: VisualComponent = { ...oldVisual, spriteUrl: def.sprite.startsWith('http') ? def.sprite : `${WESNOTH_BASE_URL}/${def.sprite}` };
-                return { ...e, stats: newStats, visual: newVisual };
-            }
-        }
         if (e.id === target.id) {
             let nextHp = e.stats.hp + res.hpChange;
             let finalStats = { ...e.stats };
-            let finalVisual = { ...e.visual };
-            if (nextHp <= 0 && e.stats.originalStats) {
-                const restoredStats = e.stats.originalStats as CombatStatsComponent;
-                const restoredVisual = e.stats.originalVisual as VisualComponent;
-                finalStats = { ...restoredStats, hp: Math.max(1, restoredStats.hp - Math.abs(nextHp)) };
-                finalVisual = restoredVisual;
-                delete finalStats.originalStats; delete finalStats.originalVisual;
-            } else { finalStats.hp = Math.max(0, Math.min(e.stats.maxHp, nextHp)); }
+            finalStats.hp = Math.max(0, Math.min(e.stats.maxHp, nextHp));
             const nextStatus = [...(finalStats.activeStatusEffects || [])];
             if (res.statusChanges) {
                 res.statusChanges.forEach(sc => {
@@ -83,7 +70,7 @@ const applyResolutionToEntities = (res: ActionResolution, actor: Entity, target:
                 });
             }
             finalStats.activeStatusEffects = nextStatus;
-            return { ...e, stats: finalStats, visual: finalVisual };
+            return { ...e, stats: finalStats };
         }
         return e;
     });
@@ -102,9 +89,13 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
   lootDrops: [],
   isActionAnimating: false,
   isUnitMenuOpen: false,
-  isScreenShaking: false,
-  isScreenFlashing: false,
-  inspectedEntityId: null,
+  selectedAction: null,
+  selectedSpell: null,
+  selectedSkill: null,
+  hasMoved: false,
+  hasActed: false,
+  remainingActions: 1,
+  selectedTile: null,
 
   setUnitMenuOpen: (isOpen) => set({ isUnitMenuOpen: isOpen }),
   
@@ -114,25 +105,48 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
       else { set({ selectedAction: action, isUnitMenuOpen: false }); sfx.playUiClick(); }
   },
 
-  // ADD RESTART BATTLE implementation
-  restartBattle: () => {
-    const state = get();
-    get().startBattle(state.battleTerrain, state.battleWeather);
+  handleTileInteraction: async (x, z) => {
+      const state = get();
+      if (state.isActionAnimating || state.gameState !== GameState.BATTLE_TACTICAL) return;
+
+      const actor = state.battleEntities.find(e => e.id === state.turnOrder[state.currentTurnIndex]);
+      if (!actor || actor.type !== 'PLAYER') return;
+
+      const ability = state.selectedSpell || state.selectedSkill;
+      
+      // 1. MOVIMIENTO
+      if (state.selectedAction === BattleAction.MOVE) {
+          const path = findBattlePath({x: actor.position.x, y: actor.position.y}, {x, y: z}, state.battleMap || []);
+          if (path) {
+              set({ battleEntities: state.battleEntities.map(e => e.id === actor.id ? { ...e, position: { x, y: z } } : e), hasMoved: true });
+              sfx.playStep();
+          }
+      } 
+      // 2. ACCIONES (ATACAR / MAGIA / SKILL)
+      else if (state.selectedAction === BattleAction.ATTACK || state.selectedAction === BattleAction.MAGIC || state.selectedAction === BattleAction.SKILL) {
+          let targets = [];
+          if (ability && ability.aoeRadius) {
+              const aoeTiles = getAoETiles(actor.position, {x, y: z}, ability.aoeType || 'CIRCLE', ability.aoeRadius);
+              targets = state.battleEntities.filter(e => e.stats.hp > 0 && aoeTiles.some(t => t.x === e.position.x && t.y === e.position.y));
+          } else {
+              const target = state.battleEntities.find(e => e.stats.hp > 0 && e.position.x === x && e.position.y === z);
+              if (target) targets = [target];
+          }
+
+          if (targets.length > 0) {
+              await get().executeAction(actor, targets, ability);
+          }
+      }
   },
 
   executeAction: async (actor, targets, ability) => {
       const state = get();
       set({ isActionAnimating: true });
-      let effectType = 'BURST';
-      let animColor = '#fff';
-      if (ability) {
-          effectType = (state.selectedAction === BattleAction.MAGIC) ? 'PROJECTILE' : 'BURST';
-          animColor = ability.color || '#a855f7';
-          state.selectedAction === BattleAction.MAGIC ? sfx.playMagic() : sfx.playAttack();
-      } else { sfx.playAttack(); }
+      let effectType = (ability?.aoeRadius) ? 'BURST' : 'PROJECTILE';
+      if (state.selectedAction === BattleAction.ATTACK) effectType = 'BURST';
 
       const mainTarget = targets[0];
-      set({ activeSpellEffect: { id: generateId(), type: effectType, startPos: [actor.position.x, 1.5, actor.position.y], endPos: [mainTarget.position.x, 1, mainTarget.position.y], color: animColor, duration: 800, timestamp: Date.now() } });
+      set({ activeSpellEffect: { id: generateId(), type: effectType, startPos: [actor.position.x, 1.5, actor.position.y], endPos: [mainTarget.position.x, 1, mainTarget.position.y], color: ability?.color || '#fff', duration: 800, timestamp: Date.now() } });
 
       await new Promise(r => setTimeout(r, 800));
 
@@ -145,60 +159,51 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
           newEntities = applyResolutionToEntities(res, actor, target, newEntities);
           allPopups.push(...res.popups.map(p => ({ ...p, id: generateId(), position: [target.position.x, 2, target.position.y], timestamp: Date.now() })));
           if (res.didHit) sfx.playHit();
+          
           const updatedTarget = newEntities.find(e => e.id === target.id);
-          if (updatedTarget?.stats.hp === 0 && updatedTarget.type === 'ENEMY') get().spawnLootDrop(updatedTarget);
+          if (updatedTarget?.stats.hp === 0 && updatedTarget.type === 'ENEMY') {
+              get().spawnLootDrop(updatedTarget);
+              get().updateQuestProgress('KILL', updatedTarget.defId, 1);
+          }
       });
 
-      set({ battleEntities: newEntities, damagePopups: [...get().damagePopups, ...allPopups], isActionAnimating: false, activeSpellEffect: null, hasActed: true, remainingActions: state.remainingActions - 1, selectedAction: null });
-      if (state.remainingActions <= 1 && state.hasMoved) setTimeout(() => get().advanceTurn(), 1000);
+      set({ battleEntities: newEntities, damagePopups: [...get().damagePopups, ...allPopups], isActionAnimating: false, activeSpellEffect: null, hasActed: true, remainingActions: state.remainingActions - 1, selectedAction: null, selectedSpell: null, selectedSkill: null });
+      if (get().remainingActions <= 0) setTimeout(() => get().advanceTurn(), 1000);
   },
 
   performEnemyTurn: async () => {
     const state = get();
+    const content = useContentStore.getState();
     const actor = state.battleEntities.find(e => e.id === state.turnOrder[state.currentTurnIndex]);
     if (!actor || actor.stats.hp <= 0 || actor.type !== 'ENEMY') { get().advanceTurn(); return; }
     
     const players = state.battleEntities.filter(e => e.type === 'PLAYER' && e.stats.hp > 0);
     if (players.length === 0) { get().advanceTurn(); return; }
 
-    const target = players.sort((a,b) => {
-        const distA = Math.abs(actor.position.x - a.position.x) + Math.abs(actor.position.y - a.position.y);
-        const distB = Math.abs(actor.position.x - b.position.x) + Math.abs(actor.position.y - b.position.y);
-        return distA - distB;
-    })[0];
+    const target = players.sort((a,b) => (Math.abs(actor.position.x - a.position.x) + Math.abs(actor.position.y - a.position.y)) - (Math.abs(actor.position.x - b.position.x) + Math.abs(actor.position.y - b.position.y)))[0];
 
-    const dist = Math.max(Math.abs(actor.position.x - target.position.x), Math.abs(actor.position.y - target.position.y));
-    const range = getAttackRange(actor);
+    // Lógica IA: Hechizos primero
     const behavior = actor.aiBehavior || AIBehavior.BASIC_MELEE;
-
-    // 1. Lógica de Magos/Arqueros: Mantener distancia
-    if ((behavior === AIBehavior.ARCHER || behavior === AIBehavior.CASTER) && dist <= 2) {
-        const moveSteps = Math.floor(actor.stats.speed / 5);
-        const occupied = new Set(state.battleEntities.filter(e => e.stats.hp > 0 && e.id !== actor.id).map(e => `${e.position.x},${e.position.y}`));
-        const reachable = getReachableTiles({x: actor.position.x, y: actor.position.y}, moveSteps, state.battleMap || [], occupied);
-        const safestCell = reachable.sort((a,b) => {
-            const dA = Math.abs(a.x - target.position.x) + Math.abs(a.y - target.position.y);
-            const dB = Math.abs(b.x - target.position.x) + Math.abs(b.y - target.position.y);
-            return dB - dA; // Más lejos es mejor
-        })[0];
-        if (safestCell) {
-            set({ battleEntities: state.battleEntities.map(e => e.id === actor.id ? { ...e, position: { x: safestCell.x, y: safestCell.y } } : e) });
-            sfx.playStep();
-            await new Promise(r => setTimeout(r, 600));
+    if (behavior === AIBehavior.CASTER && actor.stats.spellSlots.current > 0) {
+        const spellId = actor.stats.knownSpells?.[0];
+        const spell = content.spells[spellId];
+        if (spell) {
+             const dist = Math.max(Math.abs(actor.position.x - target.position.x), Math.abs(actor.position.y - target.position.y));
+             if (dist <= spell.range) {
+                 await get().executeAction(actor, [target], spell);
+                 setTimeout(() => get().advanceTurn(), 1200);
+                 return;
+             }
         }
     }
 
-    // 2. Lógica de Melee: Flanqueo
-    if (behavior === AIBehavior.BASIC_MELEE && dist > 1) {
-        const allies = state.battleEntities.filter(e => e.type === 'ENEMY' && e.id !== actor.id && e.stats.hp > 0);
-        const moveSteps = Math.floor(actor.stats.speed / 5);
-        const occupied = new Set(state.battleEntities.filter(e => e.stats.hp > 0 && e.id !== actor.id).map(e => `${e.position.x},${e.position.y}`));
-        const reachable = getReachableTiles({x: actor.position.x, y: actor.position.y}, moveSteps, state.battleMap || [], occupied);
-        
-        // Buscar celda adyacente al objetivo que esté al otro lado de un aliado
-        const bestCell = reachable.filter(c => Math.abs(c.x - target.position.x) + Math.abs(c.y - target.position.y) === 1)
-            .sort((a,b) => (isFlanking({ ...actor, position: a }, target, allies) ? -1 : 1))[0];
-
+    // Lógica Melee básica
+    const dist = Math.max(Math.abs(actor.position.x - target.position.x), Math.abs(actor.position.y - target.position.y));
+    if (dist > 1) {
+        // Moverse
+        const moveSteps = 4;
+        const reachable = getReachableTiles(actor.position, moveSteps, state.battleMap || [], new Set());
+        const bestCell = reachable.sort((a,b) => (Math.abs(a.x - target.position.x) + Math.abs(a.y - target.position.y)) - (Math.abs(b.x - target.position.x) + Math.abs(b.y - target.position.y)))[0];
         if (bestCell) {
             set({ battleEntities: state.battleEntities.map(e => e.id === actor.id ? { ...e, position: { x: bestCell.x, y: bestCell.y } } : e) });
             sfx.playStep();
@@ -206,14 +211,11 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
         }
     }
 
-    // 3. Ejecutar Acción
     const updatedDist = Math.max(Math.abs(actor.position.x - target.position.x), Math.abs(actor.position.y - target.position.y));
-    if (updatedDist <= range) {
-        get().executeAction(actor, [target]);
-        setTimeout(() => get().advanceTurn(), 1200);
-    } else {
-        get().advanceTurn();
+    if (updatedDist <= 1.5) {
+        await get().executeAction(actor, [target]);
     }
+    setTimeout(() => get().advanceTurn(), 1000);
   },
 
   advanceTurn: async () => {
@@ -223,7 +225,7 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
       
       const nextEnt = state.battleEntities.find(e => e.id === state.turnOrder[nextIdx]);
       
-      // PROCESAR EFECTOS DE TERRENO AL INICIO DEL TURNO
+      // Terreno Efectos
       const cell = state.battleMap?.find(c => c.x === nextEnt?.position.x && c.z === nextEnt?.position.y);
       let hpMod = 0;
       if (cell?.effect) {
@@ -231,10 +233,26 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
           if (cell.effect.type === TileEffectType.POISON_CLOUD) hpMod -= 3;
       }
 
-      set({ battleEntities: state.battleEntities.map(e => e.id === nextEnt?.id ? { ...e, stats: { ...e.stats, hp: Math.max(0, e.stats.hp + hpMod) } } : e), currentTurnIndex: nextIdx, hasMoved: false, hasActed: false, remainingActions: nextEnt?.stats.maxActions || 1, selectedAction: null, isUnitMenuOpen: false });
+      set({ battleEntities: state.battleEntities.map(e => e.id === nextEnt?.id ? { ...e, stats: { ...e.stats, hp: Math.max(0, e.stats.hp + hpMod) } } : e), currentTurnIndex: nextIdx, hasMoved: false, hasActed: false, remainingActions: nextEnt?.stats.maxActions || 1, selectedAction: null, selectedSpell: null, selectedSkill: null, isUnitMenuOpen: false });
       if (nextEnt?.type === 'ENEMY') setTimeout(() => get().performEnemyTurn(), 800);
   },
 
+  handleTileHover: (x, z) => set({ selectedTile: { x, y: z } }),
+  removeDamagePopup: (id) => set(s => ({ damagePopups: s.damagePopups.filter(p => p.id !== id) })),
+  spawnLootDrop: (ent) => {
+      set(s => ({ lootDrops: [...s.lootDrops, { id: generateId(), position: { x: ent.position.x, y: ent.position.y }, rarity: ent.stats.rarity || ItemRarity.COMMON, itemId: 'gold_pouch' }] }));
+  },
+  inspectUnit: (id) => set({ inspectedEntityId: id }),
+  closeInspection: () => set({ inspectedEntityId: null }),
+  restartBattle: () => {
+    const state = get();
+    get().startBattle(state.battleTerrain, state.battleWeather);
+  },
+  confirmBattle: () => set({ gameState: GameState.BATTLE_TACTICAL }),
+  continueAfterVictory: () => {
+      set({ gameState: GameState.OVERWORLD, battleEntities: [], turnOrder: [], currentTurnIndex: 0, lootDrops: [] });
+      sfx.playVictory();
+  },
   startBattle: (terrain, weather, enemyId) => {
       const contentState = useContentStore.getState();
       const grid = [];
