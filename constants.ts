@@ -5,6 +5,7 @@ import { TerrainType, CharacterClass, Attributes, CharacterRace, ItemRarity, Mov
 // Supabase Configuration
 export const SUPABASE_PROJECT_URL = "https://iukchvkoumfwaxlgfhso.supabase.co";
 export const ASSET_BUCKET = "game-assets";
+// Apunta a la raíz del bucket 'game-assets'
 export const WESNOTH_BASE_URL = `${SUPABASE_PROJECT_URL}/storage/v1/object/public/${ASSET_BUCKET}`; 
 
 // CDN Configuration for Units (Wesnoth Repository)
@@ -73,21 +74,22 @@ export const RACE_ICONS: Record<string, string> = {
 
 export const ASSETS = { 
     TERRAIN: { 
-        [TerrainType.GRASS]: `terrain/grass/green.png`, 
-        [TerrainType.PLAINS]: `terrain/grass/semi-dry.png`, 
+        // Actualizado: Ahora apunta a terrain/flat/ para las capas base
+        [TerrainType.GRASS]: `terrain/flat/grass.png`, 
+        [TerrainType.PLAINS]: `terrain/flat/plains.png`, 
         [TerrainType.FOREST]: `terrain/forest/deciduous-summer-tile.png`, 
         [TerrainType.MOUNTAIN]: `terrain/mountains/basic.png`, 
         [TerrainType.WATER]: `terrain/water/coast.png`, 
         [TerrainType.OCEAN]: `terrain/water/ocean.png`, 
         [TerrainType.VILLAGE]: `terrain/village/human-cottage.png`, 
-        [TerrainType.DESERT]: `terrain/sand/desert.png`, 
-        [TerrainType.TUNDRA]: `terrain/frozen/snow.png`,
-        [TerrainType.DIRT_ROAD]: `terrain/path/dirt.png`,
-        [TerrainType.COBBLESTONE]: `terrain/path/cobble.png`,
-        [TerrainType.STONE_FLOOR]: `terrain/interior/stone.png`,
+        [TerrainType.DESERT]: `terrain/flat/sand.png`, 
+        [TerrainType.TUNDRA]: `terrain/flat/snow.png`,
+        [TerrainType.DIRT_ROAD]: `terrain/flat/dirt.png`,
+        [TerrainType.COBBLESTONE]: `terrain/flat/cobble.png`,
+        [TerrainType.STONE_FLOOR]: `terrain/flat/stone.png`,
         [TerrainType.CASTLE]: `terrain/castle/castle.png`,
         [TerrainType.RUINS]: `terrain/castle/ruin.png`,
-        [TerrainType.DUNGEON_FLOOR]: `terrain/cave/floor.png`
+        [TerrainType.DUNGEON_FLOOR]: `terrain/flat/stone.png`
     },
     VFX: {
         FIREBALL: `projectiles/fireball-n.png`,

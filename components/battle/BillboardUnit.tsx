@@ -14,7 +14,10 @@ const SpriteRenderer = ({ url, isHit, statusEffects }: any) => {
     // Resolver URL usando AssetManager
     const safeUrl = useMemo(() => AssetManager.getSafeSprite(url), [url]);
     
-    const texture = useLoader(THREE.TextureLoader, safeUrl);
+    // IMPORTANTE: Configurar CORS para permitir texturas del CDN
+    const texture = useLoader(THREE.TextureLoader, safeUrl, (loader) => {
+        loader.setCrossOrigin('anonymous');
+    });
     
     useEffect(() => {
         if (texture) {

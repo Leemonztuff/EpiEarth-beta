@@ -5,6 +5,7 @@ import { useContentStore } from '../store/contentStore';
 import { WorldGenerator } from '../services/WorldGenerator';
 import { TERRAIN_COLORS, NOISE_TEXTURE_URL, WESNOTH_BASE_URL } from '../constants';
 import { TerrainType, EnemyDefinition, Quest } from '../types';
+import { AssetManager } from '../services/AssetManager';
 
 export const WorldMapScreen = () => {
     const { exploredTiles, dimension, playerPos, toggleMap, quests } = useGameStore();
@@ -16,7 +17,7 @@ export const WorldMapScreen = () => {
     const isDragging = useRef(false);
     const lastMouse = useRef({ x: 0, y: 0 });
 
-    // FIXED: Convert quests Record to array for filtering
+    // Convert quests Record to array for filtering
     const activeQuests = useMemo(() => 
         Object.values(quests as Record<string, Quest>).filter(q => !q.completed)
     , [quests]);
@@ -139,7 +140,7 @@ export const WorldMapScreen = () => {
                                     <div key={mob.id} className="bg-slate-950/50 p-3 rounded-xl border border-white/5 flex gap-3 items-center group hover:border-red-500/30 transition-all">
                                         <div className="w-12 h-12 bg-black rounded-lg flex items-center justify-center border border-slate-800 shrink-0 overflow-hidden">
                                             <img 
-                                                src={mob.sprite.startsWith('http') ? mob.sprite : `${WESNOTH_BASE_URL}/${mob.sprite}`} 
+                                                src={AssetManager.getSafeSprite(mob.sprite)} 
                                                 className="w-10 h-10 object-contain pixelated" 
                                             />
                                         </div>
