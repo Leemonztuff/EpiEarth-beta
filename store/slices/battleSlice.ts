@@ -55,7 +55,6 @@ export interface BattleSlice {
 }
 
 const applyResolutionToEntities = (res: ActionResolution, actor: Entity, target: Entity, entities: Entity[]) => {
-    const enemiesDB = useContentStore.getState().enemies;
     return entities.map(e => {
         if (e.id === target.id) {
             let nextHp = e.stats.hp + res.hpChange;
@@ -114,7 +113,6 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
 
       const ability = state.selectedSpell || state.selectedSkill;
       
-      // 1. MOVIMIENTO
       if (state.selectedAction === BattleAction.MOVE) {
           const path = findBattlePath({x: actor.position.x, y: actor.position.y}, {x, y: z}, state.battleMap || []);
           if (path) {
@@ -122,7 +120,6 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
               sfx.playStep();
           }
       } 
-      // 2. ACCIONES (ATACAR / MAGIA / SKILL)
       else if (state.selectedAction === BattleAction.ATTACK || state.selectedAction === BattleAction.MAGIC || state.selectedAction === BattleAction.SKILL) {
           let targets = [];
           if (ability && ability.aoeRadius) {
@@ -182,11 +179,10 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
 
     const target = players.sort((a,b) => (Math.abs(actor.position.x - a.position.x) + Math.abs(actor.position.y - a.position.y)) - (Math.abs(actor.position.x - b.position.x) + Math.abs(actor.position.y - b.position.y)))[0];
 
-    // Lógica IA: Hechizos primero
     const behavior = actor.aiBehavior || AIBehavior.BASIC_MELEE;
     if (behavior === AIBehavior.CASTER && actor.stats.spellSlots.current > 0) {
         const spellId = actor.stats.knownSpells?.[0];
-        const spell = content.spells[spellId];
+        const spell = spellId ? content.spells[spellId] : null;
         if (spell) {
              const dist = Math.max(Math.abs(actor.position.x - target.position.x), Math.abs(actor.position.y - target.position.y));
              if (dist <= spell.range) {
@@ -197,10 +193,8 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
         }
     }
 
-    // Lógica Melee básica
     const dist = Math.max(Math.abs(actor.position.x - target.position.x), Math.abs(actor.position.y - target.position.y));
     if (dist > 1) {
-        // Moverse
         const moveSteps = 4;
         const reachable = getReachableTiles(actor.position, moveSteps, state.battleMap || [], new Set());
         const bestCell = reachable.sort((a,b) => (Math.abs(a.x - target.position.x) + Math.abs(a.y - target.position.y)) - (Math.abs(b.x - target.position.x) + Math.abs(b.y - target.position.y)))[0];
@@ -224,8 +218,6 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
       while (state.battleEntities.find(e => e.id === state.turnOrder[nextIdx])?.stats.hp <= 0) { nextIdx = (nextIdx + 1) % state.turnOrder.length; }
       
       const nextEnt = state.battleEntities.find(e => e.id === state.turnOrder[nextIdx]);
-      
-      // Terreno Efectos
       const cell = state.battleMap?.find(c => c.x === nextEnt?.position.x && c.z === nextEnt?.position.y);
       let hpMod = 0;
       if (cell?.effect) {
@@ -269,6 +261,23 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
           const def = contentState.enemies[defId] || { name: 'Skeleton', sprite: 'units/undead-skeletal/skeleton.png', hp: 15, ac: 12, damage: 6, initiativeBonus: 1 };
           entities.push({ id: `enemy_${i}_${generateId()}`, defId, name: def.name, type: 'ENEMY', stats: calculateEnemyStats(def, get().party[0].stats.level, get().difficulty || Difficulty.NORMAL), visual: { color: '#ef4444', modelType: 'billboard', spriteUrl: def.sprite.startsWith('http') ? def.sprite : `${WESNOTH_BASE_URL}/${def.sprite}` }, position: { x: 11 - (i % 2), y: 6 + Math.floor(i / 2) }, aiBehavior: def.aiBehavior || AIBehavior.BASIC_MELEE });
       }
-      set({ battleEntities: entities, battleMap: grid, turnOrder: entities.map(e => e.id).sort((a,b) => (entities.find(x => x.id === b).stats.initiativeBonus + rollDice(20)) - (entities.find(x => x.id === a).stats.initiativeBonus + rollDice(20))), currentTurnIndex: 0, gameState: GameState.BATTLE_INIT, hasMoved: false, hasActed: false, remainingActions: 1, damagePopups: [], lootDrops: [] });
+      
+      const turnOrder = entities
+        .map(e => ({ id: e.id, roll: (e.stats?.initiativeBonus || 0) + rollDice(20) }))
+        .sort((a, b) => b.roll - a.roll)
+        .map(x => x.id);
+
+      set({ 
+        battleEntities: entities, 
+        battleMap: grid, 
+        turnOrder: turnOrder, 
+        currentTurnIndex: 0, 
+        gameState: GameState.BATTLE_INIT, 
+        hasMoved: false, 
+        hasActed: false, 
+        remainingActions: 1, 
+        damagePopups: [], 
+        lootDrops: [] 
+      });
   }
-}));
+});
