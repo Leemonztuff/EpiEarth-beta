@@ -59,6 +59,19 @@ export const ASSETS = {
         [TerrainType.BADLANDS]: `terrain/flat/dirt.png`,
         [TerrainType.VOID]: `terrain/chasm/abyss.png`
     },
+    STRUCTURES: {
+        'CITY': 'terrain/village/human-city-tile.png',
+        'TOWN': 'terrain/village/human-village-tile.png',
+        'VILLAGE': 'terrain/village/human-cottage.png',
+        'CASTLE': 'terrain/castle/castle-tile.png',
+        'RUINS': 'terrain/castle/ruin-tile.png',
+        'DUNGEON': 'terrain/cave/wall-tile.png',
+        'TEMPLE': 'scenery/monolith.png',
+        'PORT': 'terrain/village/coast-village-tile.png',
+        'EXIT': 'terrain/village/human-city-tile.png',
+        'PORTAL': 'scenery/monolith.png',
+        'MONUMENT': 'scenery/monolith.png'
+    },
     VFX: {
         FIREBALL: `projectiles/fireball-n.png`,
         MAGIC_MISSILE: `projectiles/magic-missile-n.png`,

@@ -6,7 +6,7 @@ import { WESNOTH_BASE_URL, WESNOTH_CDN_URL, ASSETS, CLASS_CONFIG, RACE_ICONS, DA
 import { useContentStore } from '../store/contentStore';
 
 /**
- * ASSET MANAGER V3.0: Optimized for Battle for Wesnoth directory structure.
+ * ASSET MANAGER V3.2: Comprehensive path resolution for Wesnoth assets.
  */
 export const AssetManager = {
     private_cache: new Map<string, HTMLImageElement>(),
@@ -16,8 +16,8 @@ export const AssetManager = {
     EMPTY_PIXEL: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
 
     /**
-     * Resuelve rutas relativas a URLs completas.
-     * Prioriza jsDelivr para carpetas de Wesnoth estándar (units, terrain).
+     * Resolves relative paths to full URLs.
+     * Maps standard Wesnoth subfolders to the high-reliability jsDelivr CDN.
      */
     getSafeSprite(path: string | undefined): string {
         if (!path) return this.EMPTY_PIXEL;
@@ -28,19 +28,19 @@ export const AssetManager = {
             cleanPath = cleanPath.substring(1);
         }
         
-        // Wesnoth standard directory mapping
-        const isWesnothCore = cleanPath.startsWith('units/') || 
-                              cleanPath.startsWith('terrain/') || 
-                              cleanPath.startsWith('attacks/') || 
-                              cleanPath.startsWith('projectiles/') || 
-                              cleanPath.startsWith('items/') || 
-                              cleanPath.startsWith('halo/');
+        // Comprehensive Wesnoth Core directory detection
+        const wesnothDirs = [
+            'units/', 'terrain/', 'scenery/', 'attacks/', 
+            'projectiles/', 'items/', 'halo/', 'weather/'
+        ];
+
+        const isWesnothCore = wesnothDirs.some(dir => cleanPath.startsWith(dir));
 
         if (isWesnothCore) {
             return `${WESNOTH_CDN_URL}/${cleanPath}`;
         }
         
-        // Supabase fallback para assets personalizados subidos vía Admin
+        // Supabase fallback for custom assets uploaded via Admin dashboard
         const baseUrl = WESNOTH_BASE_URL.endsWith('/') ? WESNOTH_BASE_URL.slice(0, -1) : WESNOTH_BASE_URL;
         return `${baseUrl}/${cleanPath}`;
     },
@@ -51,6 +51,10 @@ export const AssetManager = {
         return this.private_cache.get(resolvedUrl);
     },
 
+    /**
+     * Bridges preloaded HTMLImageElements to Three.js textures.
+     * Enforces NearestFilter for sharp pixel art visuals.
+     */
     getTexture(path: string | undefined): THREE.Texture {
         const url = this.getSafeSprite(path);
         if (this.texture_cache.has(url)) return this.texture_cache.get(url)!;
@@ -61,11 +65,13 @@ export const AssetManager = {
             tex.needsUpdate = true;
             tex.magFilter = THREE.NearestFilter;
             tex.minFilter = THREE.NearestFilter;
+            tex.generateMipmaps = false; // Optimize memory for pixel art
             this.texture_cache.set(url, tex);
             return tex;
         }
 
-        const fallback = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
+        // Fast monochrome fallback if not yet ready
+        const fallback = new THREE.DataTexture(new Uint8Array([100, 100, 100, 255]), 1, 1);
         fallback.needsUpdate = true;
         return fallback;
     },
@@ -76,7 +82,7 @@ export const AssetManager = {
 
         return new Promise((resolve) => {
             const img = new Image();
-            img.crossOrigin = "anonymous";
+            img.crossOrigin = "anonymous"; // CRITICAL for CDN loading with CORS
             img.src = url;
             img.onload = () => {
                 this.private_cache.set(url, img);
@@ -106,11 +112,15 @@ export const AssetManager = {
         }
     },
 
+    /**
+     * Gathers all required paths from constants and dynamic store data.
+     */
     getRequiredAssets(): string[] {
         const content = useContentStore.getState();
         
         const core = [
             ...Object.values(ASSETS.TERRAIN),
+            ...Object.values(ASSETS.STRUCTURES),
             ...Object.values(ASSETS.VFX),
             ...Object.values(ASSETS.UI),
             ...Object.values(RACE_ICONS),

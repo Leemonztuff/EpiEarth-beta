@@ -61,7 +61,6 @@ export const OverworldMap = ({ playerPos, onMove, dimension }: any) => {
 
     const isTown = gameState === GameState.TOWN_EXPLORATION;
 
-    // Cache the drawn terrain onto a large offscreen canvas to avoid redraw overhead
     useEffect(() => {
         if (!isAssetsLoaded) return;
         
@@ -94,6 +93,7 @@ export const OverworldMap = ({ playerPos, onMove, dimension }: any) => {
     }, [isTown, townMapData, exploredTiles, dimension, isAssetsLoaded]);
 
     const drawHex = (ctx, cx, cy, tile) => {
+        // Dibujar Geometría Hexagonal
         ctx.beginPath();
         for (let i = 0; i < 6; i++) {
             const angle = 2 * Math.PI / 6 * i;
@@ -103,6 +103,7 @@ export const OverworldMap = ({ playerPos, onMove, dimension }: any) => {
         }
         ctx.closePath();
 
+        // 1. Dibujar Terreno Base
         const terrainPath = ASSETS.TERRAIN[tile.terrain];
         const img = AssetManager.getAsset(terrainPath);
 
@@ -116,22 +117,31 @@ export const OverworldMap = ({ playerPos, onMove, dimension }: any) => {
             ctx.fill();
         }
 
+        // 2. Dibujar Estructura (POI) si existe
+        const poiType = tile.poiType || (tile.hasPortal ? 'PORTAL' : null);
+        if (poiType && ASSETS.STRUCTURES[poiType]) {
+            const structImg = AssetManager.getAsset(ASSETS.STRUCTURES[poiType]);
+            if (structImg) {
+                ctx.save();
+                const s = HEX_SIZE * 1.4;
+                ctx.drawImage(structImg, cx - s/2, cy - s/2, s, s);
+                ctx.restore();
+            }
+        }
+
         ctx.strokeStyle = 'rgba(255,255,255,0.05)';
         ctx.lineWidth = 0.5;
         ctx.stroke();
 
-        if (tile.poiType) {
-            ctx.fillStyle = tile.poiType === 'EXIT' ? 'rgba(239, 68, 68, 0.4)' : (tile.hasPortal ? 'rgba(168, 85, 247, 0.4)' : 'rgba(251, 191, 36, 0.4)');
-            ctx.beginPath();
-            ctx.arc(cx, cy, HEX_SIZE * 0.4, 0, Math.PI * 2);
-            ctx.fill();
-            
-            if (isTown) {
-                ctx.font = "14px Arial";
-                ctx.textAlign = "center";
-                ctx.textBaseline = "middle";
-                const icons = { SHOP: '🛒', INN: '🍺', PLAZA: '🏛️', EXIT: '🚪' };
-                if (icons[tile.poiType]) ctx.fillText(icons[tile.poiType], cx, cy);
+        // Iconos de interacción en ciudades
+        if (isTown && tile.poiType) {
+            ctx.font = "14px Arial";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            const icons = { SHOP: '🛒', INN: '🍺', PLAZA: '🏛️', EXIT: '🚪' };
+            if (icons[tile.poiType]) {
+                ctx.fillStyle = 'white';
+                ctx.fillText(icons[tile.poiType], cx, cy + 10);
             }
         }
     };
@@ -161,12 +171,10 @@ export const OverworldMap = ({ playerPos, onMove, dimension }: any) => {
         ctx.scale(zoom, zoom);
         ctx.translate(offsetX, offsetY);
 
-        // Draw Cached Terrain
         if (terrainCacheRef.current) {
             ctx.drawImage(terrainCacheRef.current, -3000, -3000);
         }
 
-        // Draw Incursions (Shadow Rifts)
         if (!isTown && dimension === Dimension.NORMAL) {
             Object.values(incursions).forEach(inc => {
                 const { x, y } = hexToPixel(inc.q, inc.r);
@@ -183,7 +191,6 @@ export const OverworldMap = ({ playerPos, onMove, dimension }: any) => {
 
         const leader = party[0];
         
-        // Draw Vision Fog
         if (!isTown) {
             const visionRange = calculateVisionRange(leader.stats.attributes.WIS, leader.stats.corruption || 0);
             const visionPx = visionRange * HEX_SIZE * 1.5;
@@ -197,19 +204,15 @@ export const OverworldMap = ({ playerPos, onMove, dimension }: any) => {
             ctx.restore();
         }
 
-        // DRAW PLAYER SPRITE
         const playerImg = AssetManager.getAsset(leader.visual.spriteUrl);
         if (playerImg) {
             ctx.save();
             const s = HEX_SIZE * 1.2;
-            // Add soft shadow
             ctx.shadowBlur = 15;
             ctx.shadowColor = 'rgba(0,0,0,0.5)';
-            // Draw sprite
             ctx.drawImage(playerImg, px - s/2, py - s + 5, s, s);
             ctx.restore();
         } else {
-            // Fallback dot
             ctx.shadowBlur = 20;
             ctx.shadowColor = leader.visual.color;
             ctx.fillStyle = leader.visual.color;
