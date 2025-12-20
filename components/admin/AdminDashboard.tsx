@@ -1,10 +1,11 @@
+
 import React, { useState, useRef } from 'react';
 import { useContentStore } from '../../store/contentStore';
-import { Item, ItemRarity, EquipmentSlot, CharacterClass, Ability, TerrainType, CreatureType, EnemyDefinition, Spell, Skill, SpellType, DamageType, MagicSchool } from '../../types';
+import { Item, ItemRarity, EquipmentSlot, CharacterClass, Ability, TerrainType, CreatureType, EnemyDefinition, Spell, Skill, SpellType, DamageType, MagicSchool, NPCEntity } from '../../types';
 import { RARITY_COLORS } from '../../constants';
 import { uploadAsset } from '../../services/supabaseClient';
 
-const TABS = ['DASHBOARD', 'ITEMS', 'UNITS & SPAWNS', 'SPELLS', 'SKILLS', 'CLASSES', 'MAP CONFIG', 'EXPORT / SYNC'];
+const TABS = ['DASHBOARD', 'ITEMS', 'UNITS & SPAWNS', 'SPELLS', 'SKILLS', 'NPCs', 'CLASSES', 'MAP CONFIG', 'EXPORT / SYNC'];
 const WESNOTH_GITHUB_BASE = "https://raw.githubusercontent.com/wesnoth/wesnoth/master/";
 
 export const AdminDashboard: React.FC = () => {
@@ -50,6 +51,7 @@ export const AdminDashboard: React.FC = () => {
                     {activeTab === 'UNITS & SPAWNS' && <UnitAndEncounterEditor />}
                     {activeTab === 'SPELLS' && <SpellEditor />}
                     {activeTab === 'SKILLS' && <SkillEditor />}
+                    {activeTab === 'NPCs' && <NPCEditor />}
                     {activeTab === 'CLASSES' && <ClassEditor />}
                     {activeTab === 'MAP CONFIG' && <MapConfigurator />}
                     {activeTab === 'EXPORT / SYNC' && <ExportView />}
@@ -60,7 +62,7 @@ export const AdminDashboard: React.FC = () => {
 };
 
 const DashboardHome = ({ changeTab }: { changeTab: (t: string) => void }) => {
-    const { items, enemies, spells, skills, isLoading } = useContentStore();
+    const { items, enemies, spells, skills, npcs, isLoading } = useContentStore();
     const StatCard = ({ title, count, color, tab }: any) => (
         <div onClick={() => changeTab(tab)} className={`bg-slate-800 p-6 rounded-xl border border-slate-700 hover:border-${color}-500 cursor-pointer transition-all group`}>
             <h3 className={`text-lg font-bold text-${color}-100 group-hover:text-${color}-400`}>{title}</h3>
@@ -72,7 +74,7 @@ const DashboardHome = ({ changeTab }: { changeTab: (t: string) => void }) => {
             <StatCard title="Items" count={Object.keys(items).length} color="amber" tab="ITEMS" />
             <StatCard title="Enemies" count={Object.keys(enemies).length} color="red" tab="UNITS & SPAWNS" />
             <StatCard title="Spells" count={Object.keys(spells).length} color="purple" tab="SPELLS" />
-            <StatCard title="Skills" count={Object.keys(skills).length} color="blue" tab="SKILLS" />
+            <StatCard title="NPCs" count={Object.keys(npcs).length} color="green" tab="NPCs" />
         </div>
     );
 };
@@ -88,7 +90,6 @@ const SpellEditor = () => {
         <div className="flex gap-6 h-full">
             <div className="w-1/3 bg-slate-950 rounded-lg border border-slate-800 flex flex-col">
                 <div className="p-4 border-b border-slate-800 flex justify-between items-center"><span className="font-bold text-purple-400 text-sm">GRIMOIRE</span><button onClick={handleCreate} className="bg-purple-600 hover:bg-purple-500 text-white px-2 py-1 rounded text-sm font-bold">+</button></div>
-                {/* FIX: Added explicit type casting for map function parameter to resolve "property does not exist on type unknown" errors */}
                 <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">{Object.values(spells).map((spell: any) => (<div key={spell.id} onClick={() => handleSelect(spell.id)} className={`p-3 rounded cursor-pointer flex items-center gap-3 border ${selectedId === spell.id ? 'bg-slate-800 border-purple-500' : 'bg-transparent border-transparent hover:bg-slate-900'}`}><div className="text-sm font-bold text-slate-200">{spell.name}</div></div>))}</div>
             </div>
             {selectedId && <div className="flex-1 bg-slate-800 p-6 rounded-lg border border-slate-700 overflow-y-auto"><div className="grid grid-cols-2 gap-4"><div><label className="text-xs text-slate-500 font-bold uppercase">Name</label><input type="text" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white" /></div></div><button onClick={handleSave} className="mt-6 w-full bg-purple-600 py-3 rounded font-bold">SAVE SPELL</button></div>}
@@ -107,10 +108,59 @@ const SkillEditor = () => {
         <div className="flex gap-6 h-full">
             <div className="w-1/3 bg-slate-950 rounded-lg border border-slate-800 flex flex-col">
                 <div className="p-4 border-b border-slate-800 flex justify-between items-center"><span className="font-bold text-blue-400 text-sm">TECHNIQUES</span><button onClick={handleCreate} className="bg-blue-600 hover:bg-blue-500 text-white px-2 py-1 rounded text-sm font-bold">+</button></div>
-                {/* FIX: Added explicit type casting for map function parameter to resolve "property does not exist on type unknown" errors */}
                 <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">{Object.values(skills).map((skill: any) => (<div key={skill.id} onClick={() => handleSelect(skill.id)} className={`p-3 rounded cursor-pointer flex items-center gap-3 border ${selectedId === skill.id ? 'bg-slate-800 border-blue-500' : 'bg-transparent border-transparent hover:bg-slate-900'}`}><div className="text-sm font-bold text-slate-200">{skill.name}</div></div>))}</div>
             </div>
             {selectedId && <div className="flex-1 bg-slate-800 p-6 rounded-lg border border-slate-700 overflow-y-auto"><div className="grid grid-cols-2 gap-4"><div><label className="text-xs text-slate-500 font-bold uppercase">Name</label><input type="text" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white" /></div></div><button onClick={handleSave} className="mt-6 w-full bg-blue-600 py-3 rounded font-bold">SAVE SKILL</button></div>}
+        </div>
+    );
+};
+
+const NPCEditor = () => {
+    const { npcs, updateNPC, createNPC, deleteNPC } = useContentStore();
+    const [selectedId, setSelectedId] = useState<string | null>(null);
+    const [editForm, setEditForm] = useState<Partial<NPCEntity>>({});
+    
+    const handleSelect = (id: string) => { setSelectedId(id); setEditForm({ ...npcs[id] }); };
+    const handleSave = () => { if (selectedId && editForm.name) { updateNPC(selectedId, editForm as NPCEntity); alert('NPC Saved'); } };
+    const handleCreate = () => { 
+        const newId = `npc_${Date.now()}`; 
+        createNPC({ id: newId, name: 'New NPC', role: 'Villager', sprite: 'https://cdn.jsdelivr.net/gh/wesnoth/wesnoth@master/data/core/images/units/human-magi/white-mage.png', dialogue: ['Hello traveler.'] }); 
+        handleSelect(newId); 
+    };
+
+    return (
+        <div className="flex gap-6 h-full">
+            <div className="w-1/3 bg-slate-950 rounded-lg border border-slate-800 flex flex-col shrink-0">
+                <div className="p-4 border-b border-slate-800 flex justify-between items-center"><span className="text-xs font-bold text-green-500 uppercase">Citizens</span><button onClick={handleCreate} className="bg-green-600 hover:bg-green-500 text-white px-2 py-1 rounded text-xs">+</button></div>
+                <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
+                    {Object.values(npcs).map((npc: any) => (
+                        <div key={npc.id} onClick={() => handleSelect(npc.id)} className={`p-3 rounded cursor-pointer flex items-center gap-3 border ${selectedId === npc.id ? 'bg-slate-800 border-green-500' : 'bg-transparent border-transparent hover:bg-slate-900'}`}>
+                            <img src={npc.sprite} className="w-8 h-8 object-contain pixelated" />
+                            <div><div className="text-sm font-bold text-slate-200">{npc.name}</div><div className="text-[10px] text-slate-500">{npc.role}</div></div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+            <div className="flex-1 bg-slate-800 rounded-lg border border-slate-700 p-6 overflow-y-auto custom-scrollbar">
+                {selectedId ? (
+                    <div className="space-y-6 max-w-xl mx-auto">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div><label className="text-xs font-bold text-slate-500 uppercase">Name</label><input type="text" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white" /></div>
+                            <div><label className="text-xs font-bold text-slate-500 uppercase">Role</label><input type="text" value={editForm.role} onChange={e => setEditForm({...editForm, role: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white" /></div>
+                        </div>
+                        <div><label className="text-xs font-bold text-slate-500 uppercase">Quest ID (Optional)</label><input type="text" value={editForm.questId || ''} onChange={e => setEditForm({...editForm, questId: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white" /></div>
+                        <div>
+                            <label className="text-xs font-bold text-slate-500 uppercase">Dialogue Lines (One per line)</label>
+                            <textarea 
+                                value={editForm.dialogue?.join('\n')} 
+                                onChange={e => setEditForm({...editForm, dialogue: e.target.value.split('\n')})} 
+                                className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white h-32" 
+                            />
+                        </div>
+                        <button onClick={handleSave} className="w-full bg-green-600 py-3 rounded font-bold hover:bg-green-500 shadow-lg transition-all">SAVE CITIZEN</button>
+                    </div>
+                ) : <div className="flex h-full items-center justify-center text-slate-500 italic">Select an NPC to start writing destiny.</div>}
+            </div>
         </div>
     );
 };
@@ -139,7 +189,6 @@ const ItemEditor = () => {
             <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept="image/*" />
             <div className="w-1/3 bg-slate-950 rounded-lg border border-slate-800 flex flex-col shrink-0">
                 <div className="p-4 border-b border-slate-800 flex justify-between items-center"><span className="text-xs font-bold text-amber-500 uppercase">Items</span></div>
-                {/* FIX: Added explicit type casting for map function parameter to resolve "property does not exist on type unknown" errors */}
                 <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">{Object.values(items).map((item: any) => (<div key={item.id} onClick={() => handleSelect(item.id)} className={`p-3 rounded cursor-pointer flex items-center gap-3 border ${selectedId === item.id ? 'bg-slate-800 border-amber-500' : 'bg-transparent border-transparent hover:bg-slate-900'}`}><img src={item.icon} className="w-6 h-6 object-contain invert" /><div><div className="text-sm font-bold text-slate-200">{item.name}</div></div></div>))}</div>
             </div>
             <div className="flex-1 bg-slate-800 rounded-lg border border-slate-700 p-6 overflow-y-auto custom-scrollbar">
@@ -189,7 +238,6 @@ const UnitAndEncounterEditor = () => {
             <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept="image/*" />
             <div className="w-64 bg-slate-950 rounded-lg border border-slate-800 flex flex-col shrink-0">
                 <div className="p-4 border-b border-slate-800"><span className="font-bold text-red-500 text-sm uppercase">Bestiary</span></div>
-                {/* FIX: Added explicit type casting for map function parameter to resolve "property does not exist on type unknown" errors */}
                 <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">{Object.values(enemies).map((enemy: any) => (<div key={enemy.id} onClick={() => handleSelect(enemy.id)} className={`p-2 rounded cursor-pointer flex items-center gap-3 border ${selectedId === enemy.id ? 'bg-slate-800 border-red-500' : 'bg-transparent border-transparent hover:bg-slate-900'}`}><img src={enemy.sprite} className="w-8 h-8 object-contain pixelated" /><div className="text-sm font-bold text-slate-200 truncate">{enemy.name}</div></div>))}</div>
             </div>
             <div className="flex-1 bg-slate-800 rounded-lg border border-slate-700 p-6 overflow-y-auto custom-scrollbar">

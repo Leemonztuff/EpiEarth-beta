@@ -18,6 +18,7 @@ import { SummoningScreen } from './components/SummoningScreen';
 import { TempleScreen } from './components/TempleScreen';
 import { PartyManager } from './components/PartyManager';
 import { DialogueOverlay } from './components/DialogueOverlay';
+import { AssetLoaderOverlay } from './components/AssetLoaderOverlay';
 import { getSupabase } from './services/supabaseClient';
 
 const App = () => {
@@ -36,6 +37,7 @@ const App = () => {
   const isSleeping = useGameStore(s => s.isSleeping);
   const isScreenShaking = useGameStore(s => s.isScreenShaking);
   const isScreenFlashing = useGameStore(s => s.isScreenFlashing);
+  const isAssetsLoaded = useGameStore(s => s.isAssetsLoaded);
 
   const initializeWorld = useGameStore(s => s.initializeWorld);
   const createCharacter = useGameStore(s => s.createCharacter);
@@ -61,6 +63,9 @@ const App = () => {
   return (
     <main className={`relative w-screen h-screen overflow-hidden bg-black text-white transition-transform duration-75 ${isScreenShaking ? 'animate-shake' : ''}`}>
       <div className={`fixed inset-0 z-[999] bg-white pointer-events-none transition-opacity duration-150 ${isScreenFlashing ? 'opacity-40' : 'opacity-0'}`} />
+
+      {/* Asset Preloading Shield */}
+      {!isAssetsLoaded && !isAdmin && <AssetLoaderOverlay />}
 
       {isAdmin ? <AdminDashboard /> : (
         <div className="w-full h-full">

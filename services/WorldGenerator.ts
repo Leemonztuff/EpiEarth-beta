@@ -1,7 +1,33 @@
 
 // @ts-nocheck
-import { HexCell, TerrainType, WeatherType, Dimension, MovementType } from '../types';
+import { HexCell, TerrainType, WeatherType, Dimension, MovementType, NPCEntity } from '../types';
 import { useContentStore } from '../store/contentStore';
+
+// Cube coordinates helper for hex math
+interface Cube { q: number; r: number; s: number; }
+function axialToCube(q: number, r: number): Cube { return { q, r, s: -q - r }; }
+function cubeDistance(a: Cube, b: Cube): number { 
+    return (Math.abs(a.q - b.q) + Math.abs(a.r - b.r) + Math.abs(a.s - b.s)) / 2; 
+}
+function cubeLerp(a: Cube, b: Cube, t: number): Cube {
+    return {
+        q: a.q + (b.q - a.q) * t,
+        r: a.r + (b.r - a.r) * t,
+        s: a.s + (b.s - a.s) * t
+    };
+}
+function cubeRound(c: Cube): Cube {
+    let rq = Math.round(c.q);
+    let rr = Math.round(c.r);
+    let rs = Math.round(c.s);
+    const qDiff = Math.abs(rq - c.q);
+    const rDiff = Math.abs(rr - c.r);
+    const sDiff = Math.abs(rs - c.s);
+    if (qDiff > rDiff && qDiff > sDiff) rq = -rr - rs;
+    else if (rDiff > sDiff) rr = -rq - rs;
+    else rs = -rq - rr;
+    return { q: rq, r: rr, s: rs };
+}
 
 export class Mulberry32 {
     private a: number;
@@ -115,6 +141,7 @@ export class WorldGenerator {
     private static isInitialized = false;
     private static seed = 12345;
     private static chunkCache = new Map<string, Record<string, HexCell>>();
+    private static HUB_SPACING = 24;
 
     static init(seed: number) {
         if (this.seed === seed && this.isInitialized) return;
@@ -140,12 +167,11 @@ export class WorldGenerator {
         return chunk[`${q},${r}`] || this.generateSingleTile(q, r, dimension);
     }
 
-    private static generateSingleTile(q: number, r: number, dimension: Dimension): HexCell {
+    private static getPOITypeAt(q: number, r: number, dimension: Dimension): string | undefined {
         const scale = 0.08;
         const elevation = fbm(q * scale, r * scale, 4);
         const moisture = fbm(q * scale + 200, r * scale + 200, 2);
         const temperature = fbm(q * scale - 200, r * scale - 200, 2);
-        
         const biome = getBiome(elevation, moisture, temperature, dimension);
         const rng = new Mulberry32(fnv1a(`${q},${r},${dimension}`));
         
@@ -154,29 +180,147 @@ export class WorldGenerator {
         else if (biome.terrain === TerrainType.DESERT && rng.next() > 0.995) poiType = 'RUINS';
         else if (biome.terrain === TerrainType.GRASS && rng.next() > 0.997) poiType = 'TEMPLE';
         else if (biome.terrain === TerrainType.WATER && rng.next() > 0.99) poiType = 'PORT';
-        else if (rng.next() > 0.999) poiType = 'ANCIENT_MONUMENT';
+        else if (rng.next() > 0.9995) poiType = 'CITY';
+        else if (rng.next() > 0.9985) poiType = 'TOWN';
+        else if (rng.next() > 0.997) poiType = 'VILLAGE';
+        
+        return poiType;
+    }
 
-        const hasPortal = dimension === Dimension.NORMAL && (biome.terrain === TerrainType.ANCIENT_MONUMENT || (biome.terrain === TerrainType.MOUNTAIN && rng.next() > 0.98));
+    private static generateSingleTile(q: number, r: number, dimension: Dimension): HexCell {
+        const scale = 0.08;
+        const elevation = fbm(q * scale, r * scale, 4);
+        const moisture = fbm(q * scale + 200, r * scale + 200, 2);
+        const temperature = fbm(q * scale - 200, r * scale - 200, 2);
+        
+        const biome = getBiome(elevation, moisture, temperature, dimension);
+        const poiType = this.getPOITypeAt(q, r, dimension);
+        const rng = new Mulberry32(fnv1a(`${q},${r},${dimension}`));
+
+        let finalTerrain = biome.terrain;
+
+        // Lógica de Caminos determinista
+        if (dimension === Dimension.NORMAL && finalTerrain !== TerrainType.WATER && finalTerrain !== TerrainType.OCEAN && !poiType) {
+            // Encontrar Hubs circundantes
+            const hq1 = Math.floor(q / this.HUB_SPACING) * this.HUB_SPACING;
+            const hr1 = Math.floor(r / this.HUB_SPACING) * this.HUB_SPACING;
+            
+            // Revisar vecinos inmediatos en la rejilla de Hubs
+            const neighbors = [[0,0], [1,0], [0,1], [1,1]];
+            let isOnRoad = false;
+
+            for (let i = 0; i < neighbors.length; i++) {
+                for (let j = i + 1; j < neighbors.length; j++) {
+                    const hubA = { q: hq1 + neighbors[i][0] * this.HUB_SPACING, r: hr1 + neighbors[i][1] * this.HUB_SPACING };
+                    const hubB = { q: hq1 + neighbors[j][0] * this.HUB_SPACING, r: hr1 + neighbors[j][1] * this.HUB_SPACING };
+
+                    const typeA = this.getPOITypeAt(hubA.q, hubA.r, dimension);
+                    const typeB = this.getPOITypeAt(hubB.q, hubB.r, dimension);
+
+                    // Solo conectar CIUDADES o PUEBLOS. Las VILLAS se ignoran.
+                    const isMajorA = typeA === 'CITY' || typeA === 'TOWN';
+                    const isMajorB = typeB === 'CITY' || typeB === 'TOWN';
+
+                    if (isMajorA && isMajorB) {
+                        const cubeA = axialToCube(hubA.q, hubA.r);
+                        const cubeB = axialToCube(hubB.q, hubB.r);
+                        const cubeP = axialToCube(q, r);
+                        
+                        const distAB = cubeDistance(cubeA, cubeB);
+                        const wobble = fbm(q * 0.2, r * 0.2, 1) * 0.8; // Añadir un poco de bamboleo al camino
+
+                        // Algoritmo de proximidad a segmento
+                        for (let step = 0; step <= distAB; step++) {
+                            const t = step / distAB;
+                            const pos = cubeRound(cubeLerp(cubeA, cubeB, t));
+                            if (Math.abs(pos.q - cubeP.q) < (0.6 + wobble) && Math.abs(pos.r - cubeP.r) < (0.6 + wobble)) {
+                                isOnRoad = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (isOnRoad) break;
+                }
+                if (isOnRoad) break;
+            }
+            if (isOnRoad) finalTerrain = TerrainType.DIRT_ROAD;
+        }
+
+        const hasPortal = (biome.terrain === TerrainType.ANCIENT_MONUMENT || (elevation > 0.5 && rng.next() > 0.98));
 
         return {
             q, r, 
-            terrain: biome.terrain, 
+            terrain: finalTerrain, 
             weather: biome.weather,
             isExplored: false, isVisible: false,
             hasPortal,
-            hasEncounter: biome.terrain !== TerrainType.WATER && biome.terrain !== TerrainType.OCEAN && rng.next() > 0.94,
-            regionName: this.getRegionName(q, r),
+            hasEncounter: finalTerrain !== TerrainType.WATER && finalTerrain !== TerrainType.OCEAN && !poiType && rng.next() > 0.94,
+            regionName: this.getRegionName(q, r, poiType),
             poiType,
-            movementType: (biome.terrain === TerrainType.WATER || biome.terrain === TerrainType.OCEAN) ? MovementType.SAIL : MovementType.WALK
+            movementType: (finalTerrain === TerrainType.WATER || finalTerrain === TerrainType.OCEAN) ? MovementType.SAIL : MovementType.WALK
         };
     }
 
-    static getRegionName(q: number, r: number): string {
+    static getRegionName(q: number, r: number, poi?: string): string {
         const prefixes = ["Gilded", "Crimson", "Shattered", "Verdan", "Silent", "Iron", "Forgotten", "Clouded", "Burning", "Ancient"];
         const suffixes = ["Reach", "Barony", "Wilds", "March", "Valley", "Coast", "Plateau", "Delta", "Peaks", "Plains"];
+        const cityNames = ["Aethelgard", "Oakhaven", "Stonehall", "Emberfall", "Cloudspire", "Ironforge", "Ravenport", "Lumina"];
+        
         const n1 = noise2D(q * 0.005, r * 0.005);
-        const n2 = noise2D(q * 0.005 + 500, r * 0.005 + 500);
-        return `${prefixes[Math.floor(Math.abs(n1 * prefixes.length)) % prefixes.length]} ${suffixes[Math.floor(Math.abs(n2 * suffixes.length)) % suffixes.length]}`;
+        const idx = Math.floor(Math.abs(n1 * cityNames.length)) % cityNames.length;
+        
+        if (poi === 'VILLAGE' || poi === 'TOWN' || poi === 'CITY') return cityNames[idx];
+        return `${prefixes[idx % prefixes.length]} ${suffixes[Math.floor(Math.abs(n1 * suffixes.length)) % suffixes.length]}`;
+    }
+
+    static generateSettlementMap(parentQ: number, parentR: number, type: 'VILLAGE' | 'TOWN' | 'CITY'): HexCell[] {
+        const sizeMap = { VILLAGE: 4, TOWN: 7, CITY: 10 };
+        const size = sizeMap[type] || 5;
+        const cells: HexCell[] = [];
+        const seed = fnv1a(`settlement_${parentQ}_${parentR}`);
+        const rng = new Mulberry32(seed);
+
+        const npcNames = ["Elder Rolf", "Cid the Smith", "Innkeeper Mara", "Squire Leo", "Merchant Alva"];
+
+        for (let q = -size; q <= size; q++) {
+            for (let r = -size; r <= size; r++) {
+                if (Math.abs(q) + Math.abs(r) + Math.abs(-q - r) <= size * 2) {
+                    const dist = (Math.abs(q) + Math.abs(r) + Math.abs(-q-r)) / 2;
+                    let terrain = TerrainType.COBBLESTONE;
+                    let poiType: any = undefined;
+                    let npcs: NPCEntity[] | undefined = undefined;
+                    
+                    if (dist > size - 0.5) {
+                        terrain = TerrainType.GRASS;
+                        poiType = 'EXIT';
+                    } else if (dist < 1) {
+                         terrain = TerrainType.STONE_FLOOR;
+                         poiType = 'PLAZA';
+                         npcs = [{
+                             id: `npc_${parentQ}_${parentR}_plaza`,
+                             name: npcNames[Math.floor(rng.next() * npcNames.length)],
+                             role: "Guia",
+                             sprite: "https://cdn.jsdelivr.net/gh/wesnoth/wesnoth@master/data/core/images/units/human-magi/white-mage.png",
+                             dialogue: ["¡Bienvenido! ¿Buscas algo en particular?"],
+                             questId: rng.next() > 0.7 ? `q_${parentQ}_${parentR}` : undefined
+                         }];
+                    } else if (rng.next() > 0.88) {
+                         const rand = rng.next();
+                         poiType = rand > 0.5 ? 'SHOP' : 'INN';
+                         terrain = TerrainType.DIRT_ROAD;
+                    }
+
+                    cells.push({
+                        q, r, terrain,
+                        weather: WeatherType.NONE,
+                        isExplored: true, isVisible: true,
+                        poiType, npcs,
+                        regionName: type === 'CITY' ? "Metropolis" : "Town Center"
+                    });
+                }
+            }
+        }
+        return cells;
     }
 
     static generateDungeon(numStages: number): HexCell[] {

@@ -23,7 +23,7 @@ export interface BattleSlice {
   battleMap: BattleCell[] | null;
   battleTerrain: TerrainType;
   battleWeather: WeatherType;
-  battleRewards: { xp: number, gold: number, items: Item[] };
+  battleRewards: { xp: number, gold: number, items: Item[], shards: number }; 
   damagePopups: DamagePopup[];
   activeSpellEffect: SpellEffectData | null;
   lootDrops: LootDrop[];
@@ -82,7 +82,7 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
   battleMap: null,
   battleTerrain: TerrainType.GRASS,
   battleWeather: WeatherType.NONE,
-  battleRewards: { xp: 0, gold: 0, items: [] },
+  battleRewards: { xp: 0, gold: 0, items: [], shards: 0 },
   damagePopups: [],
   activeSpellEffect: null,
   lootDrops: [],
@@ -165,6 +165,18 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
       });
 
       set({ battleEntities: newEntities, damagePopups: [...get().damagePopups, ...allPopups], isActionAnimating: false, activeSpellEffect: null, hasActed: true, remainingActions: state.remainingActions - 1, selectedAction: null, selectedSpell: null, selectedSkill: null });
+
+      const aliveEnemies = newEntities.filter(e => e.type === 'ENEMY' && e.stats.hp > 0);
+      if (aliveEnemies.length === 0) {
+          // CALCULAR SHARDS SI ESTAMOS EN SHADOW REALM
+          const shardsEarned = state.dimension === Dimension.UPSIDE_DOWN ? (5 + Math.floor(Math.random() * 10)) : 0;
+          set({ 
+              gameState: GameState.BATTLE_VICTORY,
+              battleRewards: { ...state.battleRewards, shards: shardsEarned }
+          });
+          return;
+      }
+
       if (get().remainingActions <= 0) setTimeout(() => get().advanceTurn(), 1000);
   },
 
@@ -241,10 +253,25 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
     get().startBattle(state.battleTerrain, state.battleWeather);
   },
   confirmBattle: () => set({ gameState: GameState.BATTLE_TACTICAL }),
+  
   continueAfterVictory: () => {
-      set({ gameState: GameState.OVERWORLD, battleEntities: [], turnOrder: [], currentTurnIndex: 0, lootDrops: [] });
+      const state = get();
+      const shards = state.battleRewards.shards || 0;
+      
+      set({ 
+          eternumShards: state.eternumShards + shards,
+          gameState: GameState.OVERWORLD, 
+          battleEntities: [], 
+          turnOrder: [], 
+          currentTurnIndex: 0, 
+          lootDrops: [],
+          battleRewards: { xp: 0, gold: 0, items: [], shards: 0 }
+      });
+      
+      if (shards > 0) get().addLog(`Gained ${shards} Eternum Shards from the shadow essence.`, "narrative");
       sfx.playVictory();
   },
+
   startBattle: (terrain, weather, enemyId) => {
       const contentState = useContentStore.getState();
       const grid = [];
@@ -277,7 +304,8 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
         hasActed: false, 
         remainingActions: 1, 
         damagePopups: [], 
-        lootDrops: [] 
+        lootDrops: [],
+        battleRewards: { xp: 25, gold: 10, items: [], shards: 0 } 
       });
   }
 });

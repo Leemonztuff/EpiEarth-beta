@@ -1,13 +1,16 @@
 
 // @ts-nocheck
 import { StateCreator } from 'zustand';
-import { GameState, Dimension, Difficulty, HexCell, PositionComponent, WeatherType, TerrainType, MovementType, Quest } from '../../types';
+import { GameState, Dimension, Difficulty, HexCell, PositionComponent, WeatherType, TerrainType, MovementType, Quest, Incursion, NPCEntity } from '../../types';
 import { WorldGenerator } from '../../services/WorldGenerator';
 import { findPath } from '../../services/pathfinding';
 import { calculateVisionRange } from '../../services/dndRules';
 import { sfx } from '../../services/SoundSystem';
 import { getSupabase } from '../../services/supabaseClient';
 import { TERRAIN_MOVEMENT_COST, ITEMS, WESNOTH_BASE_URL } from '../../constants';
+import { useContentStore } from '../contentStore';
+
+const generateId = () => Math.random().toString(36).substr(2, 9);
 
 export interface OverworldSlice {
   gameState: GameState;
@@ -23,16 +26,19 @@ export interface OverworldSlice {
   fatigue: number;
   supplies: number; 
   worldTime: number; 
-  quests: Record<string, Quest>; // Consistent with Record usage
+  quests: Record<string, Quest>;
   currentRegionName: string | null;
+  currentSettlementName: string | null;
   standingOnPortal: boolean;
   standingOnSettlement: boolean;
   standingOnTemple: boolean;
   standingOnDungeon: boolean;
   standingOnPort: boolean;
+  incursions: Record<string, Incursion>;
+  activeIncursion: Incursion | null;
+  eternumShards: number;
   gracePeriodEndTime: number;
   activeNarrativeEvent: any | null;
-  activeIncursion: any | null;
   userSession: any | null;
   
   initializeWorld: () => void;
@@ -49,6 +55,7 @@ export interface OverworldSlice {
   addQuest: (quest: Quest) => void;
   talkToNPC: () => void;
   updateQuestProgress: (type: string, targetId: string, amount: number) => void;
+  spawnIncursion: () => void;
 }
 
 export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (set, get) => ({
@@ -67,17 +74,39 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
   worldTime: 480,
   quests: {},
   currentRegionName: null,
+  currentSettlementName: null,
   standingOnPortal: false,
   standingOnSettlement: false,
   standingOnTemple: false,
   standingOnDungeon: false,
   standingOnPort: false,
+  incursions: {},
+  activeIncursion: null,
+  eternumShards: 0,
   gracePeriodEndTime: 0,
   activeNarrativeEvent: null,
-  activeIncursion: null,
   userSession: null,
 
   setUserSession: (session) => set({ userSession: session }),
+
+  spawnIncursion: () => {
+      const { playerPos, incursions, dimension } = get();
+      if (dimension === Dimension.UPSIDE_DOWN) return; 
+      
+      const id = generateId();
+      const q = playerPos.x + Math.floor((Math.random() - 0.5) * 12);
+      const r = playerPos.y + Math.floor((Math.random() - 0.5) * 12);
+      
+      const newIncursion: Incursion = {
+          id, q, r,
+          difficulty: 1,
+          rewardShards: 0, 
+          description: "A spatial tear to the shadow realm."
+      };
+      
+      set({ incursions: { ...incursions, [`${q},${r}`]: newIncursion } });
+      get().addLog("A Rift has appeared! The fabric of reality is thin.", "narrative");
+  },
 
   logout: async () => {
       const supabase = getSupabase();
@@ -90,29 +119,50 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
   initializeWorld: () => { WorldGenerator.init(12345); },
 
   talkToNPC: () => {
-      const { playerPos, dimension } = get();
-      const tile = WorldGenerator.getTile(playerPos.x, playerPos.y, dimension);
-      if (tile.npcs && tile.npcs.length > 0) {
-          const npc = tile.npcs[0];
+      const { playerPos, gameState, townMapData } = get();
+      const content = useContentStore.getState();
+      
+      let tile;
+      if (gameState === GameState.TOWN_EXPLORATION && townMapData) {
+          tile = townMapData.find(c => c.q === playerPos.x && c.r === playerPos.y);
+      }
+      
+      if (tile && tile.npcs && tile.npcs.length > 0) {
+          // In a real game, tile.npcs might contain IDs instead of full objects
+          // We'll prioritize data from the contentStore if IDs match
+          const baseNpc = tile.npcs[0];
+          const storedNpc = content.npcs[baseNpc.id];
+          const npc = storedNpc || baseNpc;
+
+          // Build dynamic options based on stored NPC data
+          const options = [];
+          
+          // Quest offering logic
+          if (npc.questId && !get().quests[npc.questId]) {
+              options.push({
+                  label: "Accept Quest",
+                  action: () => {
+                      // We'd ideally pull the quest definition from a quest store too
+                      get().addQuest({
+                          id: npc.questId,
+                          title: "Shadow Culling",
+                          description: "The Elder needs the surrounding areas cleansed of hostile spirits.",
+                          completed: false,
+                          type: 'BOUNTY',
+                          objective: { type: 'KILL', targetId: 'ANY', count: 3, current: 0 },
+                          reward: { xp: 500, gold: 100 }
+                      });
+                  }
+              });
+          }
+
+          options.push({ label: "Continue", action: () => {} });
+
           set({ 
               gameState: GameState.DIALOGUE, 
               activeNarrativeEvent: {
                   npc,
-                  options: [
-                      { 
-                        label: npc.questId && !get().quests[npc.questId] ? "Aceptar Misión" : "Continuar", 
-                        quest: (npc.questId && !get().quests[npc.questId]) ? {
-                          id: npc.questId,
-                          title: "Caza de Trasgos",
-                          description: "Limpia la zona de enemigos cercanos.",
-                          completed: false,
-                          type: 'BOUNTY',
-                          objective: { type: 'KILL', targetId: 'goblin_spearman', count: 3, current: 0 },
-                          reward: { xp: 500, gold: 100 }
-                        } : null 
-                      },
-                      { label: "Cerrar", quest: null }
-                  ]
+                  options
               }
           });
           sfx.playUiClick();
@@ -128,7 +178,7 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
               q.objective.current = Math.min(q.objective.count, q.objective.current + amount);
               if (q.objective.current >= q.objective.count) {
                   q.completed = true;
-                  get().addLog(`Misión Completada: ${q.title}`, "levelup");
+                  get().addLog(`Quest Complete: ${q.title}`, "levelup");
                   get().addGold(q.reward.gold);
                   get().addPartyXp(q.reward.xp);
               }
@@ -142,17 +192,24 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
     const { quests } = get();
     if (quests[quest.id]) return;
     set({ quests: { ...quests, [quest.id]: quest } });
-    get().addLog(`Nueva Misión: ${quest.title}`, "narrative");
+    get().addLog(`New Quest: ${quest.title}`, "narrative");
   },
 
   movePlayerOverworld: async (q, r) => {
     const state = get();
     if (state.isPlayerMoving || state.party.length === 0) return;
     
+    const isTown = state.gameState === GameState.TOWN_EXPLORATION;
     const leader = state.party[0];
     const moveType = leader.stats.movementType || MovementType.WALK;
     
-    const path = findPath({q: state.playerPos.x, r: state.playerPos.y}, {q, r}, undefined, (qx, rx) => WorldGenerator.getTile(qx, rx, state.dimension), moveType);
+    const path = findPath(
+        {q: state.playerPos.x, r: state.playerPos.y}, 
+        {q, r}, 
+        isTown ? state.townMapData : undefined, 
+        isTown ? undefined : (qx, rx) => WorldGenerator.getTile(qx, rx, state.dimension), 
+        moveType
+    );
     if (!path) return;
 
     set({ isPlayerMoving: true });
@@ -162,53 +219,61 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
     let currentTime = state.worldTime;
 
     for (const step of path) {
-        if (get().gameState !== GameState.OVERWORLD) break;
+        if (get().gameState !== GameState.OVERWORLD && get().gameState !== GameState.TOWN_EXPLORATION) break;
 
-        const tile = WorldGenerator.getTile(step.q, step.r, state.dimension);
+        let tile;
+        if (isTown) tile = state.townMapData.find(c => c.q === step.q && c.r === step.r);
+        else tile = WorldGenerator.getTile(step.q, step.r, state.dimension);
+
         const cost = TERRAIN_MOVEMENT_COST[moveType][tile.terrain] || 1;
+        const fatigueMult = isTown ? 0.2 : (state.dimension === Dimension.UPSIDE_DOWN ? 2.5 : 1.0);
+        currentFatigue += (cost * 0.15 * fatigueMult);
         
-        currentFatigue += (cost * 0.15);
-        if (Math.random() > 0.7) currentSupplies = Math.max(0, currentSupplies - 1);
+        if (!isTown && Math.random() > 0.7) currentSupplies = Math.max(0, currentSupplies - 1);
         currentTime = (currentTime + (cost * 15)) % 1440;
 
-        if (tile.poiType === 'VILLAGE' && !tile.npcs) {
-            tile.npcs = [{
-                id: `npc_${step.q}_${step.r}`,
-                name: "Aldeano Aterrorizado",
-                role: "Superviviente",
-                sprite: `${WESNOTH_BASE_URL}/units/human-loyalists/peasant.png`,
-                dialogue: ["¡Por favor, ayúdanos! Los trasgos han rodeado el asentamiento."],
-                questId: `q_hunt_${step.q}_${step.r}`
-            }];
-        }
+        if (!isTown && state.dimension === Dimension.NORMAL && Math.random() > 0.985) get().spawnIncursion();
 
-        const vision = calculateVisionRange(leader.stats.attributes.WIS, leader.stats.corruption || 0);
-        let expGain = 0;
-        const newExplored = new Set(get().exploredTiles[get().dimension]);
-        for(let dq = -vision; dq <= vision; dq++) {
-            for(let dr = -vision; dr <= vision; dr++) {
-                const dist = (Math.abs(dq) + Math.abs(dq + dr) + Math.abs(dr)) / 2;
-                if (dist <= vision) {
-                    const key = `${step.q + dq},${step.r + dr}`;
-                    if (!newExplored.has(key)) { newExplored.add(key); expGain += 2; }
+        if (!isTown) {
+            const vision = calculateVisionRange(leader.stats.attributes.WIS, leader.stats.corruption || 0);
+            const newExplored = new Set(get().exploredTiles[get().dimension]);
+            for(let dq = -vision; dq <= vision; dq++) {
+                for(let dr = -vision; dr <= vision; dr++) {
+                    const dist = (Math.abs(dq) + Math.abs(dq + dr) + Math.abs(dr)) / 2;
+                    if (dist <= vision) newExplored.add(`${step.q + dq},${step.r + dr}`);
                 }
             }
+            set({ exploredTiles: { ...get().exploredTiles, [get().dimension]: newExplored } });
         }
-        if (expGain > 0) get().addPartyXp(expGain);
+
+        const incursionKey = `${step.q},${step.r}`;
+        const activeInc = state.incursions[incursionKey];
 
         set({ 
             playerPos: { x: step.q, y: step.r },
-            exploredTiles: { ...get().exploredTiles, [get().dimension]: newExplored },
             fatigue: Math.min(100, currentFatigue),
             supplies: currentSupplies,
             worldTime: currentTime,
-            standingOnSettlement: tile.poiType === 'VILLAGE' || tile.poiType === 'CASTLE',
+            standingOnSettlement: !isTown && (tile.poiType === 'VILLAGE' || tile.poiType === 'TOWN' || tile.poiType === 'CITY'),
             standingOnPort: tile.poiType === 'PORT',
-            standingOnPortal: tile.hasPortal || false,
+            standingOnPortal: !isTown && (tile.hasPortal || !!activeInc),
             standingOnTemple: tile.poiType === 'TEMPLE',
             standingOnDungeon: tile.poiType === 'DUNGEON',
-            currentRegionName: tile.regionName
+            currentRegionName: isTown ? state.currentRegionName : tile.regionName
         });
+
+        if (isTown && tile.poiType === 'EXIT') {
+            set({ isPlayerMoving: false });
+            get().exitSettlement();
+            return;
+        }
+
+        if (!isTown && activeInc) {
+            set({ isPlayerMoving: false, dimension: Dimension.UPSIDE_DOWN, incursions: Object.fromEntries(Object.entries(state.incursions).filter(([k]) => k !== incursionKey)) });
+            get().addLog("The Rift consumes you!", "narrative");
+            sfx.playMagic();
+            return;
+        }
 
         sfx.playStep();
         await new Promise(res => setTimeout(res, 100));
@@ -216,8 +281,28 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
     set({ isPlayerMoving: false });
   },
 
+  enterSettlement: () => {
+    const { playerPos, dimension } = get();
+    const tile = WorldGenerator.getTile(playerPos.x, playerPos.y, dimension);
+    const interiorMap = WorldGenerator.generateSettlementMap(playerPos.x, playerPos.y, tile.poiType as any);
+    set({ 
+        gameState: GameState.TOWN_EXPLORATION,
+        townMapData: interiorMap,
+        lastOverworldPos: { ...playerPos },
+        playerPos: { x: 0, y: 0 },
+        currentSettlementName: tile.regionName,
+        standingOnSettlement: false
+    });
+    get().addLog(`Entering ${tile.regionName}...`, "narrative");
+  },
+
+  exitSettlement: () => {
+    const { lastOverworldPos } = get();
+    set({ gameState: GameState.OVERWORLD, playerPos: lastOverworldPos || { x: 0, y: 0 }, townMapData: null, currentSettlementName: null });
+  },
+
   camp: async () => {
-    if (get().supplies < 5) { get().addLog("Not enough supplies to camp properly.", "info"); return; }
+    if (get().supplies < 5) return;
     set({ isSleeping: true, supplies: get().supplies - 5 });
     await new Promise(r => setTimeout(r, 1500));
     set({ fatigue: 0, worldTime: (get().worldTime + 480) % 1440, isSleeping: false });
@@ -225,31 +310,13 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
   },
 
   usePortal: () => set(s => ({ dimension: s.dimension === Dimension.NORMAL ? Dimension.UPSIDE_DOWN : Dimension.NORMAL })),
-  enterSettlement: () => set({ gameState: GameState.TOWN_EXPLORATION }),
-  exitSettlement: () => set({ gameState: GameState.OVERWORLD }),
-  
-  resolveNarrativeOption: (idx) => {
-    const event = get().activeNarrativeEvent;
-    if (!event) return;
-    sfx.playUiClick();
-    set({ activeNarrativeEvent: null });
-    get().addLog(`You chose: ${event.options[idx].label}`, "narrative");
-  },
-
-  buySupplies: (amount, cost) => {
-    if (get().spendGold(cost)) {
-        set(s => ({ supplies: s.supplies + amount }));
-        sfx.playUiClick();
-        get().addLog(`Bought ${amount} Supplies.`, "info");
-    }
-  },
-
-  hireCarriage: (q, r) => {
-    const cost = 50;
-    if (get().spendGold(cost)) {
-        set({ playerPos: { x: q, y: r }, worldTime: (get().worldTime + 180) % 1440, fatigue: Math.min(100, get().fatigue + 10) });
-        get().addLog("The carriage ride was bumpy but fast.", "narrative");
-        sfx.playStep();
-    }
-  },
+  buySupplies: (amount, cost) => { if (get().spendGold(cost)) set(s => ({ supplies: s.supplies + amount })); },
+  resolveNarrativeOption: (idx) => { 
+      const { activeNarrativeEvent } = get();
+      if (activeNarrativeEvent && activeNarrativeEvent.options[idx]) {
+          const opt = activeNarrativeEvent.options[idx];
+          if (opt.action) opt.action();
+      }
+      set({ activeNarrativeEvent: null }); 
+  }
 });

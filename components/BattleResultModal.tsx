@@ -5,7 +5,7 @@ import { RARITY_COLORS } from '../constants';
 
 interface BattleResultModalProps {
   type: 'victory' | 'defeat';
-  rewards?: { xp: number; gold: number; items: Item[] };
+  rewards?: { xp: number; gold: number; items: Item[]; shards?: number };
   onContinue?: () => void;
   onRestart?: () => void;
   onQuit?: () => void;
@@ -21,7 +21,6 @@ export const BattleResultModal: React.FC<BattleResultModalProps> = ({
   const isVictory = type === 'victory';
 
   const renderIcon = (icon: string) => {
-        // Detecta rutas locales (empiezan por assets o /) y URLs externas
         if (icon.startsWith('http') || icon.startsWith('/') || icon.startsWith('assets')) {
             return <img src={icon} className="w-8 h-8 object-contain drop-shadow-sm invert" alt="loot" />;
         }
@@ -34,15 +33,12 @@ export const BattleResultModal: React.FC<BattleResultModalProps> = ({
         relative w-full max-w-md p-1 rounded-2xl overflow-hidden shadow-2xl transform transition-all scale-100
         ${isVictory ? 'bg-gradient-to-b from-amber-400 via-amber-600 to-amber-800' : 'bg-gradient-to-b from-slate-600 via-slate-800 to-black'}
       `}>
-        {/* Inner Content */}
         <div className="bg-slate-950/90 m-0.5 rounded-[14px] p-8 text-center border border-white/10">
           
-          {/* Icon */}
           <div className="mb-6 text-6xl animate-bounce">
             {isVictory ? '🏆' : '💀'}
           </div>
 
-          {/* Title */}
           <h2 className={`
             text-4xl md:text-5xl font-serif font-bold mb-2 tracking-wider
             ${isVictory ? 'text-transparent bg-clip-text bg-gradient-to-b from-amber-200 to-amber-500' : 'text-red-500'}
@@ -50,10 +46,8 @@ export const BattleResultModal: React.FC<BattleResultModalProps> = ({
             {isVictory ? 'VICTORY' : 'DEFEAT'}
           </h2>
 
-          {/* Divider */}
           <div className="h-px w-32 mx-auto bg-gradient-to-r from-transparent via-white/20 to-transparent mb-6" />
 
-          {/* Rewards or Message */}
           {isVictory && rewards ? (
             <div className="space-y-4 mb-8 animate-in slide-in-from-bottom-4 delay-150 duration-700">
               <p className="text-slate-300 text-sm uppercase tracking-widest">Rewards Gained</p>
@@ -67,6 +61,12 @@ export const BattleResultModal: React.FC<BattleResultModalProps> = ({
                     <span className="text-xs text-slate-500 uppercase font-bold block mb-1">Gold</span>
                     <span className="text-xl font-bold text-yellow-400">+{rewards.gold} G</span>
                 </div>
+                {rewards.shards ? (
+                  <div className="bg-purple-900/40 p-3 rounded border border-purple-500/50 col-span-2 shadow-[0_0_15px_rgba(168,85,247,0.3)] animate-pulse">
+                    <span className="text-[10px] text-purple-400 uppercase font-black block mb-1 tracking-widest">Eternum Shards Harvested</span>
+                    <span className="text-2xl font-bold text-purple-200">+{rewards.shards} 🔮</span>
+                  </div>
+                ) : null}
               </div>
 
               {rewards.items.length > 0 && (
@@ -92,7 +92,6 @@ export const BattleResultModal: React.FC<BattleResultModalProps> = ({
             </div>
           )}
 
-          {/* Actions */}
           <div className="flex flex-col gap-3">
             {isVictory ? (
                 <button 

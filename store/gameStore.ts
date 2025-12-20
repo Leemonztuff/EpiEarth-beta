@@ -35,19 +35,20 @@ export const useGameStore = create<GameStore>((set, get, api) => {
         isPlayerMoving: false,
         lastOverworldPos: null,
         mapDimensions: { width: 40, height: 30 },
-        quests: {}, // FIXED: Must be an object, not an array
+        quests: {}, 
         standingOnPortal: false,
         standingOnSettlement: false,
         standingOnTemple: false,
         standingOnDungeon: false,
         isMapOpen: false,
-        isScreenShaking: false, // FIXED: Added missing visual state
-        isScreenFlashing: false, // FIXED: Added missing visual state
+        isScreenShaking: false, 
+        isScreenFlashing: false, 
         gracePeriodEndTime: 0,
         supplies: 20,
         fatigue: 0,
         worldTime: 480,
         currentRegionName: null,
+        currentSettlementName: null,
         activeNarrativeEvent: null,
         activeIncursion: null,
         standingOnPort: false,

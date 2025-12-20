@@ -128,7 +128,7 @@ export interface HexCell {
   q: number; r: number; terrain: TerrainType; height?: number; 
   weather: WeatherType; isExplored: boolean; isVisible: boolean;
   hasPortal?: boolean; hasEncounter?: boolean; movementType?: MovementType;
-  poiType?: 'VILLAGE' | 'CASTLE' | 'RUINS' | 'SHOP' | 'INN' | 'PLAZA' | 'EXIT' | 'TEMPLE' | 'DUNGEON' | 'RAID_ENCOUNTER' | 'PORT' | 'MONUMENT'; 
+  poiType?: 'VILLAGE' | 'TOWN' | 'CITY' | 'CASTLE' | 'RUINS' | 'SHOP' | 'INN' | 'PLAZA' | 'EXIT' | 'TEMPLE' | 'DUNGEON' | 'RAID_ENCOUNTER' | 'PORT' | 'MONUMENT'; 
   regionName?: string; encounterId?: string;
   npcs?: NPCEntity[];
 }
@@ -145,50 +145,40 @@ export interface BattleCell { x: number; z: number; height: number; offsetY: num
 
 export enum AIBehavior { BASIC_MELEE = 'BASIC_MELEE', ARCHER = 'ARCHER', CASTER = 'CASTER', BOSS_LICH = 'BOSS_LICH' }
 
+export interface Incursion {
+    id: string;
+    q: number;
+    r: number;
+    difficulty: number;
+    rewardShards: number;
+    description: string;
+}
+
 export interface GameStateData {
     gameState: GameState; dimension: Dimension; difficulty: Difficulty;
     exploredTiles: Record<Dimension, Set<string>>; visitedTowns: Set<string>;
     clearedEncounters: Set<string>; townMapData: HexCell[] | null;
     playerPos: PositionComponent; isPlayerMoving: boolean;
     lastOverworldPos: PositionComponent | null; mapDimensions: { width: number; height: number };
-    quests: Record<string, Quest>; // Unify with OverworldSlice
+    quests: Record<string, Quest>;
     standingOnPortal: boolean; standingOnSettlement: boolean;
     standingOnTemple: boolean; standingOnDungeon: boolean; isMapOpen: boolean;
     gracePeriodEndTime: number; supplies: number; fatigue: number; worldTime: number; 
-    currentRegionName: string | null; activeNarrativeEvent: any | null; activeIncursion: any | null;
+    currentRegionName: string | null; activeNarrativeEvent: any | null; 
+    activeIncursion: Incursion | null;
+    incursions: Record<string, Incursion>; 
+    eternumShards: number; 
     standingOnPort: boolean;
     inspectedEntityId: string | null;
+    currentSettlementName: string | null;
 }
 
-/**
- * EnemyDefinition interface for bestiary and enemy generation.
- */
 export interface EnemyDefinition {
-  id: string;
-  name: string;
-  sprite: string;
-  hp: number;
-  ac: number;
-  damage: string;
-  initiativeBonus: number;
-  type: CreatureType;
-  xpReward: number;
-  aiBehavior?: AIBehavior;
-  resistances?: DamageType[];
-  vulnerabilities?: DamageType[];
-  immunities?: DamageType[];
+  id: string; name: string; sprite: string; hp: number; ac: number; damage: string;
+  initiativeBonus: number; type: CreatureType; xpReward: number; aiBehavior?: AIBehavior;
+  resistances?: DamageType[]; vulnerabilities?: DamageType[]; immunities?: DamageType[];
 }
 
-/**
- * SaveMetadata interface for save slot management.
- */
 export interface SaveMetadata {
-  slotIndex: number;
-  timestamp: number;
-  summary: {
-    charName: string;
-    level: number;
-    class: CharacterClass;
-    location: string;
-  };
+  slotIndex: number; timestamp: number; summary: { charName: string; level: number; class: CharacterClass; location: string; };
 }

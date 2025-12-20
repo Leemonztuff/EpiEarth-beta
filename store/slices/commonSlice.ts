@@ -10,10 +10,14 @@ export interface CommonSlice {
   isMapOpen: boolean;
   isScreenShaking: boolean;
   isScreenFlashing: boolean;
+  isAssetsLoaded: boolean;
+  assetLoadingProgress: number;
   addLog: (message: string, type?: GameLogEntry['type']) => void;
   setGameState: (state: GameState) => void;
   quitToMenu: () => void;
   toggleMap: () => void;
+  setAssetsLoaded: (loaded: boolean) => void;
+  setAssetLoadingProgress: (progress: number) => void;
   
   // Persistencia
   saveGame: (slotIndex?: number) => Promise<void>;
@@ -27,12 +31,18 @@ export const createCommonSlice: StateCreator<any, [], [], CommonSlice> = (set, g
   isMapOpen: false,
   isScreenShaking: false,
   isScreenFlashing: false,
+  isAssetsLoaded: false,
+  assetLoadingProgress: 0,
+  
   addLog: (message, type = 'info') => {
     set((state) => ({ 
         logs: [...state.logs, { id: Math.random().toString(36).substr(2, 9), message, type, timestamp: Date.now() }] 
     }));
   },
+  
   setGameState: (gs) => set({ gameState: gs }),
+  setAssetsLoaded: (loaded) => set({ isAssetsLoaded: loaded }),
+  setAssetLoadingProgress: (progress) => set({ assetLoadingProgress: progress }),
   
   quitToMenu: () => {
     set({ 
