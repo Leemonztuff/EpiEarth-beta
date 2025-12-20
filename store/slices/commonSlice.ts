@@ -8,6 +8,8 @@ export interface CommonSlice {
   logs: GameLogEntry[];
   isSleeping: boolean;
   isMapOpen: boolean;
+  isScreenShaking: boolean;
+  isScreenFlashing: boolean;
   addLog: (message: string, type?: GameLogEntry['type']) => void;
   setGameState: (state: GameState) => void;
   quitToMenu: () => void;
@@ -23,6 +25,8 @@ export const createCommonSlice: StateCreator<any, [], [], CommonSlice> = (set, g
   logs: [],
   isSleeping: false,
   isMapOpen: false,
+  isScreenShaking: false,
+  isScreenFlashing: false,
   addLog: (message, type = 'info') => {
     set((state) => ({ 
         logs: [...state.logs, { id: Math.random().toString(36).substr(2, 9), message, type, timestamp: Date.now() }] 
@@ -73,7 +77,8 @@ export const createCommonSlice: StateCreator<any, [], [], CommonSlice> = (set, g
         dimension: state.dimension,
         worldTime: state.worldTime,
         supplies: state.supplies,
-        fatigue: state.fatigue
+        fatigue: state.fatigue,
+        quests: state.quests
     };
 
     const summary = {

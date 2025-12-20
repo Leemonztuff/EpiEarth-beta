@@ -4,7 +4,7 @@ import { useGameStore } from '../store/gameStore';
 import { useContentStore } from '../store/contentStore';
 import { WorldGenerator } from '../services/WorldGenerator';
 import { TERRAIN_COLORS, NOISE_TEXTURE_URL, WESNOTH_BASE_URL } from '../constants';
-import { TerrainType, EnemyDefinition } from '../types';
+import { TerrainType, EnemyDefinition, Quest } from '../types';
 
 export const WorldMapScreen = () => {
     const { exploredTiles, dimension, playerPos, toggleMap, quests } = useGameStore();
@@ -16,10 +16,12 @@ export const WorldMapScreen = () => {
     const isDragging = useRef(false);
     const lastMouse = useRef({ x: 0, y: 0 });
 
-    const activeQuests = quests.filter(q => !q.completed);
+    // FIXED: Convert quests Record to array for filtering
+    const activeQuests = useMemo(() => 
+        Object.values(quests as Record<string, Quest>).filter(q => !q.completed)
+    , [quests]);
 
     // Lista de enemigos filtrada para el bestiario (excluyendo duplicados técnicos)
-    // Fix: Cast Object.values to EnemyDefinition[] to resolve 'unknown' type property access errors
     const bestiaryList = useMemo(() => {
         const enemyArray = Object.values(enemies) as EnemyDefinition[];
         return enemyArray.filter((e, index, self) => 
