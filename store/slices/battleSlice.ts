@@ -168,7 +168,6 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
 
       const aliveEnemies = newEntities.filter(e => e.type === 'ENEMY' && e.stats.hp > 0);
       if (aliveEnemies.length === 0) {
-          // CALCULAR SHARDS SI ESTAMOS EN SHADOW REALM
           const shardsEarned = state.dimension === Dimension.UPSIDE_DOWN ? (5 + Math.floor(Math.random() * 10)) : 0;
           set({ 
               gameState: GameState.BATTLE_VICTORY,
@@ -274,10 +273,22 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
 
   startBattle: (terrain, weather, enemyId) => {
       const contentState = useContentStore.getState();
+      const terrainTexture = ASSETS.TERRAIN[terrain] || ASSETS.TERRAIN[TerrainType.GRASS];
+      const fullTextureUrl = `${WESNOTH_BASE_URL}/${terrainTexture}`;
+
       const grid = [];
       for(let x=0; x<16; x++) {
           for(let z=0; z<16; z++) {
-              grid.push({ x, z, height: 1, offsetY: 0, color: TERRAIN_COLORS[terrain] || '#444', textureUrl: "", isObstacle: false, blocksSight: false, movementCost: 1 });
+              grid.push({ 
+                  x, z, 
+                  height: 1, 
+                  offsetY: 0, 
+                  color: TERRAIN_COLORS[terrain] || '#444', 
+                  textureUrl: fullTextureUrl, 
+                  isObstacle: false, 
+                  blocksSight: false, 
+                  movementCost: 1 
+              });
           }
       }
       const entities = get().party.map((p, i) => ({ ...p, position: { x: 4 + (i % 2), y: 6 + Math.floor(i / 2) } }));
@@ -286,7 +297,20 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
       for(let i=0; i < enemyCount; i++) {
           const defId = enemyId || encounterList[Math.floor(Math.random() * encounterList.length)];
           const def = contentState.enemies[defId] || { name: 'Skeleton', sprite: 'units/undead-skeletal/skeleton.png', hp: 15, ac: 12, damage: 6, initiativeBonus: 1 };
-          entities.push({ id: `enemy_${i}_${generateId()}`, defId, name: def.name, type: 'ENEMY', stats: calculateEnemyStats(def, get().party[0].stats.level, get().difficulty || Difficulty.NORMAL), visual: { color: '#ef4444', modelType: 'billboard', spriteUrl: def.sprite.startsWith('http') ? def.sprite : `${WESNOTH_BASE_URL}/${def.sprite}` }, position: { x: 11 - (i % 2), y: 6 + Math.floor(i / 2) }, aiBehavior: def.aiBehavior || AIBehavior.BASIC_MELEE });
+          entities.push({ 
+              id: `enemy_${i}_${generateId()}`, 
+              defId, 
+              name: def.name, 
+              type: 'ENEMY', 
+              stats: calculateEnemyStats(def, get().party[0].stats.level, get().difficulty || Difficulty.NORMAL), 
+              visual: { 
+                  color: '#ef4444', 
+                  modelType: 'billboard', 
+                  spriteUrl: def.sprite.startsWith('http') ? def.sprite : `${WESNOTH_BASE_URL}/${def.sprite}` 
+              }, 
+              position: { x: 11 - (i % 2), y: 6 + Math.floor(i / 2) }, 
+              aiBehavior: def.aiBehavior || AIBehavior.BASIC_MELEE 
+          });
       }
       
       const turnOrder = entities

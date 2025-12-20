@@ -43,7 +43,7 @@ export const AssetLoaderOverlay: React.FC = () => {
             <div className="relative z-10 mb-12">
                 <div className="w-32 h-32 bg-amber-500/10 rounded-full blur-3xl absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 animate-pulse" />
                 <img 
-                    src="https://iukchvkoumfwaxlgfhso.supabase.co/storage/v1/object/public/game-assets/wesnoth/items/gem-large-blue.png" 
+                    src="https://iukchvkoumfwaxlgfhso.supabase.co/storage/v1/object/public/game-assets/items/gem-large-blue.png" 
                     className="w-24 h-24 mx-auto drop-shadow-[0_0_20px_rgba(245,158,11,0.4)] animate-bounce mb-4" 
                     style={{ animationDuration: '3s' }}
                     alt="Loading..."
@@ -74,7 +74,7 @@ export const AssetLoaderOverlay: React.FC = () => {
 
             {/* Hint decorativo en la parte inferior */}
             <div className="absolute bottom-10 left-0 right-0 text-center opacity-30">
-                <p className="text-[8px] text-slate-400 font-mono">ASSET_MGR_V1.5 // SUPABASE_READY // CACHE_INIT</p>
+                <p className="text-[8px] text-slate-400 font-mono">ASSET_MGR_V1.6 // SUPABASE_READY // CACHE_INIT</p>
             </div>
         </div>
     );

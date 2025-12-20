@@ -8,6 +8,7 @@ import { useContentStore } from '../store/contentStore';
 import { AuthModal } from './AuthModal';
 import { SaveLoadModal } from './SaveLoadModal';
 import { sfx } from '../services/SoundSystem';
+import { AssetManager } from '../services/AssetManager';
 
 const StatBar: React.FC<{ label: string, value: number, bonus: number }> = ({ label, value, bonus }) => {
     const max = 20; 
@@ -47,7 +48,7 @@ export const TitleScreen: React.FC<{ onComplete: any }> = ({ onComplete }) => {
       return result;
   }, [race, cls]);
 
-  const spriteUrl = useMemo(() => getSprite(race, cls), [race, cls]);
+  const spriteUrl = useMemo(() => AssetManager.getSafeSprite(getSprite(race, cls)), [race, cls]);
 
   if (view === 'MENU') {
       return (
@@ -55,7 +56,7 @@ export const TitleScreen: React.FC<{ onComplete: any }> = ({ onComplete }) => {
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-black opacity-50" />
             
             <div className="relative z-10 mb-10 animate-in fade-in slide-in-from-top-4 duration-1000">
-                <img src={`${WESNOTH_BASE_URL}/items/gem-large-blue.png`} className="w-32 h-32 mx-auto drop-shadow-[0_0_30px_rgba(59,130,246,0.5)] animate-pulse" />
+                <img src={AssetManager.getSafeSprite('items/gem-large-blue.png')} className="w-32 h-32 mx-auto drop-shadow-[0_0_30px_rgba(59,130,246,0.5)] animate-pulse" />
                 <h1 className="text-5xl md:text-8xl font-serif font-black text-white tracking-tighter mt-4">EPIC EARTH</h1>
                 <div className="bg-red-600 text-white px-6 py-1 text-[10px] font-black uppercase tracking-[0.4em] mx-auto w-fit mt-2">Shards of Eternum</div>
             </div>
@@ -87,7 +88,7 @@ export const TitleScreen: React.FC<{ onComplete: any }> = ({ onComplete }) => {
                     <img 
                         src={spriteUrl} 
                         className="relative z-10 w-full h-full object-contain pixelated scale-[1.5] md:scale-[1.8] drop-shadow-[0_15px_30px_rgba(0,0,0,0.8)] transition-all"
-                        onError={(e) => { e.currentTarget.src = `${WESNOTH_BASE_URL}/units/human-loyalists/lieutenant.png`; }}
+                        onError={(e) => { e.currentTarget.src = AssetManager.getSafeSprite('units/human-loyalists/lieutenant.png'); }}
                     />
                 </div>
                 
@@ -164,7 +165,7 @@ export const TitleScreen: React.FC<{ onComplete: any }> = ({ onComplete }) => {
                             {Object.values(CharacterRace).map(r => (
                                 <button key={r} onClick={() => { setRace(r); sfx.playUiClick(); }} className={`p-4 rounded-xl border-2 transition-all text-center flex flex-col items-center gap-3 group relative ${race === r ? 'bg-slate-800 border-amber-500 shadow-lg shadow-amber-900/10' : 'bg-slate-900/40 border-slate-800'}`}>
                                     <div className="w-10 h-10 bg-black/40 rounded-full flex items-center justify-center border border-white/5 overflow-hidden group-hover:scale-110 transition-transform">
-                                        <img src={RACE_ICONS[r]} className={`w-8 h-8 object-contain transition-all ${race === r ? 'opacity-100' : 'opacity-40 invert grayscale group-hover:opacity-60'}`} />
+                                        <img src={AssetManager.getSafeSprite(RACE_ICONS[r])} className={`w-8 h-8 object-contain transition-all ${race === r ? 'opacity-100' : 'opacity-40 invert grayscale group-hover:opacity-60'}`} />
                                     </div>
                                     <span className={`text-[10px] font-black uppercase tracking-widest ${race === r ? 'text-white' : 'text-slate-500 group-hover:text-slate-300'}`}>{r}</span>
                                 </button>
@@ -179,7 +180,7 @@ export const TitleScreen: React.FC<{ onComplete: any }> = ({ onComplete }) => {
                                     <div className="flex justify-between items-start mb-2">
                                         <span className={`text-[11px] font-black uppercase tracking-widest ${cls === c ? 'text-amber-400' : 'text-white'}`}>{c}</span>
                                         <div className="w-6 h-6 bg-black/30 rounded flex items-center justify-center overflow-hidden">
-                                            <img src={CLASS_CONFIG[c]?.icon || RACE_ICONS[CharacterRace.HUMAN]} className={`w-5 h-5 object-contain transition-all ${cls === c ? 'opacity-100' : 'opacity-20 grayscale group-hover:opacity-40'}`} onError={e => e.currentTarget.style.display='none'} />
+                                            <img src={AssetManager.getSafeSprite(CLASS_CONFIG[c]?.icon || RACE_ICONS[CharacterRace.HUMAN])} className={`w-5 h-5 object-contain transition-all ${cls === c ? 'opacity-100' : 'opacity-20 grayscale group-hover:opacity-40'}`} onError={e => e.currentTarget.style.display='none'} />
                                         </div>
                                     </div>
                                     <div className="text-[9px] text-slate-500 uppercase font-bold tracking-tighter leading-tight">{CLASS_CONFIG[c]?.archetype || 'Fated Hero'}</div>

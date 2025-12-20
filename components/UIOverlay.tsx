@@ -6,6 +6,7 @@ import { useGameStore } from '../store/gameStore';
 import { InventoryScreen } from './InventoryScreen';
 import { WorldMapScreen } from './WorldMapScreen';
 import { WorldGenerator } from '../services/WorldGenerator';
+import { AssetManager } from '../services/AssetManager';
 
 const SolarClock = ({ time }: { time: number }) => {
     const hours = Math.floor(time / 60);
@@ -65,7 +66,6 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({ onOpenTownService }) => {
     const isOverworld = gameState === GameState.OVERWORLD || gameState === GameState.TOWN_EXPLORATION || gameState === GameState.DUNGEON;
     const isTown = gameState === GameState.TOWN_EXPLORATION;
 
-    // Inside town, we look at townMapData. Outside, we look at global generator.
     const currentTile = isTown && townMapData 
         ? townMapData.find(c => c.q === playerPos.x && c.r === playerPos.y)
         : WorldGenerator.getTile(playerPos.x, playerPos.y, dimension);
@@ -103,7 +103,7 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({ onOpenTownService }) => {
                 <div className="absolute left-4 top-1/2 -translate-y-1/2 flex flex-col gap-4 pointer-events-auto">
                     {party?.map((member, i) => (
                         <div key={member.id} className="relative w-14 h-14 rounded-full bg-slate-900 border-2 border-white/10 overflow-hidden shadow-2xl">
-                            <img src={member.visual?.spriteUrl} className="w-full h-full object-contain scale-[2] translate-y-3" />
+                            <img src={AssetManager.getSafeSprite(member.visual?.spriteUrl)} className="w-full h-full object-contain scale-[2] translate-y-3" />
                             <div className="absolute bottom-0 left-0 right-0 h-1 bg-black"><div className="h-full bg-emerald-500" style={{ width: `${(member.stats.hp/member.stats.maxHp)*100}%` }} /></div>
                         </div>
                     ))}

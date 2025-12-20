@@ -50,7 +50,6 @@ export const OverworldMap = ({ playerPos, onMove, dimension }: any) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const terrainCacheRef = useRef<HTMLCanvasElement>(null);
-    const cachedTilesSet = useRef<Set<string>>(new Set());
     
     const exploredTiles = useGameStore(s => s.exploredTiles);
     const party = useGameStore(s => s.party);
@@ -60,12 +59,9 @@ export const OverworldMap = ({ playerPos, onMove, dimension }: any) => {
     const townMapData = useGameStore(s => s.townMapData);
     const isAssetsLoaded = useGameStore(s => s.isAssetsLoaded);
 
-    const [images, setImages] = useState<Record<string, HTMLImageElement>>({});
-    const [hoverInfo, setHoverInfo] = useState<{ x: number, y: number, terrain: string, cost: number, poi?: string } | null>(null);
-
     const isTown = gameState === GameState.TOWN_EXPLORATION;
 
-    // Load images from AssetManager once precaching is done
+    // Cache the drawn terrain onto a large offscreen canvas to avoid redraw overhead
     useEffect(() => {
         if (!isAssetsLoaded) return;
         
@@ -75,24 +71,11 @@ export const OverworldMap = ({ playerPos, onMove, dimension }: any) => {
             terrainCacheRef.current.height = 6000;
         }
 
-        const loaded: Record<string, HTMLImageElement> = {};
-        // Discovered all possible terrain URLs from ASSETS
-        Object.values(ASSETS.TERRAIN).forEach(path => {
-            const img = AssetManager.getAsset(path);
-            if (img) loaded[path] = img;
-        });
-        
-        setImages(loaded);
-    }, [isAssetsLoaded]);
-
-    useEffect(() => {
         const canvas = terrainCacheRef.current;
-        if (!canvas || Object.keys(images).length === 0) return;
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d', { alpha: true });
         if (!ctx) return;
 
         ctx.clearRect(0,0,6000,6000);
-        cachedTilesSet.current.clear();
 
         if (isTown && townMapData) {
             townMapData.forEach(tile => {
@@ -108,7 +91,7 @@ export const OverworldMap = ({ playerPos, onMove, dimension }: any) => {
                 drawHex(ctx, x + 3000, y + 3000, tile);
             });
         }
-    }, [isTown, townMapData, exploredTiles, dimension, images]);
+    }, [isTown, townMapData, exploredTiles, dimension, isAssetsLoaded]);
 
     const drawHex = (ctx, cx, cy, tile) => {
         ctx.beginPath();
@@ -121,7 +104,7 @@ export const OverworldMap = ({ playerPos, onMove, dimension }: any) => {
         ctx.closePath();
 
         const terrainPath = ASSETS.TERRAIN[tile.terrain];
-        const img = images[terrainPath];
+        const img = AssetManager.getAsset(terrainPath);
 
         if (img) {
             ctx.save();
@@ -178,8 +161,12 @@ export const OverworldMap = ({ playerPos, onMove, dimension }: any) => {
         ctx.scale(zoom, zoom);
         ctx.translate(offsetX, offsetY);
 
-        ctx.drawImage(terrainCacheRef.current, -3000, -3000);
+        // Draw Cached Terrain
+        if (terrainCacheRef.current) {
+            ctx.drawImage(terrainCacheRef.current, -3000, -3000);
+        }
 
+        // Draw Incursions (Shadow Rifts)
         if (!isTown && dimension === Dimension.NORMAL) {
             Object.values(incursions).forEach(inc => {
                 const { x, y } = hexToPixel(inc.q, inc.r);
@@ -195,6 +182,8 @@ export const OverworldMap = ({ playerPos, onMove, dimension }: any) => {
         }
 
         const leader = party[0];
+        
+        // Draw Vision Fog
         if (!isTown) {
             const visionRange = calculateVisionRange(leader.stats.attributes.WIS, leader.stats.corruption || 0);
             const visionPx = visionRange * HEX_SIZE * 1.5;
@@ -208,23 +197,31 @@ export const OverworldMap = ({ playerPos, onMove, dimension }: any) => {
             ctx.restore();
         }
 
-        ctx.shadowBlur = 20;
-        ctx.shadowColor = leader.visual.color;
-        ctx.fillStyle = leader.visual.color;
-        ctx.beginPath();
-        ctx.arc(px, py, 6, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.shadowBlur = 0;
-
-        ctx.strokeStyle = 'white';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(px, py, 8, 0, Math.PI * 2);
-        ctx.stroke();
+        // DRAW PLAYER SPRITE
+        const playerImg = AssetManager.getAsset(leader.visual.spriteUrl);
+        if (playerImg) {
+            ctx.save();
+            const s = HEX_SIZE * 1.2;
+            // Add soft shadow
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = 'rgba(0,0,0,0.5)';
+            // Draw sprite
+            ctx.drawImage(playerImg, px - s/2, py - s + 5, s, s);
+            ctx.restore();
+        } else {
+            // Fallback dot
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = leader.visual.color;
+            ctx.fillStyle = leader.visual.color;
+            ctx.beginPath();
+            ctx.arc(px, py, 6, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
 
         ctx.restore();
 
-    }, [playerPos, party, worldTime, exploredTiles, dimension, incursions, isTown, townMapData]);
+    }, [playerPos, party, worldTime, exploredTiles, dimension, incursions, isTown, townMapData, isAssetsLoaded]);
 
     useEffect(() => {
         let frameId = requestAnimationFrame(function loop() {
@@ -234,33 +231,6 @@ export const OverworldMap = ({ playerPos, onMove, dimension }: any) => {
         return () => cancelAnimationFrame(frameId);
     }, [render]);
 
-    const handleMouseMove = (e: React.MouseEvent) => {
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-        const rect = canvas.getBoundingClientRect();
-        const dpr = window.devicePixelRatio || 1;
-        const zoom = isTown ? 2.0 : 1.4;
-        const { x: px, y: py } = hexToPixel(playerPos.x, playerPos.y);
-        
-        const mx = (e.clientX - rect.left) / zoom - ((canvas.width / (2 * dpr * zoom)) - px);
-        const my = (e.clientY - rect.top) / zoom - ((canvas.height / (2 * dpr * zoom)) - py);
-        
-        const { q, r } = pixelToAxial(mx, my);
-        let tile;
-        if (isTown && townMapData) {
-            tile = townMapData.find(c => c.q === q && c.r === r);
-        } else if (!isTown) {
-            tile = WorldGenerator.getTile(q, r, dimension);
-        }
-
-        if (tile) {
-            const cost = TERRAIN_MOVEMENT_COST[party[0].stats.movementType || MovementType.WALK][tile.terrain] || 1;
-            setHoverInfo({ x: e.clientX, y: e.clientY, terrain: tile.terrain, cost, poi: tile.poiType });
-        } else {
-            setHoverInfo(null);
-        }
-    };
-
     return (
         <div ref={containerRef} className="fixed inset-0 w-full h-full bg-slate-950 overflow-hidden">
             {!isTown && <WeatherOverlay type={WorldGenerator.getTile(playerPos.x, playerPos.y, dimension).weather} dimension={dimension} />}
@@ -268,8 +238,6 @@ export const OverworldMap = ({ playerPos, onMove, dimension }: any) => {
             <canvas 
                 ref={canvasRef} 
                 className="w-full h-full cursor-crosshair touch-none" 
-                onMouseMove={handleMouseMove}
-                onMouseLeave={() => setHoverInfo(null)}
                 onClick={(e) => {
                     const canvas = canvasRef.current;
                     if (!canvas) return;
@@ -283,27 +251,6 @@ export const OverworldMap = ({ playerPos, onMove, dimension }: any) => {
                     onMove(q, r);
                 }}
             />
-
-            {hoverInfo && (
-                <div 
-                    className="fixed pointer-events-none bg-slate-900/95 backdrop-blur-md border border-amber-500/30 p-2.5 rounded-lg shadow-2xl z-[150] flex flex-col gap-1 min-w-[120px] animate-in fade-in zoom-in-95 duration-100"
-                    style={{ left: hoverInfo.x + 20, top: hoverInfo.y - 20 }}
-                >
-                    <div className="flex items-center justify-between border-b border-white/10 pb-1 mb-1">
-                        <span className="text-[9px] font-black text-amber-500 uppercase tracking-widest">{isTown ? 'NAVIGATING TOWN' : 'SURVEYING WILDS'}</span>
-                        <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                    </div>
-                    <div className="text-[11px] font-black text-white uppercase tracking-tight">
-                        {hoverInfo.poi ? hoverInfo.poi.replace('_', ' ') : hoverInfo.terrain.replace('_', ' ')}
-                    </div>
-                    <div className="flex justify-between items-center mt-1 bg-black/40 px-1.5 py-0.5 rounded">
-                         <span className="text-[8px] font-bold text-slate-400">MOVE COST</span>
-                         <span className={`text-[10px] font-mono font-bold ${hoverInfo.cost >= 3 ? 'text-red-400' : hoverInfo.cost >= 2 ? 'text-amber-400' : 'text-emerald-400'}`}>
-                            {hoverInfo.cost >= 99 ? 'IMPASSABLE' : `${hoverInfo.cost} pts`}
-                         </span>
-                    </div>
-                </div>
-            )}
         </div>
     );
 };

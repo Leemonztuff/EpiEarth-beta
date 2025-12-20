@@ -5,7 +5,8 @@ import { TerrainType, CharacterClass, Attributes, CharacterRace, ItemRarity, Mov
 // Supabase Configuration
 export const SUPABASE_PROJECT_URL = "https://iukchvkoumfwaxlgfhso.supabase.co";
 export const ASSET_BUCKET = "game-assets";
-export const WESNOTH_BASE_URL = `${SUPABASE_PROJECT_URL}/storage/v1/object/public/${ASSET_BUCKET}/wesnoth`; 
+// Corregido: Ya no apunta a /wesnoth, sino a la raíz del bucket público
+export const WESNOTH_BASE_URL = `${SUPABASE_PROJECT_URL}/storage/v1/object/public/${ASSET_BUCKET}`; 
 export const NOISE_TEXTURE_URL = "https://www.transparenttextures.com/patterns/asfalt-dark.png";
 
 export const HEX_SIZE = 32;
@@ -97,10 +98,30 @@ export const ASSETS = {
     }
 };
 
-export const getSprite = (race: CharacterRace, cls: CharacterClass): string => CLASS_CONFIG[cls]?.icon || RACE_ICONS[race];
+/**
+ * Returns the relative path for a unit sprite based on race and class.
+ */
+export const getSprite = (race: CharacterRace, cls: CharacterClass): string => {
+    return CLASS_CONFIG[cls]?.icon || RACE_ICONS[race];
+};
 
 export const XP_TABLE: Record<number, number> = { 1: 300, 2: 900, 3: 2700, 4: 6500, 5: 14000, 6: 23000, 7: 34000, 8: 48000, 9: 64000, 10: 85000 };
-export const DAMAGE_ICONS: Record<DamageType, string> = { [DamageType.SLASHING]: `attacks/sword-human.png`, [DamageType.PIERCING]: `attacks/spear.png`, [DamageType.BLUDGEONING]: `attacks/mace.png`, [DamageType.FIRE]: `attacks/fireball.png`, [DamageType.COLD]: `attacks/iceball.png`, [DamageType.LIGHTNING]: `attacks/lightning.png`, [DamageType.POISON]: `attacks/fang.png`, [DamageType.ACID]: `attacks/slime.png`, [DamageType.NECROTIC]: `attacks/dark-missile.png`, [DamageType.RADIANT]: `attacks/lightbeam.png`, [DamageType.FORCE]: `attacks/magic-missile.png`, [DamageType.THUNDER]: `attacks/mace.png`, [DamageType.PSYCHIC]: `attacks/dark-missile.png`, [DamageType.MAGIC]: `attacks/magic-missile.png` };
+export const DAMAGE_ICONS: Record<DamageType, string> = { 
+    [DamageType.SLASHING]: `attacks/sword-human.png`, 
+    [DamageType.PIERCING]: `attacks/spear.png`, 
+    [DamageType.BLUDGEONING]: `attacks/mace.png`, 
+    [DamageType.FIRE]: `attacks/fireball.png`, 
+    [DamageType.COLD]: `attacks/iceball.png`, 
+    [DamageType.LIGHTNING]: `attacks/lightning.png`, 
+    [DamageType.POISON]: `attacks/fang.png`, 
+    [DamageType.ACID]: `attacks/slime.png`, 
+    [DamageType.NECROTIC]: `attacks/dark-missile.png`, 
+    [DamageType.RADIANT]: `attacks/lightbeam.png`, 
+    [DamageType.FORCE]: `attacks/magic-missile.png`, 
+    [DamageType.THUNDER]: `attacks/mace.png`, 
+    [DamageType.PSYCHIC]: `attacks/dark-missile.png`, 
+    [DamageType.MAGIC]: `attacks/magic-missile.png` 
+};
 export const BASE_STATS: Record<CharacterClass, Attributes> = { [CharacterClass.FIGHTER]: { STR: 15, DEX: 13, CON: 14, INT: 8, WIS: 10, CHA: 12 }, [CharacterClass.RANGER]: { STR: 12, DEX: 15, CON: 13, INT: 10, WIS: 14, CHA: 8 }, [CharacterClass.WIZARD]: { STR: 8, DEX: 13, CON: 12, INT: 15, WIS: 14, CHA: 10 }, [CharacterClass.CLERIC]: { STR: 14, DEX: 8, CON: 13, INT: 10, WIS: 15, CHA: 12 }, [CharacterClass.ROGUE]: { STR: 10, DEX: 15, CON: 12, INT: 13, WIS: 8, CHA: 14 }, [CharacterClass.BARBARIAN]: { STR: 15, DEX: 12, CON: 15, INT: 8, WIS: 10, CHA: 8 }, [CharacterClass.PALADIN]: { STR: 14, DEX: 8, CON: 14, INT: 10, WIS: 12, CHA: 15 }, [CharacterClass.SORCERER]: { STR: 8, DEX: 12, CON: 13, INT: 14, WIS: 10, CHA: 15 }, [CharacterClass.WARLOCK]: { STR: 10, DEX: 12, CON: 13, INT: 14, WIS: 8, CHA: 15 }, [CharacterClass.DRUID]: { STR: 12, DEX: 10, CON: 13, INT: 12, WIS: 15, CHA: 8 }, [CharacterClass.BARD]: { STR: 8, DEX: 14, CON: 12, INT: 12, WIS: 10, CHA: 15 } };
 export const RACE_BONUS: Record<CharacterRace, Partial<Attributes>> = { [CharacterRace.HUMAN]: { STR: 1, DEX: 1, CON: 1, INT: 1, WIS: 1, CHA: 1 }, [CharacterRace.ELF]: { DEX: 2, WIS: 1 }, [CharacterRace.DWARF]: { CON: 2, STR: 1 }, [CharacterRace.HALFLING]: { DEX: 2, CHA: 1 }, [CharacterRace.DRAGONBORN]: { STR: 2, CHA: 1 }, [CharacterRace.GNOME]: { INT: 2, DEX: 1 }, [CharacterRace.TIEFLING]: { CHA: 2, INT: 1 }, [CharacterRace.HALF_ORC]: { STR: 2, CON: 1 } };
 
@@ -113,9 +134,9 @@ export const DIFFICULTY_SETTINGS: Record<Difficulty, { enemyStatMod: number }> =
 export const CORRUPTION_THRESHOLDS = [25, 50, 75, 100];
 
 export const ITEMS: Record<string, any> = {
-    shortbow: { id: 'shortbow', name: 'Shortbow', type: 'equipment', rarity: ItemRarity.COMMON, description: 'A simple bow.', icon: '🏹', equipmentStats: { slot: EquipmentSlot.MAIN_HAND, diceCount: 1, diceSides: 6, damageType: DamageType.PIERCING, properties: ['Range'] } },
-    longsword: { id: 'longsword', name: 'Longsword', type: 'equipment', rarity: ItemRarity.COMMON, description: 'A sturdy blade.', icon: '🗡️', equipmentStats: { slot: EquipmentSlot.MAIN_HAND, diceCount: 1, diceSides: 8, damageType: DamageType.SLASHING } },
-    ration: { id: 'ration', name: 'Ration', type: 'consumable', rarity: ItemRarity.COMMON, description: 'Travel food.', icon: '🍞', effect: { type: EffectType.HEAL, fixedValue: 5 } }
+    shortbow: { id: 'shortbow', name: 'Shortbow', type: 'equipment', rarity: ItemRarity.COMMON, description: 'A simple bow.', icon: `items/bow.png`, equipmentStats: { slot: EquipmentSlot.MAIN_HAND, diceCount: 1, diceSides: 6, damageType: DamageType.PIERCING, properties: ['Range'] } },
+    longsword: { id: 'longsword', name: 'Longsword', type: 'equipment', rarity: ItemRarity.COMMON, description: 'A sturdy blade.', icon: `items/sword.png`, equipmentStats: { slot: EquipmentSlot.MAIN_HAND, diceCount: 1, diceSides: 8, damageType: DamageType.SLASHING } },
+    ration: { id: 'ration', name: 'Ration', type: 'consumable', rarity: ItemRarity.COMMON, description: 'Travel food.', icon: `items/grain-sheaf.png`, effect: { type: EffectType.HEAL, fixedValue: 5 } }
 };
 
 export const CLASS_TREES: Record<string, any> = {

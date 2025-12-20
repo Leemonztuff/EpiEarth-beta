@@ -4,15 +4,15 @@ import React, { useRef, useState, useEffect, useMemo, Suspense } from 'react';
 import { useFrame, useLoader } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
 import * as THREE from 'three';
-import { WESNOTH_BASE_URL, STATUS_COLORS } from '../../constants';
+import { STATUS_COLORS } from '../../constants';
 import { useGameStore } from '../../store/gameStore';
 import { BattleAction, StatusEffectType } from '../../types';
 import { TextureErrorBoundary } from './Shared';
+import { AssetManager } from '../../services/AssetManager';
 
 const SpriteRenderer = ({ url, isHit, statusEffects }: any) => {
-    const safeUrl = (typeof url === 'string' && url.trim().startsWith('http')) 
-        ? url 
-        : `${WESNOTH_BASE_URL}/units/human-loyalists/lieutenant.png`;
+    // Resolver URL usando AssetManager para garantizar que apunta al bucket correcto
+    const safeUrl = AssetManager.getSafeSprite(url);
     
     const texture = useLoader(THREE.TextureLoader, safeUrl);
     
