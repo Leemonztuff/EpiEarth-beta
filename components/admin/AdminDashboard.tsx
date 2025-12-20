@@ -10,6 +10,10 @@ const TABS = ['DASHBOARD', 'ITEMS', 'UNITS & SPAWNS', 'SPELLS', 'SKILLS', 'NPCs'
 export const AdminDashboard: React.FC = () => {
     const [activeTab, setActiveTab] = useState('DASHBOARD');
 
+    const exitAdmin = () => {
+        window.location.pathname = '/';
+    };
+
     return (
         <div className="flex h-screen w-screen bg-slate-900 text-slate-200 font-sans overflow-hidden">
             <div className="w-64 bg-slate-950 border-r border-slate-800 flex flex-col shrink-0">
@@ -29,7 +33,7 @@ export const AdminDashboard: React.FC = () => {
                     ))}
                 </nav>
                 <div className="p-4 border-t border-slate-800">
-                    <button onClick={() => window.location.pathname = '/'} className="w-full border border-slate-700 text-slate-400 px-4 py-2 rounded hover:bg-slate-800 hover:text-white transition-colors text-xs uppercase font-bold">
+                    <button onClick={exitAdmin} className="w-full border border-slate-700 text-slate-400 px-4 py-2 rounded hover:bg-slate-800 hover:text-white transition-colors text-xs uppercase font-bold">
                         ← Back to Game
                     </button>
                 </div>

@@ -50,6 +50,11 @@ export const TitleScreen: React.FC<{ onComplete: any }> = ({ onComplete }) => {
 
   const spriteUrl = useMemo(() => AssetManager.getSafeSprite(getSprite(race, cls)), [race, cls]);
 
+  const handleAdminPortal = () => {
+    sfx.playUiClick();
+    window.location.pathname = '/admin';
+  };
+
   if (view === 'MENU') {
       return (
         <div className="fixed inset-0 z-[150] bg-slate-950 flex flex-col items-center justify-center p-6 text-center overflow-hidden">
@@ -64,6 +69,18 @@ export const TitleScreen: React.FC<{ onComplete: any }> = ({ onComplete }) => {
             <div className="z-10 flex flex-col gap-3 w-full max-w-xs">
                 <button onClick={() => setView('CREATION')} className="bg-white text-black py-4 rounded-xl font-black uppercase tracking-widest text-sm hover:scale-105 transition-transform active:scale-95 shadow-xl">New Adventure</button>
                 <button onClick={() => setShowLoad(true)} className="bg-slate-900 text-white border border-slate-700 py-3 rounded-xl font-bold uppercase tracking-widest text-xs hover:bg-slate-800 transition-colors">Continue</button>
+            </div>
+
+            {/* Hidden Admin Access */}
+            <div className="absolute bottom-6 right-6 z-20">
+                <button 
+                    onClick={handleAdminPortal}
+                    className="p-3 bg-slate-900/40 hover:bg-slate-800 border border-white/5 rounded-full text-slate-600 hover:text-amber-500 transition-all group"
+                    title="Admin Portal"
+                >
+                    <span className="text-xs font-black uppercase tracking-tighter opacity-0 group-hover:opacity-100 mr-2 transition-opacity">Master Registry</span>
+                    ⚙️
+                </button>
             </div>
 
             {showLoad && <SaveLoadModal mode="load" onClose={() => setShowLoad(false)} />}
