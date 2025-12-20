@@ -124,6 +124,37 @@ export interface Skill {
   aoeRadius?: number; aoeType?: 'CIRCLE' | 'CONE'; icon: string;
 }
 
+export interface DialogueOption {
+  label: string;
+  nextNodeId?: string;
+  questTriggerId?: string;
+  action?: 'CLOSE' | 'SHOP' | 'INN' | 'SAVE' | 'REST' | 'REWARD';
+}
+
+export interface DialogueNode {
+  id: string;
+  text: string;
+  options: DialogueOption[];
+}
+
+export interface NPCEntity { 
+  id: string; 
+  name: string; 
+  role: string; 
+  sprite: string; 
+  dialogueNodes?: Record<string, DialogueNode>; 
+  startNodeId?: string;
+  // Fallbacks
+  dialogue: string[]; 
+  questId?: string; 
+}
+
+export interface Quest { 
+    id: string; title: string; description: string; completed: boolean; type: 'MAIN' | 'SIDE' | 'BOUNTY'; 
+    objective: { type: 'KILL' | 'VISIT' | 'COLLECT', targetId: string, count: number, current: number };
+    reward: { xp: number, gold: number, itemId?: string };
+}
+
 export interface HexCell {
   q: number; r: number; terrain: TerrainType; height?: number; 
   weather: WeatherType; isExplored: boolean; isVisible: boolean;
@@ -132,8 +163,6 @@ export interface HexCell {
   regionName?: string; encounterId?: string;
   npcs?: NPCEntity[];
 }
-
-export interface NPCEntity { id: string; name: string; role: string; sprite: string; dialogue: string[]; questId?: string; }
 
 export interface Quest { 
     id: string; title: string; description: string; completed: boolean; type: 'MAIN' | 'SIDE' | 'BOUNTY'; 

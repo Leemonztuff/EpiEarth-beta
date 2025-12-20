@@ -5,10 +5,10 @@ import {
     GameState, TerrainType, WeatherType, BattleCell, BattleAction, Entity, 
     CombatStatsComponent, PositionComponent, DamagePopup, SpellEffectData, SpellType, 
     CharacterClass, VisualComponent, AIBehavior, LootDrop, ItemRarity, Item, 
-    EquipmentSlot, Dimension, InventorySlot, CharacterRace, DamageType, Ability, TileEffectType, Skill, Spell, CreatureType, Difficulty, EffectType
+    EquipmentSlot, Dimension, InventorySlot, CharacterRace, DamageType, Ability, TileEffectType, Skill, Spell, CreatureType, Difficulty, EffectType, StatusEffectType
 } from '../../types';
 import { findBattlePath, getReachableTiles } from '../../services/pathfinding';
-import { rollDice, calculateEnemyStats, getAoETiles, calculateAttackRoll } from '../../services/dndRules';
+import { rollDice, calculateEnemyStats, getAoETiles, calculateAttackRoll, calculateHitChance, getAttackRange } from '../../services/dndRules';
 import { sfx } from '../../services/SoundSystem';
 import { TERRAIN_COLORS, ASSETS } from '../../constants';
 import { useContentStore } from '../contentStore';
@@ -22,16 +22,30 @@ const applyResolutionToEntities = (res: ActionResolution, actor: Entity, target:
             let nextHp = e.stats.hp + res.hpChange;
             let finalStats = { ...e.stats };
             finalStats.hp = Math.max(0, Math.min(e.stats.maxHp, nextHp));
+            
             const nextStatus = [...(finalStats.activeStatusEffects || [])];
             if (res.statusChanges) {
                 res.statusChanges.forEach(sc => {
                     const existing = nextStatus.find(s => s.type === sc.type);
-                    if (existing) existing.duration = Math.max(existing.duration, sc.duration);
-                    else nextStatus.push({ type: sc.type, duration: sc.duration, intensity: 1 });
+                    if (existing) {
+                        // Stacking logic: Max duration and increment intensity
+                        existing.duration = Math.max(existing.duration, sc.duration);
+                        existing.intensity = (existing.intensity || 1) + (sc.intensity || 0);
+                    } else {
+                        nextStatus.push({ type: sc.type, duration: sc.duration, intensity: sc.intensity || 1 });
+                    }
                 });
             }
             finalStats.activeStatusEffects = nextStatus;
             return { ...e, stats: finalStats };
+        }
+        // Handle immediate healing/drain effects on actor if present in resolution
+        if (e.id === actor.id && res.actorStatusChanges) {
+             let nextHp = e.stats.hp;
+             res.actorStatusChanges.forEach(asc => {
+                 if (asc.type === 'REGEN' as any) nextHp += asc.intensity; // Immediate gain from DRAIN
+             });
+             return { ...e, stats: { ...e.stats, hp: Math.min(e.stats.maxHp, nextHp) }};
         }
         return e;
     });
@@ -197,6 +211,24 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
               await get().executeAction(actor, [target]);
           }
       }
+      else if (state.selectedAction === BattleAction.MAGIC || state.selectedAction === BattleAction.SKILL) {
+          const ability = state.selectedSpell || state.selectedSkill;
+          if (!ability) return;
+
+          // AOE Logic
+          let targets = [];
+          if (ability.aoeRadius) {
+              const aoeTiles = getAoETiles({ x: actor.position.x, y: actor.position.y }, { x, y: z }, ability.aoeType || 'CIRCLE', ability.aoeRadius);
+              targets = state.battleEntities.filter(e => e.stats.hp > 0 && aoeTiles.some(t => t.x === e.position.x && t.y === e.position.y));
+          } else {
+              const target = state.battleEntities.find(e => e.stats.hp > 0 && e.position.x === x && e.position.y === z);
+              if (target) targets = [target];
+          }
+
+          if (targets.length > 0) {
+              await get().executeAction(actor, targets, ability);
+          }
+      }
   },
 
   executeAction: async (actor, targets, ability) => {
@@ -225,7 +257,13 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
       targets.forEach(target => {
           const res = ActionResolver.resolve(actor, target, effects, state.dimension, state.battleEntities);
           newEntities = applyResolutionToEntities(res, actor, target, newEntities);
-          allPopups.push(...res.popups.map(p => ({ ...p, id: generateId(), position: [target.position.x, 2, target.position.y], timestamp: Date.now() })));
+          allPopups.push(...res.popups.map(p => ({ 
+              ...p, 
+              id: generateId(), 
+              position: [target.position.x, 2, target.position.y], 
+              timestamp: Date.now() 
+          })));
+          
           if (res.didHit) sfx.playHit();
           
           const updatedTarget = newEntities.find(e => e.id === target.id);
@@ -235,13 +273,29 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
           }
       });
 
+      // Deduction of Mana/Stamina if applicable
+      if (ability) {
+          newEntities = newEntities.map(e => {
+              if (e.id === actor.id) {
+                  const s = { ...e.stats };
+                  if ('spellSlots' in s && s.spellSlots.current > 0) s.spellSlots = { ...s.spellSlots, current: s.spellSlots.current - 1 };
+                  if ('stamina' in s) s.stamina = Math.max(0, s.stamina - (ability.staminaCost || 0));
+                  return { ...e, stats: s };
+              }
+              return e;
+          });
+      }
+
       set({ 
           battleEntities: newEntities, 
           damagePopups: [...get().damagePopups, ...allPopups], 
           isActionAnimating: false, 
           activeSpellEffect: null, 
           hasActed: true, 
-          selectedAction: null 
+          selectedAction: null,
+          selectedSpell: null,
+          selectedSkill: null,
+          validTargets: []
       });
 
       const aliveEnemies = newEntities.filter(e => e.type === 'ENEMY' && e.stats.hp > 0);
@@ -258,18 +312,62 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
   advanceTurn: async () => {
       const state = get();
       let nextIdx = (state.currentTurnIndex + 1) % state.turnOrder.length;
+      
+      // Skip dead entities
       while (state.battleEntities.find(e => e.id === state.turnOrder[nextIdx])?.stats.hp <= 0) { 
           nextIdx = (nextIdx + 1) % state.turnOrder.length; 
       }
       
       const nextEnt = state.battleEntities.find(e => e.id === state.turnOrder[nextIdx]);
+      if (!nextEnt) return;
+
+      // --- STATUS TICK PHASE ---
+      const tickResult = ActionResolver.processStatusTick(nextEnt);
+      let updatedEntities = [...state.battleEntities];
+      let newPopups = [...state.damagePopups];
+
+      if (tickResult.hpChange !== 0 || tickResult.updatedEffects.length !== nextEnt.stats.activeStatusEffects.length) {
+          updatedEntities = updatedEntities.map(e => {
+              if (e.id === nextEnt.id) {
+                  const nextHp = Math.max(0, Math.min(e.stats.maxHp, e.stats.hp + tickResult.hpChange));
+                  return { ...e, stats: { ...e.stats, hp: nextHp, activeStatusEffects: tickResult.updatedEffects }};
+              }
+              return e;
+          });
+          
+          newPopups.push(...tickResult.popups.map(p => ({
+              ...p,
+              id: generateId(),
+              position: [nextEnt.position.x, 2.5, nextEnt.position.y],
+              timestamp: Date.now()
+          })));
+      }
+
       set({ 
+          battleEntities: updatedEntities,
+          damagePopups: newPopups,
           currentTurnIndex: nextIdx, 
           hasMoved: false, 
           hasActed: false, 
           selectedAction: null, 
           isUnitMenuOpen: false 
       });
+
+      // Check if unit died from DoT
+      const checkedEnt = updatedEntities.find(e => e.id === nextEnt.id);
+      if (checkedEnt?.stats.hp <= 0) {
+          if (checkedEnt.type === 'ENEMY') {
+              get().spawnLootDrop(checkedEnt);
+              get().updateQuestProgress('KILL', checkedEnt.defId, 1);
+          }
+          const aliveEnemies = updatedEntities.filter(e => e.type === 'ENEMY' && e.stats.hp > 0);
+          if (aliveEnemies.length === 0) {
+              set({ gameState: GameState.BATTLE_VICTORY });
+              return;
+          }
+          get().advanceTurn();
+          return;
+      }
 
       if (nextEnt?.type === 'ENEMY') {
           setTimeout(() => get().performEnemyTurn(), 800);
@@ -284,29 +382,68 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
       const players = state.battleEntities.filter(e => e.type === 'PLAYER' && e.stats.hp > 0);
       if (players.length === 0) { get().advanceTurn(); return; }
 
-      const target = players[0]; // IA básica: ataca al primero
-      const dist = Math.max(Math.abs(actor.position.x - target.position.x), Math.abs(actor.position.y - target.position.y));
+      // Basic AI: Attack nearest
+      const sortedPlayers = players.sort((a, b) => {
+          const distA = Math.max(Math.abs(actor.position.x - a.position.x), Math.abs(actor.position.y - a.position.y));
+          const distB = Math.max(Math.abs(actor.position.x - b.position.x), Math.abs(actor.position.y - b.position.y));
+          return distA - distB;
+      });
 
-      if (dist <= 1.5) {
+      const target = sortedPlayers[0];
+      const dist = Math.max(Math.abs(actor.position.x - target.position.x), Math.abs(actor.position.y - target.position.y));
+      const range = getAttackRange(actor);
+
+      if (dist <= range) {
           await get().executeAction(actor, [target]);
       } else {
-          // Movimiento básico hacia el jugador
-          const stepX = actor.position.x + Math.sign(target.position.x - actor.position.x);
-          const stepY = actor.position.y + Math.sign(target.position.y - actor.position.y);
-          set({ 
-              battleEntities: state.battleEntities.map(e => e.id === actor.id ? { ...e, position: { x: stepX, y: stepY } } : e) 
-          });
-          sfx.playStep();
-          await new Promise(r => setTimeout(r, 600));
-          if (Math.max(Math.abs(stepX - target.position.x), Math.abs(stepY - target.position.y)) <= 1.5) {
-              await get().executeAction(actor, [target]);
+          // Move towards player
+          const reachable = getReachableTiles(actor.position, 5, state.battleMap, new Set());
+          if (reachable.length > 0) {
+              const bestTile = reachable.sort((a, b) => {
+                  const distA = Math.max(Math.abs(a.x - target.position.x), Math.abs(a.y - target.position.y));
+                  const distB = Math.max(Math.abs(b.x - target.position.x), Math.abs(b.y - target.position.y));
+                  return distA - distB;
+              })[0];
+
+              set({ 
+                  battleEntities: state.battleEntities.map(e => e.id === actor.id ? { ...e, position: { x: bestTile.x, y: bestTile.y } } : e) 
+              });
+              sfx.playStep();
+              await new Promise(r => setTimeout(r, 600));
+              
+              const newDist = Math.max(Math.abs(bestTile.x - target.position.x), Math.abs(bestTile.y - target.position.y));
+              if (newDist <= range) {
+                  await get().executeAction(actor, [target]);
+              }
           }
       }
       setTimeout(() => get().advanceTurn(), 1000);
   },
 
   handleTileHover: (x, z) => set({ selectedTile: { x, z } }),
-  selectAction: (action) => set({ selectedAction: action, isUnitMenuOpen: false }),
+  selectAction: (action) => {
+      const state = get();
+      const actor = state.battleEntities.find(e => e.id === state.turnOrder[state.currentTurnIndex]);
+      if (!actor) return;
+
+      let validTargets = [];
+      if (action === BattleAction.ATTACK) {
+          const range = getAttackRange(actor);
+          validTargets = state.battleEntities
+            .filter(e => e.id !== actor.id && e.stats.hp > 0 && e.type === 'ENEMY')
+            .map(e => ({ x: e.position.x, y: e.position.y }))
+            .filter(pos => Math.max(Math.abs(pos.x - actor.position.x), Math.abs(pos.y - actor.position.y)) <= range);
+      } else if (action === BattleAction.MOVE) {
+          validTargets = getReachableTiles(actor.position, 5, state.battleMap, new Set(state.battleEntities.filter(e => e.stats.hp > 0).map(e => `${e.position.x},${e.position.y}`)));
+      }
+
+      set({ 
+          selectedAction: action, 
+          isUnitMenuOpen: false, 
+          validMoves: action === BattleAction.MOVE ? validTargets : [],
+          validTargets: action === BattleAction.ATTACK ? validTargets : []
+      });
+  },
   executeWait: () => get().advanceTurn(),
   removeDamagePopup: (id) => set(s => ({ damagePopups: s.damagePopups.filter(p => p.id !== id) })),
   inspectUnit: (id) => set({ inspectedEntityId: id }),

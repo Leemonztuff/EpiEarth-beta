@@ -1,6 +1,6 @@
 
 import { create } from 'zustand';
-import { Item, TerrainType, Spell, Skill, EnemyDefinition, Attributes, CharacterClass, NPCEntity } from '../types';
+import { Item, TerrainType, Spell, Skill, EnemyDefinition, Attributes, CharacterClass, NPCEntity, Quest } from '../types';
 import { getSupabase } from '../services/supabaseClient';
 
 export interface ContentState {
@@ -8,7 +8,8 @@ export interface ContentState {
     spells: Record<string, Spell>;
     skills: Record<string, Skill>;
     enemies: Record<string, EnemyDefinition>;
-    npcs: Record<string, NPCEntity>; // Added NPCs
+    npcs: Record<string, NPCEntity>;
+    quests: Record<string, Quest>; // Misiones globales
     encounters: Partial<Record<TerrainType, string[]>>;
     classStats: Record<CharacterClass, Attributes>;
     gameConfig: { mapScale: number };
@@ -35,9 +36,13 @@ export interface ContentState {
     createSkill: (data: Skill) => void;
     deleteSkill: (id: string) => void;
 
-    updateNPC: (id: string, data: NPCEntity) => void; // Added NPC actions
+    updateNPC: (id: string, data: NPCEntity) => void;
     createNPC: (data: NPCEntity) => void;
     deleteNPC: (id: string) => void;
+
+    updateQuest: (id: string, data: Quest) => void; // Nuevas acciones de Quest
+    createQuest: (data: Quest) => void;
+    deleteQuest: (id: string) => void;
     
     updateEncounterTable: (terrain: TerrainType, enemyIds: string[]) => void;
     updateClassStats: (cls: CharacterClass, stats: Attributes) => void;
@@ -53,7 +58,8 @@ export const useContentStore = create<ContentState>((set, get) => ({
     spells: {},
     skills: {},
     enemies: {},
-    npcs: {}, // Initialize empty npcs
+    npcs: {},
+    quests: {},
     encounters: {},
     classStats: {} as any,
     gameConfig: { mapScale: 0.08 },
@@ -72,7 +78,8 @@ export const useContentStore = create<ContentState>((set, get) => ({
             const newEnemies: any = {};
             const newSpells: any = {};
             const newSkills: any = {};
-            const newNpcs: any = {}; // New NPCs
+            const newNpcs: any = {};
+            const newQuests: any = {};
             const newEncounters: any = {};
             let newClassStats: any = {};
             let newConfig = { mapScale: 0.08 };
@@ -83,7 +90,8 @@ export const useContentStore = create<ContentState>((set, get) => ({
                     case 'ENEMY': newEnemies[row.id] = row.data; break;
                     case 'SPELL': newSpells[row.id] = row.data; break;
                     case 'SKILL': newSkills[row.id] = row.data; break;
-                    case 'NPC': newNpcs[row.id] = row.data; break; // Map NPC category
+                    case 'NPC': newNpcs[row.id] = row.data; break;
+                    case 'QUEST': newQuests[row.id] = row.data; break;
                     case 'ENCOUNTER_TABLE': newEncounters[row.id] = row.data; break;
                     case 'CLASS_STATS': newClassStats = row.data; break;
                     case 'SYSTEM_CONFIG': newConfig = row.data; break;
@@ -95,7 +103,8 @@ export const useContentStore = create<ContentState>((set, get) => ({
                 enemies: newEnemies, 
                 spells: newSpells, 
                 skills: newSkills, 
-                npcs: newNpcs, // Set NPCs
+                npcs: newNpcs,
+                quests: newQuests,
                 encounters: newEncounters,
                 classStats: newClassStats,
                 gameConfig: newConfig,
@@ -119,7 +128,8 @@ export const useContentStore = create<ContentState>((set, get) => ({
             ...Object.values(state.enemies).map((v: any) => ({ id: v.id, category: 'ENEMY', data: v })),
             ...Object.values(state.spells).map((v: any) => ({ id: v.id, category: 'SPELL', data: v })),
             ...Object.values(state.skills).map((v: any) => ({ id: v.id, category: 'SKILL', data: v })),
-            ...Object.values(state.npcs).map((v: any) => ({ id: v.id, category: 'NPC', data: v })), // Publish NPCs
+            ...Object.values(state.npcs).map((v: any) => ({ id: v.id, category: 'NPC', data: v })),
+            ...Object.values(state.quests).map((v: any) => ({ id: v.id, category: 'QUEST', data: v })),
             ...Object.entries(state.encounters).map(([k, v]) => ({ id: k, category: 'ENCOUNTER_TABLE', data: v })),
             { id: 'all_classes', category: 'CLASS_STATS', data: state.classStats },
             { id: 'main_config', category: 'SYSTEM_CONFIG', data: state.gameConfig }
@@ -156,10 +166,14 @@ export const useContentStore = create<ContentState>((set, get) => ({
     createNPC: (data) => set(s => ({ npcs: { ...s.npcs, [data.id]: data } })),
     deleteNPC: (id) => set(s => { const n = { ...s.npcs }; delete n[id]; return { npcs: n }; }),
 
+    updateQuest: (id, data) => set(s => ({ quests: { ...s.quests, [id]: data } })),
+    createQuest: (data) => set(s => ({ quests: { ...s.quests, [data.id]: data } })),
+    deleteQuest: (id) => set(s => { const n = { ...s.quests }; delete n[id]; return { quests: n }; }),
+
     updateEncounterTable: (terrain, ids) => set(s => ({ encounters: { ...s.encounters, [terrain]: ids } })),
     updateClassStats: (cls, stats) => set(s => ({ classStats: { ...s.classStats, [cls]: stats } })),
     updateConfig: (config) => set(s => ({ gameConfig: { ...s.gameConfig, ...config } })),
 
     exportData: () => JSON.stringify(get(), null, 2),
-    resetToDefaults: () => set({ items: {}, enemies: {}, encounters: {}, spells: {}, skills: {}, npcs: {} })
+    resetToDefaults: () => set({ items: {}, enemies: {}, encounters: {}, spells: {}, skills: {}, npcs: {}, quests: {} })
 }));

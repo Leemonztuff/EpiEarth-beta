@@ -1,22 +1,21 @@
 
 import React, { useState, useRef } from 'react';
 import { useContentStore } from '../../store/contentStore';
-import { Item, ItemRarity, EquipmentSlot, CharacterClass, Ability, TerrainType, CreatureType, EnemyDefinition, Spell, Skill, SpellType, DamageType, MagicSchool, NPCEntity } from '../../types';
+import { Item, ItemRarity, EquipmentSlot, CharacterClass, Ability, TerrainType, CreatureType, EnemyDefinition, Spell, Skill, SpellType, DamageType, MagicSchool, NPCEntity, Quest, DialogueNode, DialogueOption } from '../../types';
 import { RARITY_COLORS } from '../../constants';
 import { uploadAsset } from '../../services/supabaseClient';
 
-const TABS = ['DASHBOARD', 'ITEMS', 'UNITS & SPAWNS', 'SPELLS', 'SKILLS', 'NPCs', 'CLASSES', 'MAP CONFIG', 'EXPORT / SYNC'];
-const WESNOTH_GITHUB_BASE = "https://raw.githubusercontent.com/wesnoth/wesnoth/master/";
+const TABS = ['DASHBOARD', 'ITEMS', 'UNITS & SPAWNS', 'SPELLS', 'SKILLS', 'NPCs', 'QUESTS', 'CLASSES', 'MAP CONFIG', 'EXPORT / SYNC'];
 
 export const AdminDashboard: React.FC = () => {
     const [activeTab, setActiveTab] = useState('DASHBOARD');
 
     return (
         <div className="flex h-screen w-screen bg-slate-900 text-slate-200 font-sans overflow-hidden">
-            <div className="w-64 bg-slate-950 border-r border-slate-800 flex flex-col">
+            <div className="w-64 bg-slate-950 border-r border-slate-800 flex flex-col shrink-0">
                 <div className="p-6 border-b border-slate-800">
                     <h1 className="font-serif text-2xl text-amber-500 font-bold">Epic Admin</h1>
-                    <p className="text-xs text-slate-500 uppercase tracking-widest mt-1">RPG Maker Toolset</p>
+                    <p className="text-xs text-slate-500 uppercase tracking-widest mt-1">Tactical RPG Editor</p>
                 </div>
                 <nav className="flex-1 p-4 space-y-2 overflow-y-auto custom-scrollbar">
                     {TABS.map(tab => (
@@ -41,7 +40,7 @@ export const AdminDashboard: React.FC = () => {
                     <h2 className="text-xl font-bold text-slate-100">{activeTab}</h2>
                     <div className="flex items-center gap-4">
                         <span className="w-3 h-3 rounded-full bg-green-500 animate-pulse"></span>
-                        <span className="text-xs text-green-400 font-mono">SYSTEM ONLINE</span>
+                        <span className="text-xs text-green-400 font-mono uppercase tracking-widest">Master Mode</span>
                     </div>
                 </header>
                 
@@ -52,6 +51,7 @@ export const AdminDashboard: React.FC = () => {
                     {activeTab === 'SPELLS' && <SpellEditor />}
                     {activeTab === 'SKILLS' && <SkillEditor />}
                     {activeTab === 'NPCs' && <NPCEditor />}
+                    {activeTab === 'QUESTS' && <QuestEditor />}
                     {activeTab === 'CLASSES' && <ClassEditor />}
                     {activeTab === 'MAP CONFIG' && <MapConfigurator />}
                     {activeTab === 'EXPORT / SYNC' && <ExportView />}
@@ -62,7 +62,7 @@ export const AdminDashboard: React.FC = () => {
 };
 
 const DashboardHome = ({ changeTab }: { changeTab: (t: string) => void }) => {
-    const { items, enemies, spells, skills, npcs, isLoading } = useContentStore();
+    const { items, enemies, spells, skills, npcs, quests } = useContentStore();
     const StatCard = ({ title, count, color, tab }: any) => (
         <div onClick={() => changeTab(tab)} className={`bg-slate-800 p-6 rounded-xl border border-slate-700 hover:border-${color}-500 cursor-pointer transition-all group`}>
             <h3 className={`text-lg font-bold text-${color}-100 group-hover:text-${color}-400`}>{title}</h3>
@@ -73,59 +73,135 @@ const DashboardHome = ({ changeTab }: { changeTab: (t: string) => void }) => {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
             <StatCard title="Items" count={Object.keys(items).length} color="amber" tab="ITEMS" />
             <StatCard title="Enemies" count={Object.keys(enemies).length} color="red" tab="UNITS & SPAWNS" />
-            <StatCard title="Spells" count={Object.keys(spells).length} color="purple" tab="SPELLS" />
             <StatCard title="NPCs" count={Object.keys(npcs).length} color="green" tab="NPCs" />
+            <StatCard title="Quests" count={Object.keys(quests).length} color="blue" tab="QUESTS" />
         </div>
     );
 };
 
-const SpellEditor = () => {
-    const { spells, updateSpell, createSpell } = useContentStore();
+const QuestEditor = () => {
+    const { quests, updateQuest, createQuest, deleteQuest, enemies, items } = useContentStore();
     const [selectedId, setSelectedId] = useState<string | null>(null);
-    const [editForm, setEditForm] = useState<Partial<Spell>>({});
-    const handleSelect = (id: string) => { setSelectedId(id); setEditForm({ ...spells[id] }); };
-    const handleSave = () => { if (selectedId && editForm.name) { updateSpell(selectedId, editForm as Spell); alert('Spell Saved'); } };
-    const handleCreate = () => { const newId = `spell_${Date.now()}`; createSpell({ id: newId, name: 'New Spell', level: 1, range: 5, school: MagicSchool.EVOCATION, type: SpellType.DAMAGE, effects: [], description: '', animation: 'MAGIC', icon: '' }); handleSelect(newId); };
-    return (
-        <div className="flex gap-6 h-full">
-            <div className="w-1/3 bg-slate-950 rounded-lg border border-slate-800 flex flex-col">
-                <div className="p-4 border-b border-slate-800 flex justify-between items-center"><span className="font-bold text-purple-400 text-sm">GRIMOIRE</span><button onClick={handleCreate} className="bg-purple-600 hover:bg-purple-500 text-white px-2 py-1 rounded text-sm font-bold">+</button></div>
-                <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">{Object.values(spells).map((spell: any) => (<div key={spell.id} onClick={() => handleSelect(spell.id)} className={`p-3 rounded cursor-pointer flex items-center gap-3 border ${selectedId === spell.id ? 'bg-slate-800 border-purple-500' : 'bg-transparent border-transparent hover:bg-slate-900'}`}><div className="text-sm font-bold text-slate-200">{spell.name}</div></div>))}</div>
-            </div>
-            {selectedId && <div className="flex-1 bg-slate-800 p-6 rounded-lg border border-slate-700 overflow-y-auto"><div className="grid grid-cols-2 gap-4"><div><label className="text-xs text-slate-500 font-bold uppercase">Name</label><input type="text" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white" /></div></div><button onClick={handleSave} className="mt-6 w-full bg-purple-600 py-3 rounded font-bold">SAVE SPELL</button></div>}
-        </div>
-    );
-};
+    const [editForm, setEditForm] = useState<Partial<Quest>>({});
 
-const SkillEditor = () => {
-    const { skills, updateSkill, createSkill } = useContentStore();
-    const [selectedId, setSelectedId] = useState<string | null>(null);
-    const [editForm, setEditForm] = useState<Partial<Skill>>({});
-    const handleSelect = (id: string) => { setSelectedId(id); setEditForm({ ...skills[id] }); };
-    const handleSave = () => { if (selectedId && editForm.name) { updateSkill(selectedId, editForm as Skill); alert('Skill Saved'); } };
-    const handleCreate = () => { const newId = `skill_${Date.now()}`; createSkill({ id: newId, name: 'New Skill', description: '', staminaCost: 5, cooldown: 3, range: 1, effects: [], icon: '' }); handleSelect(newId); };
+    const handleSelect = (id: string) => { setSelectedId(id); setEditForm({ ...quests[id] }); };
+    const handleSave = () => { if (selectedId && editForm.title) { updateQuest(selectedId, editForm as Quest); alert('Quest Saved'); } };
+    const handleCreate = () => {
+        const newId = `quest_${Date.now()}`;
+        const newQuest: Quest = {
+            id: newId, title: 'New Quest', description: 'Help the village.', completed: false, type: 'SIDE',
+            objective: { type: 'KILL', targetId: 'ANY', count: 5, current: 0 },
+            reward: { xp: 500, gold: 100 }
+        };
+        createQuest(newQuest);
+        handleSelect(newId);
+    };
+
     return (
         <div className="flex gap-6 h-full">
-            <div className="w-1/3 bg-slate-950 rounded-lg border border-slate-800 flex flex-col">
-                <div className="p-4 border-b border-slate-800 flex justify-between items-center"><span className="font-bold text-blue-400 text-sm">TECHNIQUES</span><button onClick={handleCreate} className="bg-blue-600 hover:bg-blue-500 text-white px-2 py-1 rounded text-sm font-bold">+</button></div>
-                <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">{Object.values(skills).map((skill: any) => (<div key={skill.id} onClick={() => handleSelect(skill.id)} className={`p-3 rounded cursor-pointer flex items-center gap-3 border ${selectedId === skill.id ? 'bg-slate-800 border-blue-500' : 'bg-transparent border-transparent hover:bg-slate-900'}`}><div className="text-sm font-bold text-slate-200">{skill.name}</div></div>))}</div>
+            <div className="w-1/3 bg-slate-950 rounded-lg border border-slate-800 flex flex-col shrink-0">
+                <div className="p-4 border-b border-slate-800 flex justify-between items-center"><span className="text-xs font-bold text-blue-500 uppercase">Mission Logs</span><button onClick={handleCreate} className="bg-blue-600 hover:bg-blue-500 text-white px-2 py-1 rounded text-xs">+</button></div>
+                <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                    {Object.values(quests).map((q: any) => (
+                        <div key={q.id} onClick={() => handleSelect(q.id)} className={`p-3 rounded cursor-pointer border ${selectedId === q.id ? 'bg-slate-800 border-blue-500' : 'bg-transparent border-transparent hover:bg-slate-900'}`}>
+                            <div className="text-sm font-bold text-slate-200">{q.title}</div>
+                            <div className="text-[10px] text-slate-500 uppercase tracking-tighter">{q.type} • {q.objective.type}</div>
+                        </div>
+                    ))}
+                </div>
             </div>
-            {selectedId && <div className="flex-1 bg-slate-800 p-6 rounded-lg border border-slate-700 overflow-y-auto"><div className="grid grid-cols-2 gap-4"><div><label className="text-xs text-slate-500 font-bold uppercase">Name</label><input type="text" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white" /></div></div><button onClick={handleSave} className="mt-6 w-full bg-blue-600 py-3 rounded font-bold">SAVE SKILL</button></div>}
+            <div className="flex-1 bg-slate-800 rounded-lg border border-slate-700 p-6 overflow-y-auto custom-scrollbar">
+                {selectedId ? (
+                    <div className="space-y-6 max-w-xl mx-auto">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="col-span-2"><label className="text-xs font-bold text-slate-500 uppercase">Title</label><input type="text" value={editForm.title} onChange={e => setEditForm({...editForm, title: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white" /></div>
+                        </div>
+                        <div><label className="text-xs font-bold text-slate-500 uppercase">Description</label><textarea value={editForm.description} onChange={e => setEditForm({...editForm, description: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white h-20" /></div>
+                        
+                        <div className="p-4 bg-slate-950 rounded-lg border border-slate-700">
+                             <h4 className="text-xs font-black text-blue-400 uppercase mb-4 tracking-widest border-b border-white/5 pb-2">Objective Settings</h4>
+                             <div className="grid grid-cols-2 gap-4">
+                                 <div>
+                                     <label className="text-[10px] font-bold text-slate-500 uppercase">Type</label>
+                                     <select value={editForm.objective?.type} onChange={e => setEditForm({...editForm, objective: {...editForm.objective!, type: e.target.value as any}})} className="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs">
+                                         <option value="KILL">Kill Enemy</option>
+                                         <option value="VISIT">Visit Location</option>
+                                         <option value="COLLECT">Collect Item</option>
+                                     </select>
+                                 </div>
+                                 <div>
+                                     <label className="text-[10px] font-bold text-slate-500 uppercase">Target Count</label>
+                                     <input type="number" value={editForm.objective?.count} onChange={e => setEditForm({...editForm, objective: {...editForm.objective!, count: parseInt(e.target.value)}})} className="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs" />
+                                 </div>
+                             </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div><label className="text-[10px] font-bold text-slate-500 uppercase">Gold Reward</label><input type="number" value={editForm.reward?.gold} onChange={e => setEditForm({...editForm, reward: {...editForm.reward!, gold: parseInt(e.target.value)}})} className="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs" /></div>
+                            <div><label className="text-[10px] font-bold text-slate-500 uppercase">XP Reward</label><input type="number" value={editForm.reward?.xp} onChange={e => setEditForm({...editForm, reward: {...editForm.reward!, xp: parseInt(e.target.value)}})} className="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs" /></div>
+                        </div>
+
+                        <button onClick={handleSave} className="w-full bg-blue-600 py-3 rounded font-bold hover:bg-blue-500 shadow-lg transition-all">SAVE MISSION</button>
+                    </div>
+                ) : <div className="flex h-full items-center justify-center text-slate-500 italic">Select a quest to begin the chronicles.</div>}
+            </div>
         </div>
     );
 };
 
 const NPCEditor = () => {
-    const { npcs, updateNPC, createNPC, deleteNPC } = useContentStore();
+    const { npcs, updateNPC, createNPC, deleteNPC, quests } = useContentStore();
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [editForm, setEditForm] = useState<Partial<NPCEntity>>({});
     
-    const handleSelect = (id: string) => { setSelectedId(id); setEditForm({ ...npcs[id] }); };
+    // Editor de nodos de diálogo
+    const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
+
+    const handleSelect = (id: string) => { 
+        setSelectedId(id); 
+        setEditForm({ ...npcs[id] }); 
+        setActiveNodeId(npcs[id].startNodeId || null);
+    };
+
     const handleSave = () => { if (selectedId && editForm.name) { updateNPC(selectedId, editForm as NPCEntity); alert('NPC Saved'); } };
+    
     const handleCreate = () => { 
         const newId = `npc_${Date.now()}`; 
-        createNPC({ id: newId, name: 'New NPC', role: 'Villager', sprite: 'https://cdn.jsdelivr.net/gh/wesnoth/wesnoth@master/data/core/images/units/human-magi/white-mage.png', dialogue: ['Hello traveler.'] }); 
+        createNPC({ 
+            id: newId, 
+            name: 'New NPC', 
+            role: 'Villager', 
+            sprite: 'units/human-magi/white-mage.png', 
+            dialogue: [], 
+            startNodeId: 'root',
+            dialogueNodes: {
+                'root': { id: 'root', text: "Hello there!", options: [{ label: "Goodbye", action: 'CLOSE' }] }
+            }
+        }); 
         handleSelect(newId); 
+    };
+
+    const updateNode = (nodeId: string, data: Partial<DialogueNode>) => {
+        // Fix: Explicitly cast dialogueNodes to ensure type safety when updating a node
+        const nodes = { ...editForm.dialogueNodes } as Record<string, DialogueNode>;
+        nodes[nodeId] = { ...nodes[nodeId], ...data };
+        setEditForm({ ...editForm, dialogueNodes: nodes });
+    };
+
+    const addNode = () => {
+        const id = `node_${Date.now()}`;
+        updateNode(id, { id, text: "New text...", options: [] });
+        setActiveNodeId(id);
+    };
+
+    const addOption = (nodeId: string) => {
+        // Fix: Explicitly cast dialogueNodes to ensure type safety when adding an option
+        const nodes = { ...editForm.dialogueNodes } as Record<string, DialogueNode>;
+        const node = nodes[nodeId];
+        if (node) {
+            node.options.push({ label: "New Option", action: 'CLOSE' });
+            setEditForm({ ...editForm, dialogueNodes: nodes });
+        }
     };
 
     return (
@@ -135,29 +211,140 @@ const NPCEditor = () => {
                 <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
                     {Object.values(npcs).map((npc: any) => (
                         <div key={npc.id} onClick={() => handleSelect(npc.id)} className={`p-3 rounded cursor-pointer flex items-center gap-3 border ${selectedId === npc.id ? 'bg-slate-800 border-green-500' : 'bg-transparent border-transparent hover:bg-slate-900'}`}>
-                            <img src={npc.sprite} className="w-8 h-8 object-contain pixelated" />
-                            <div><div className="text-sm font-bold text-slate-200">{npc.name}</div><div className="text-[10px] text-slate-500">{npc.role}</div></div>
+                            <div className="w-8 h-8 flex items-center justify-center bg-black/40 rounded">
+                                <img src={`https://cdn.jsdelivr.net/gh/wesnoth/wesnoth@master/data/core/images/${npc.sprite}`} className="w-6 h-6 object-contain pixelated" />
+                            </div>
+                            <div><div className="text-sm font-bold text-slate-200">{npc.name}</div><div className="text-[10px] text-slate-500 uppercase">{npc.role}</div></div>
                         </div>
                     ))}
                 </div>
             </div>
             <div className="flex-1 bg-slate-800 rounded-lg border border-slate-700 p-6 overflow-y-auto custom-scrollbar">
                 {selectedId ? (
-                    <div className="space-y-6 max-w-xl mx-auto">
+                    <div className="space-y-8">
                         <div className="grid grid-cols-2 gap-4">
                             <div><label className="text-xs font-bold text-slate-500 uppercase">Name</label><input type="text" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white" /></div>
                             <div><label className="text-xs font-bold text-slate-500 uppercase">Role</label><input type="text" value={editForm.role} onChange={e => setEditForm({...editForm, role: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white" /></div>
                         </div>
-                        <div><label className="text-xs font-bold text-slate-500 uppercase">Quest ID (Optional)</label><input type="text" value={editForm.questId || ''} onChange={e => setEditForm({...editForm, questId: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white" /></div>
-                        <div>
-                            <label className="text-xs font-bold text-slate-500 uppercase">Dialogue Lines (One per line)</label>
-                            <textarea 
-                                value={editForm.dialogue?.join('\n')} 
-                                onChange={e => setEditForm({...editForm, dialogue: e.target.value.split('\n')})} 
-                                className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white h-32" 
-                            />
+                        <div><label className="text-xs font-bold text-slate-500 uppercase">Sprite Path (Wesnoth relative)</label><input type="text" value={editForm.sprite} onChange={e => setEditForm({...editForm, sprite: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white font-mono text-xs" /></div>
+
+                        {/* Dialogue Graph Editor Lite */}
+                        <div className="bg-slate-950 p-6 rounded-xl border border-slate-700 shadow-inner">
+                            <div className="flex justify-between items-center mb-6">
+                                <h4 className="text-sm font-black text-amber-500 uppercase tracking-widest">Dialogue Designer</h4>
+                                <button onClick={addNode} className="bg-amber-600 px-3 py-1 rounded text-[10px] font-black uppercase text-white hover:bg-amber-500">Add Node</button>
+                            </div>
+
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                {/* Lista de Nodos */}
+                                <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
+                                    {/* Fix: Explicitly cast dialogueNodes to ensure type safety when mapping nodes */}
+                                    {(Object.values(editForm.dialogueNodes || {}) as DialogueNode[]).map(node => (
+                                        <div 
+                                            key={node.id} 
+                                            onClick={() => setActiveNodeId(node.id)}
+                                            className={`p-3 rounded border cursor-pointer transition-all ${activeNodeId === node.id ? 'bg-amber-900/20 border-amber-500' : 'bg-slate-900 border-slate-800'}`}
+                                        >
+                                            <div className="flex justify-between text-[8px] font-black uppercase text-slate-500 mb-1">
+                                                <span>Node ID: {node.id}</span>
+                                                {editForm.startNodeId === node.id && <span className="text-amber-500">★ START</span>}
+                                            </div>
+                                            <div className="text-xs text-slate-300 truncate italic">"{node.text}"</div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* Editor de Nodo Activo */}
+                                {activeNodeId && editForm.dialogueNodes?.[activeNodeId] && (
+                                    <div className="bg-slate-900 p-4 rounded border border-slate-700 space-y-4 animate-in fade-in zoom-in-95">
+                                        <div>
+                                            <label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">NPC Text</label>
+                                            <textarea 
+                                                value={editForm.dialogueNodes[activeNodeId].text} 
+                                                onChange={e => updateNode(activeNodeId, { text: e.target.value })}
+                                                className="w-full bg-black border border-slate-700 rounded px-2 py-1 text-xs text-amber-100 h-20"
+                                            />
+                                        </div>
+                                        
+                                        <div>
+                                            <div className="flex justify-between items-center mb-2">
+                                                <label className="text-[10px] font-bold text-slate-500 uppercase">Options</label>
+                                                <button onClick={() => addOption(activeNodeId)} className="text-[8px] font-bold text-amber-500 hover:text-white uppercase">+ Add Option</button>
+                                            </div>
+                                            <div className="space-y-3">
+                                                {editForm.dialogueNodes[activeNodeId].options.map((opt, i) => (
+                                                    <div key={i} className="p-2 bg-black/40 rounded border border-slate-800 space-y-2">
+                                                        <input 
+                                                            placeholder="Label" 
+                                                            value={opt.label} 
+                                                            onChange={e => {
+                                                                // Fix: Explicitly cast dialogueNodes to ensure type safety when updating option label
+                                                                const nodes = {...editForm.dialogueNodes} as Record<string, DialogueNode>;
+                                                                nodes[activeNodeId].options[i].label = e.target.value;
+                                                                setEditForm({...editForm, dialogueNodes: nodes});
+                                                            }}
+                                                            className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-[10px]"
+                                                        />
+                                                        <div className="flex gap-2">
+                                                            <select 
+                                                                value={opt.action || 'NEXT'}
+                                                                onChange={e => {
+                                                                    // Fix: Explicitly cast dialogueNodes to ensure type safety when updating option action
+                                                                    const nodes = {...editForm.dialogueNodes} as Record<string, DialogueNode>;
+                                                                    const val = e.target.value;
+                                                                    nodes[activeNodeId].options[i].action = (val === 'NEXT' ? undefined : val as any);
+                                                                    setEditForm({...editForm, dialogueNodes: nodes});
+                                                                }}
+                                                                className="flex-1 bg-slate-900 border border-slate-800 rounded px-2 py-1 text-[8px] font-black"
+                                                            >
+                                                                <option value="NEXT">GO TO NODE</option>
+                                                                <option value="CLOSE">CLOSE DIALOGUE</option>
+                                                                <option value="SHOP">OPEN SHOP</option>
+                                                                <option value="SAVE">SAVE GAME</option>
+                                                                <option value="REWARD">GIVE REWARD</option>
+                                                            </select>
+                                                            {!opt.action && (
+                                                                <select 
+                                                                    value={opt.nextNodeId || ''}
+                                                                    onChange={e => {
+                                                                        // Fix: Explicitly cast dialogueNodes to ensure type safety when updating nextNodeId
+                                                                        const nodes = {...editForm.dialogueNodes} as Record<string, DialogueNode>;
+                                                                        nodes[activeNodeId].options[i].nextNodeId = e.target.value;
+                                                                        setEditForm({...editForm, dialogueNodes: nodes});
+                                                                    }}
+                                                                    className="flex-1 bg-slate-900 border border-slate-800 rounded px-2 py-1 text-[8px]"
+                                                                >
+                                                                    <option value="">Select Destination...</option>
+                                                                    {Object.keys(editForm.dialogueNodes).map(id => <option key={id} value={id}>{id}</option>)}
+                                                                </select>
+                                                            )}
+                                                        </div>
+                                                        <div className="flex items-center gap-2 mt-1">
+                                                            <label className="text-[8px] font-black text-slate-600 uppercase">Quest Trigger:</label>
+                                                            <select 
+                                                                value={opt.questTriggerId || ''}
+                                                                onChange={e => {
+                                                                    // Fix: Explicitly cast dialogueNodes to ensure type safety when updating questTriggerId
+                                                                    const nodes = {...editForm.dialogueNodes} as Record<string, DialogueNode>;
+                                                                    nodes[activeNodeId].options[i].questTriggerId = e.target.value;
+                                                                    setEditForm({...editForm, dialogueNodes: nodes});
+                                                                }}
+                                                                className="flex-1 bg-slate-900 border border-slate-800 rounded px-1 py-0.5 text-[8px]"
+                                                            >
+                                                                <option value="">No Quest</option>
+                                                                {Object.keys(quests).map(id => <option key={id} value={id}>{quests[id].title}</option>)}
+                                                            </select>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </div>
-                        <button onClick={handleSave} className="w-full bg-green-600 py-3 rounded font-bold hover:bg-green-500 shadow-lg transition-all">SAVE CITIZEN</button>
+
+                        <button onClick={handleSave} className="w-full bg-green-600 py-3 rounded font-bold hover:bg-green-500 shadow-lg transition-all uppercase tracking-widest">SAVE WORLD CITIZEN</button>
                     </div>
                 ) : <div className="flex h-full items-center justify-center text-slate-500 italic">Select an NPC to start writing destiny.</div>}
             </div>
@@ -209,6 +396,42 @@ const ItemEditor = () => {
                     </div>
                 ) : <div className="flex h-full items-center justify-center text-slate-500">Select an item</div>}
             </div>
+        </div>
+    );
+};
+
+const SpellEditor = () => {
+    const { spells, updateSpell, createSpell } = useContentStore();
+    const [selectedId, setSelectedId] = useState<string | null>(null);
+    const [editForm, setEditForm] = useState<Partial<Spell>>({});
+    const handleSelect = (id: string) => { setSelectedId(id); setEditForm({ ...spells[id] }); };
+    const handleSave = () => { if (selectedId && editForm.name) { updateSpell(selectedId, editForm as Spell); alert('Spell Saved'); } };
+    const handleCreate = () => { const newId = `spell_${Date.now()}`; createSpell({ id: newId, name: 'New Spell', level: 1, range: 5, school: MagicSchool.EVOCATION, type: SpellType.DAMAGE, effects: [], description: '', animation: 'MAGIC', icon: '' }); handleSelect(newId); };
+    return (
+        <div className="flex gap-6 h-full">
+            <div className="w-1/3 bg-slate-950 rounded-lg border border-slate-800 flex flex-col shrink-0">
+                <div className="p-4 border-b border-slate-800 flex justify-between items-center"><span className="font-bold text-purple-400 text-sm">GRIMOIRE</span><button onClick={handleCreate} className="bg-purple-600 hover:bg-purple-500 text-white px-2 py-1 rounded text-sm font-bold">+</button></div>
+                <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">{Object.values(spells).map((spell: any) => (<div key={spell.id} onClick={() => handleSelect(spell.id)} className={`p-3 rounded cursor-pointer flex items-center gap-3 border ${selectedId === spell.id ? 'bg-slate-800 border-purple-500' : 'bg-transparent border-transparent hover:bg-slate-900'}`}><div className="text-sm font-bold text-slate-200">{spell.name}</div></div>))}</div>
+            </div>
+            {selectedId && <div className="flex-1 bg-slate-800 p-6 rounded-lg border border-slate-700 overflow-y-auto"><div className="grid grid-cols-2 gap-4"><div><label className="text-xs text-slate-500 font-bold uppercase">Name</label><input type="text" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white" /></div></div><button onClick={handleSave} className="mt-6 w-full bg-purple-600 py-3 rounded font-bold">SAVE SPELL</button></div>}
+        </div>
+    );
+};
+
+const SkillEditor = () => {
+    const { skills, updateSkill, createSkill } = useContentStore();
+    const [selectedId, setSelectedId] = useState<string | null>(null);
+    const [editForm, setEditForm] = useState<Partial<Skill>>({});
+    const handleSelect = (id: string) => { setSelectedId(id); setEditForm({ ...skills[id] }); };
+    const handleSave = () => { if (selectedId && editForm.name) { updateSkill(selectedId, editForm as Skill); alert('Skill Saved'); } };
+    const handleCreate = () => { const newId = `skill_${Date.now()}`; createSkill({ id: newId, name: 'New Skill', description: '', staminaCost: 5, cooldown: 3, range: 1, effects: [], icon: '' }); handleSelect(newId); };
+    return (
+        <div className="flex gap-6 h-full">
+            <div className="w-1/3 bg-slate-950 rounded-lg border border-slate-800 flex flex-col shrink-0">
+                <div className="p-4 border-b border-slate-800 flex justify-between items-center"><span className="font-bold text-blue-400 text-sm">TECHNIQUES</span><button onClick={handleCreate} className="bg-blue-600 hover:bg-blue-500 text-white px-2 py-1 rounded text-sm font-bold">+</button></div>
+                <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">{Object.values(skills).map((skill: any) => (<div key={skill.id} onClick={() => handleSelect(skill.id)} className={`p-3 rounded cursor-pointer flex items-center gap-3 border ${selectedId === skill.id ? 'bg-slate-800 border-blue-500' : 'bg-transparent border-transparent hover:bg-slate-900'}`}><div className="text-sm font-bold text-slate-200">{skill.name}</div></div>))}</div>
+            </div>
+            {selectedId && <div className="flex-1 bg-slate-800 p-6 rounded-lg border border-slate-700 overflow-y-auto"><div className="grid grid-cols-2 gap-4"><div><label className="text-xs text-slate-500 font-bold uppercase">Name</label><input type="text" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white" /></div></div><button onClick={handleSave} className="mt-6 w-full bg-blue-600 py-3 rounded font-bold">SAVE SKILL</button></div>}
         </div>
     );
 };

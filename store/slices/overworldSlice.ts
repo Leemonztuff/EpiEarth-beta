@@ -128,43 +128,41 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
       }
       
       if (tile && tile.npcs && tile.npcs.length > 0) {
-          // In a real game, tile.npcs might contain IDs instead of full objects
-          // We'll prioritize data from the contentStore if IDs match
           const baseNpc = tile.npcs[0];
           const storedNpc = content.npcs[baseNpc.id];
           const npc = storedNpc || baseNpc;
 
-          // Build dynamic options based on stored NPC data
-          const options = [];
-          
-          // Quest offering logic
-          if (npc.questId && !get().quests[npc.questId]) {
-              options.push({
-                  label: "Accept Quest",
-                  action: () => {
-                      // We'd ideally pull the quest definition from a quest store too
-                      get().addQuest({
-                          id: npc.questId,
-                          title: "Shadow Culling",
-                          description: "The Elder needs the surrounding areas cleansed of hostile spirits.",
-                          completed: false,
-                          type: 'BOUNTY',
-                          objective: { type: 'KILL', targetId: 'ANY', count: 3, current: 0 },
-                          reward: { xp: 500, gold: 100 }
-                      });
-                  }
-              });
-          }
-
-          options.push({ label: "Continue", action: () => {} });
-
-          set({ 
+          // Branching dialogue support
+          if (npc.dialogueNodes && npc.startNodeId) {
+            set({ 
               gameState: GameState.DIALOGUE, 
-              activeNarrativeEvent: {
-                  npc,
-                  options
-              }
-          });
+              activeNarrativeEvent: { npc, currentNodeId: npc.startNodeId }
+            });
+          } else {
+            // Legacy/Fallback Logic
+            const options = [];
+            if (npc.questId && !get().quests[npc.questId]) {
+                options.push({
+                    label: "Accept Quest",
+                    action: () => {
+                        get().addQuest({
+                            id: npc.questId,
+                            title: "Shadow Culling",
+                            description: "The Elder needs the surrounding areas cleansed of hostile spirits.",
+                            completed: false,
+                            type: 'BOUNTY',
+                            objective: { type: 'KILL', targetId: 'ANY', count: 3, current: 0 },
+                            reward: { xp: 500, gold: 100 }
+                        });
+                    }
+                });
+            }
+            options.push({ label: "Continue", action: () => {} });
+            set({ 
+                gameState: GameState.DIALOGUE, 
+                activeNarrativeEvent: { npc, options }
+            });
+          }
           sfx.playUiClick();
       }
   },
@@ -249,12 +247,14 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
         const incursionKey = `${step.q},${step.r}`;
         const activeInc = state.incursions[incursionKey];
 
+        const isPOI = (tile.poiType === 'VILLAGE' || tile.poiType === 'TOWN' || tile.poiType === 'CITY');
+
         set({ 
             playerPos: { x: step.q, y: step.r },
             fatigue: Math.min(100, currentFatigue),
             supplies: currentSupplies,
             worldTime: currentTime,
-            standingOnSettlement: !isTown && (tile.poiType === 'VILLAGE' || tile.poiType === 'TOWN' || tile.poiType === 'CITY'),
+            standingOnSettlement: !isTown && isPOI,
             standingOnPort: tile.poiType === 'PORT',
             standingOnPortal: !isTown && (tile.hasPortal || !!activeInc),
             standingOnTemple: tile.poiType === 'TEMPLE',
@@ -284,6 +284,8 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
   enterSettlement: () => {
     const { playerPos, dimension } = get();
     const tile = WorldGenerator.getTile(playerPos.x, playerPos.y, dimension);
+    if (!tile.poiType || tile.poiType === 'DUNGEON' || tile.poiType === 'TEMPLE') return;
+    
     const interiorMap = WorldGenerator.generateSettlementMap(playerPos.x, playerPos.y, tile.poiType as any);
     set({ 
         gameState: GameState.TOWN_EXPLORATION,
@@ -313,7 +315,7 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
   buySupplies: (amount, cost) => { if (get().spendGold(cost)) set(s => ({ supplies: s.supplies + amount })); },
   resolveNarrativeOption: (idx) => { 
       const { activeNarrativeEvent } = get();
-      if (activeNarrativeEvent && activeNarrativeEvent.options[idx]) {
+      if (activeNarrativeEvent && activeNarrativeEvent.options && activeNarrativeEvent.options[idx]) {
           const opt = activeNarrativeEvent.options[idx];
           if (opt.action) opt.action();
       }

@@ -4,17 +4,18 @@ import React, { useRef, useState, useEffect, useMemo, Suspense } from 'react';
 import { useFrame, useLoader } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
 import * as THREE from 'three';
-import { STATUS_COLORS } from '../../constants';
-import { useGameStore } from '../../store/gameStore';
-import { BattleAction, StatusEffectType } from '../../types';
+import { StatusEffectType, BattleAction } from '../../types';
 import { TextureErrorBoundary } from './Shared';
 import { AssetManager } from '../../services/AssetManager';
+import { useGameStore } from '../../store/gameStore';
 
 const SpriteRenderer = ({ url, isHit, statusEffects }: any) => {
-    // Resolver URL usando AssetManager
+    // Return null immediately if no URL is provided to trigger the ErrorBoundary or show nothing
+    if (!url || url.includes('undefined')) return null;
+
     const safeUrl = useMemo(() => AssetManager.getSafeSprite(url), [url]);
     
-    // IMPORTANTE: Configurar CORS para permitir texturas del CDN
+    // Configurar CORS para permitir texturas del CDN
     const texture = useLoader(THREE.TextureLoader, safeUrl, (loader) => {
         loader.setCrossOrigin('anonymous');
     });
@@ -56,8 +57,8 @@ const RadialMenu = ({ onSelect, remainingActions, hasMoved, canMagic, canSkill, 
     const actions = [
         { id: BattleAction.MOVE, icon: '👣', label: 'Mover', disabled: hasMoved, cost: null },
         { id: BattleAction.ATTACK, icon: '⚔️', label: 'Atacar', disabled: remainingActions <= 0, cost: null },
-        { id: BattleAction.MAGIC, icon: '✨', label: 'Magia', disabled: remainingActions <= 0 || !canMagic || stats?.spellSlots.current <= 0, cost: stats?.spellSlots.current, costType: 'MP' },
-        { id: BattleAction.SKILL, icon: '🔥', label: 'Técnica', disabled: remainingActions <= 0 || !canSkill || stats?.stamina < 10, cost: stats?.stamina, costType: 'ST' },
+        { id: BattleAction.MAGIC, icon: '✨', label: 'Magia', disabled: remainingActions <= 0 || !canMagic || (stats?.spellSlots?.current || 0) <= 0, cost: stats?.spellSlots?.current, costType: 'MP' },
+        { id: BattleAction.SKILL, icon: '🔥', label: 'Técnica', disabled: remainingActions <= 0 || !canSkill || (stats?.stamina || 0) < 10, cost: stats?.stamina, costType: 'ST' },
         { id: BattleAction.WAIT, icon: '🛡️', label: 'Pasar', disabled: false, cost: null },
     ];
 
@@ -101,7 +102,7 @@ const RadialMenu = ({ onSelect, remainingActions, hasMoved, canMagic, canSkill, 
 
 export const BillboardUnit = React.memo(({ 
     position, color, isCurrentTurn, hp, maxHp, 
-    onUnitClick, isActing, actionType, 
+    onUnitClick, onInspect, isActing, actionType, 
     entityType, spriteUrl, entity, activeStatusEffects
 }: any) => {
   const groupRef = useRef<THREE.Group>(null);
@@ -129,7 +130,7 @@ export const BillboardUnit = React.memo(({
       }
   });
 
-  if (!hp || hp <= 0) return null;
+  if (hp <= 0) return null;
   const hpPercent = Math.max(0, Math.min(1, hp / (maxHp || 1)));
 
   return (
@@ -139,8 +140,14 @@ export const BillboardUnit = React.memo(({
         onPointerOut={(e) => { e.stopPropagation(); setIsHovered(false); }}
         onClick={(e) => { 
             e.stopPropagation(); 
+            // Left click: Open menu or select target
             if (isCurrentTurn && entityType === 'PLAYER') setUnitMenuOpen(!isUnitMenuOpen);
             else if (onUnitClick) onUnitClick(position[0], position[2]);
+        }}
+        onContextMenu={(e) => {
+            e.nativeEvent.preventDefault();
+            e.stopPropagation();
+            if (onInspect) onInspect();
         }}
     >
         {isCurrentTurn && (
@@ -150,8 +157,18 @@ export const BillboardUnit = React.memo(({
             </mesh>
         )}
         
-        <TextureErrorBoundary fallback={<mesh position={[0, 0.75, 0]}><boxGeometry args={[0.6, 1.2, 0.1]} /><meshStandardMaterial color={color || '#ff00ff'} /></mesh>}>
-            <Suspense fallback={<mesh position={[0, 0.75, 0]}><boxGeometry args={[0.4, 0.4, 0.4]} /><meshStandardMaterial color="#444" wireframe /></mesh>}>
+        <TextureErrorBoundary fallback={
+            <mesh position={[0, 0.75, 0]}>
+                <capsuleGeometry args={[0.3, 0.8, 4, 8]} />
+                <meshStandardMaterial color={color || '#ff00ff'} emissive={color} emissiveIntensity={0.2} />
+            </mesh>
+        }>
+            <Suspense fallback={
+                <mesh position={[0, 0.75, 0]}>
+                    <boxGeometry args={[0.4, 0.4, 0.4]} />
+                    <meshStandardMaterial color="#444" wireframe />
+                </mesh>
+            }>
                 <group position={[0, 0.8, 0]}>
                     <SpriteRenderer url={spriteUrl} isHit={shouldShake} statusEffects={activeStatusEffects} />
                 </group>
@@ -160,7 +177,15 @@ export const BillboardUnit = React.memo(({
 
         {isCurrentTurn && isUnitMenuOpen && (
             <Html position={[0, 1.0, 0]} center zIndexRange={[100, 0]}>
-                <RadialMenu entity={entity} onSelect={(id) => id === BattleAction.WAIT ? executeWait() : selectAction(id)} onClose={() => setUnitMenuOpen(false)} remainingActions={remainingActions} hasMoved={hasMoved} canMagic={(entity?.stats?.knownSpells?.length || 0) > 0} canSkill={(entity?.stats?.knownSkills?.length || 0) > 0} />
+                <RadialMenu 
+                    entity={entity} 
+                    onSelect={(id) => id === BattleAction.WAIT ? executeWait() : selectAction(id)} 
+                    onClose={() => setUnitMenuOpen(false)} 
+                    remainingActions={remainingActions} 
+                    hasMoved={hasMoved} 
+                    canMagic={(entity?.stats?.knownSpells?.length || 0) > 0} 
+                    canSkill={(entity?.stats?.knownSkills?.length || 0) > 0} 
+                />
             </Html>
         )}
 
