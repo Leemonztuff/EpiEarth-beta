@@ -7,6 +7,14 @@
     <title>Epic Earth: Shards of Eternum</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Lato:wght@400;700&display=swap" rel="stylesheet">
+    <script>
+      // Compatibilidad para process.env en el navegador
+      window.process = { 
+        env: { 
+          API_KEY: "" 
+        } 
+      };
+    </script>
     <style>
       body {
         font-family: 'Lato', sans-serif;
