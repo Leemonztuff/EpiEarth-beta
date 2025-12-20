@@ -1,6 +1,7 @@
 
 import { CharacterClass, CharacterRace, Attributes, ItemRarity, DamageType, Ability, CombatStatsComponent } from '../types';
-import { RACE_BONUS, CLASS_TREES, RACE_SKILLS } from '../constants';
+// Fix: Removed non-existent and unused RACE_SKILLS import from constants
+import { RACE_BONUS, CLASS_TREES } from '../constants';
 import { useContentStore } from '../store/contentStore';
 import { rollDice, getModifier } from './dndRules';
 

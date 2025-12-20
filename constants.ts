@@ -5,8 +5,11 @@ import { TerrainType, CharacterClass, Attributes, CharacterRace, ItemRarity, Mov
 // Supabase Configuration
 export const SUPABASE_PROJECT_URL = "https://iukchvkoumfwaxlgfhso.supabase.co";
 export const ASSET_BUCKET = "game-assets";
-// Corregido: Ya no apunta a /wesnoth, sino a la raíz del bucket público
 export const WESNOTH_BASE_URL = `${SUPABASE_PROJECT_URL}/storage/v1/object/public/${ASSET_BUCKET}`; 
+
+// CDN Configuration for Units (Wesnoth Repository)
+export const WESNOTH_CDN_URL = "https://cdn.jsdelivr.net/gh/wesnoth/wesnoth@master/data/core/images";
+
 export const NOISE_TEXTURE_URL = "https://www.transparenttextures.com/patterns/asfalt-dark.png";
 
 export const HEX_SIZE = 32;
@@ -99,7 +102,7 @@ export const ASSETS = {
 };
 
 /**
- * Returns the relative path for a unit sprite based on race and class.
+ * Returns the relative path for a unit sprite.
  */
 export const getSprite = (race: CharacterRace, cls: CharacterClass): string => {
     return CLASS_CONFIG[cls]?.icon || RACE_ICONS[race];
@@ -164,15 +167,4 @@ export const CLASS_TREES: Record<string, any> = {
     [CharacterClass.WARLOCK]: [],
     [CharacterClass.DRUID]: [],
     [CharacterClass.BARD]: []
-};
-
-export const RACE_SKILLS: Record<string, string[]> = {
-    [CharacterRace.HUMAN]: ['adaptability'],
-    [CharacterRace.ELF]: ['fey_ancestry'],
-    [CharacterRace.DWARF]: ['dwarven_resilience'],
-    [CharacterRace.HALFLING]: ['lucky'],
-    [CharacterRace.DRAGONBORN]: ['breath_weapon'],
-    [CharacterRace.GNOME]: ['gnome_cunning'],
-    [CharacterRace.TIEFLING]: ['hellish_rebuke'],
-    [CharacterRace.HALF_ORC]: ['relentless_endurance']
 };

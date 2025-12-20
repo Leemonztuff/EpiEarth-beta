@@ -11,8 +11,8 @@ import { TextureErrorBoundary } from './Shared';
 import { AssetManager } from '../../services/AssetManager';
 
 const SpriteRenderer = ({ url, isHit, statusEffects }: any) => {
-    // Resolver URL usando AssetManager para garantizar que apunta al bucket correcto
-    const safeUrl = AssetManager.getSafeSprite(url);
+    // Resolver URL usando AssetManager
+    const safeUrl = useMemo(() => AssetManager.getSafeSprite(url), [url]);
     
     const texture = useLoader(THREE.TextureLoader, safeUrl);
     
@@ -25,7 +25,7 @@ const SpriteRenderer = ({ url, isHit, statusEffects }: any) => {
     }, [texture]);
 
     const tintColor = useMemo(() => {
-        if (isHit) return new THREE.Color('#ff0000');
+        if (isHit) return new THREE.Color('#ff4444');
         if (!statusEffects || statusEffects.length === 0) return new THREE.Color('white');
         const primary = statusEffects[0].type;
         if (primary === StatusEffectType.POISON) return new THREE.Color('#4ade80');
@@ -36,7 +36,14 @@ const SpriteRenderer = ({ url, isHit, statusEffects }: any) => {
 
     return (
         <sprite scale={[1.8, 1.8, 1]}>
-            <spriteMaterial map={texture} transparent={true} alphaTest={0.5} color={tintColor} depthWrite={false} />
+            <spriteMaterial 
+                map={texture} 
+                transparent={true} 
+                alphaTest={0.5} 
+                color={tintColor} 
+                depthWrite={false}
+                toneMapped={false}
+            />
         </sprite>
     );
 };
@@ -57,7 +64,7 @@ const RadialMenu = ({ onSelect, remainingActions, hasMoved, canMagic, canSkill, 
         <div className="relative w-0 h-0 flex items-center justify-center animate-in zoom-in-75 duration-300">
             <div className="fixed inset-0 z-[-1]" onClick={(e) => { e.stopPropagation(); onClose(); }} />
             <div className="relative w-64 h-64 flex items-center justify-center">
-                <div className="absolute w-20 h-20 rounded-full bg-slate-900/60 backdrop-blur-xl border-2 border-white/10 shadow-[0_0_40px_rgba(0,0,0,0.8)]" />
+                <div className="absolute w-20 h-20 rounded-full bg-slate-900/80 backdrop-blur-2xl border-2 border-white/10 shadow-[0_0_50px_rgba(0,0,0,0.8)]" />
                 {actions.map((action, i) => {
                     const angle = (i / actions.length) * Math.PI * 2 - Math.PI / 2;
                     const x = Math.cos(angle) * radius;
@@ -140,7 +147,7 @@ export const BillboardUnit = React.memo(({
             </mesh>
         )}
         
-        <TextureErrorBoundary fallback={<mesh position={[0, 0.75, 0]}><boxGeometry args={[0.6, 1.5, 0.2]} /><meshStandardMaterial color={color || '#ff00ff'} /></mesh>}>
+        <TextureErrorBoundary fallback={<mesh position={[0, 0.75, 0]}><boxGeometry args={[0.6, 1.2, 0.1]} /><meshStandardMaterial color={color || '#ff00ff'} /></mesh>}>
             <Suspense fallback={<mesh position={[0, 0.75, 0]}><boxGeometry args={[0.4, 0.4, 0.4]} /><meshStandardMaterial color="#444" wireframe /></mesh>}>
                 <group position={[0, 0.8, 0]}>
                     <SpriteRenderer url={spriteUrl} isHit={shouldShake} statusEffects={activeStatusEffects} />
