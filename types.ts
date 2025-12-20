@@ -163,7 +163,7 @@ export interface HexCell {
   poiType?: 'VILLAGE' | 'TOWN' | 'CITY' | 'CASTLE' | 'RUINS' | 'SHOP' | 'INN' | 'PLAZA' | 'EXIT' | 'TEMPLE' | 'DUNGEON' | 'RAID_ENCOUNTER' | 'PORT' | 'MONUMENT'; 
   regionName?: string; encounterId?: string;
   npcs?: NPCEntity[];
-  decorations?: HexDecoration[]; // NUEVO
+  decorations?: HexDecoration[];
 }
 
 export interface BattleCell { x: number; z: number; height: number; offsetY: number; color: string; textureUrl: string; isObstacle: boolean; blocksSight: boolean; movementCost: number; effect?: { type: TileEffectType, duration: number }; }
@@ -179,7 +179,6 @@ export interface Incursion {
     description: string;
 }
 
-// Added missing Quest interface
 export interface Quest {
   id: string;
   title: string;
@@ -187,7 +186,7 @@ export interface Quest {
   completed: boolean;
   type: 'MAIN' | 'BOUNTY' | 'SIDE' | 'FETCH' | 'TALK';
   objective: {
-    type: 'KILL' | 'COLLECT' | 'VISIT' | 'TALK';
+    type: 'KILL' | 'COLLECT' | 'VISIT' | 'TALK' | 'CLEAR_LOCATION';
     targetId: string;
     count: number;
     current: number;
@@ -202,7 +201,7 @@ export interface Quest {
 export interface GameStateData {
     gameState: GameState; dimension: Dimension; difficulty: Difficulty;
     exploredTiles: Record<Dimension, Set<string>>; visitedTowns: Set<string>;
-    clearedEncounters: Set<string>; townMapData: HexCell[] | null;
+    clearedEncounters: Set<string>; clearedLocations: Set<string>; townMapData: HexCell[] | null;
     playerPos: PositionComponent; isPlayerMoving: boolean;
     lastOverworldPos: PositionComponent | null; mapDimensions: { width: number; height: number };
     quests: Record<string, Quest>;

@@ -6,9 +6,8 @@ import { WorldGenerator } from '../../services/WorldGenerator';
 import { findPath } from '../../services/pathfinding';
 import { calculateVisionRange } from '../../services/dndRules';
 import { sfx } from '../../services/SoundSystem';
-import { getSupabase } from '../../services/supabaseClient';
-import { TERRAIN_MOVEMENT_COST, ITEMS, WESNOTH_BASE_URL } from '../../constants';
-import { useContentStore } from '../contentStore';
+import { GeminiService } from '../../services/GeminiService';
+import { TERRAIN_MOVEMENT_COST, ITEMS } from '../../constants';
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
@@ -19,6 +18,7 @@ export interface OverworldSlice {
   exploredTiles: Record<Dimension, Set<string>>;
   visitedTowns: Set<string>; 
   clearedEncounters: Set<string>;
+  clearedLocations: Set<string>;
   townMapData: HexCell[] | null;
   playerPos: PositionComponent;
   isPlayerMoving: boolean;
@@ -40,6 +40,7 @@ export interface OverworldSlice {
   gracePeriodEndTime: number;
   activeNarrativeEvent: any | null;
   userSession: any | null;
+  isAmbushed: boolean;
   
   initializeWorld: () => void;
   movePlayerOverworld: (q: number, r: number) => Promise<void>;
@@ -48,6 +49,7 @@ export interface OverworldSlice {
   camp: () => Promise<void>;
   usePortal: () => void;
   enterSettlement: () => void;
+  enterDungeon: () => void;
   exitSettlement: () => void;
   setUserSession: (session: any) => void;
   logout: () => Promise<void>;
@@ -65,6 +67,7 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
   exploredTiles: { [Dimension.NORMAL]: new Set(), [Dimension.UPSIDE_DOWN]: new Set() },
   visitedTowns: new Set(),
   clearedEncounters: new Set(),
+  clearedLocations: new Set(),
   townMapData: null,
   playerPos: { x: 0, y: 0 },
   isPlayerMoving: false,
@@ -86,26 +89,18 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
   gracePeriodEndTime: 0,
   activeNarrativeEvent: null,
   userSession: null,
+  isAmbushed: false,
 
   setUserSession: (session) => set({ userSession: session }),
 
   spawnIncursion: () => {
       const { playerPos, incursions, dimension } = get();
       if (dimension === Dimension.UPSIDE_DOWN) return; 
-      
       const id = generateId();
       const q = playerPos.x + Math.floor((Math.random() - 0.5) * 12);
       const r = playerPos.y + Math.floor((Math.random() - 0.5) * 12);
-      
-      const newIncursion: Incursion = {
-          id, q, r,
-          difficulty: 1,
-          rewardShards: 0, 
-          description: "A spatial tear to the shadow realm."
-      };
-      
-      set({ incursions: { ...incursions, [`${q},${r}`]: newIncursion } });
-      get().addLog("A Rift has appeared! The fabric of reality is thin.", "narrative");
+      set({ incursions: { ...incursions, [`${q},${r}`]: { id, q, r, difficulty: 1, rewardShards: 0, description: "A rift in reality." } } });
+      get().addLog("A Rift has appeared nearby!", "narrative");
   },
 
   logout: async () => {
@@ -113,56 +108,23 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
       if (supabase) await supabase.auth.signOut();
       set({ userSession: null });
       sfx.playUiClick();
-      get().addLog("Logged out.", "info");
   },
 
   initializeWorld: () => { WorldGenerator.init(12345); },
 
   talkToNPC: () => {
       const { playerPos, gameState, townMapData } = get();
-      const content = useContentStore.getState();
-      
       let tile;
-      if (gameState === GameState.TOWN_EXPLORATION && townMapData) {
+      if ((gameState === GameState.TOWN_EXPLORATION || gameState === GameState.DUNGEON) && townMapData) {
           tile = townMapData.find(c => c.q === playerPos.x && c.r === playerPos.y);
       }
       
       if (tile && tile.npcs && tile.npcs.length > 0) {
-          const baseNpc = tile.npcs[0];
-          const storedNpc = content.npcs[baseNpc.id];
-          const npc = storedNpc || baseNpc;
-
-          // Branching dialogue support
-          if (npc.dialogueNodes && npc.startNodeId) {
-            set({ 
+          const npc = tile.npcs[0];
+          set({ 
               gameState: GameState.DIALOGUE, 
-              activeNarrativeEvent: { npc, currentNodeId: npc.startNodeId }
-            });
-          } else {
-            // Legacy/Fallback Logic
-            const options = [];
-            if (npc.questId && !get().quests[npc.questId]) {
-                options.push({
-                    label: "Accept Quest",
-                    action: () => {
-                        get().addQuest({
-                            id: npc.questId,
-                            title: "Shadow Culling",
-                            description: "The Elder needs the surrounding areas cleansed of hostile spirits.",
-                            completed: false,
-                            type: 'BOUNTY',
-                            objective: { type: 'KILL', targetId: 'ANY', count: 3, current: 0 },
-                            reward: { xp: 500, gold: 100 }
-                        });
-                    }
-                });
-            }
-            options.push({ label: "Continue", action: () => {} });
-            set({ 
-                gameState: GameState.DIALOGUE, 
-                activeNarrativeEvent: { npc, options }
-            });
-          }
+              activeNarrativeEvent: { npc, currentNodeId: npc.startNodeId || 'start' }
+          });
           sfx.playUiClick();
       }
   },
@@ -176,9 +138,10 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
               q.objective.current = Math.min(q.objective.count, q.objective.current + amount);
               if (q.objective.current >= q.objective.count) {
                   q.completed = true;
-                  get().addLog(`Quest Complete: ${q.title}`, "levelup");
+                  get().addLog(`QUEST COMPLETE: ${q.title}`, "levelup");
                   get().addGold(q.reward.gold);
                   get().addPartyXp(q.reward.xp);
+                  if (q.reward.items) q.reward.items.forEach(it => get().addItem(it));
               }
               changed = true;
           }
@@ -197,43 +160,50 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
     const state = get();
     if (state.isPlayerMoving || state.party.length === 0) return;
     
-    const isTown = state.gameState === GameState.TOWN_EXPLORATION;
+    const isLocal = state.gameState === GameState.TOWN_EXPLORATION || state.gameState === GameState.DUNGEON;
     const leader = state.party[0];
     const moveType = leader.stats.movementType || MovementType.WALK;
+    const isVoid = state.dimension === Dimension.UPSIDE_DOWN;
     
     const path = findPath(
         {q: state.playerPos.x, r: state.playerPos.y}, 
         {q, r}, 
-        isTown ? state.townMapData : undefined, 
-        isTown ? undefined : (qx, rx) => WorldGenerator.getTile(qx, rx, state.dimension), 
+        isLocal ? state.townMapData : undefined, 
+        isLocal ? undefined : (qx, rx) => WorldGenerator.getTile(qx, rx, state.dimension), 
         moveType
     );
     if (!path) return;
 
-    set({ isPlayerMoving: true });
+    set({ isPlayerMoving: true, isAmbushed: false });
     
     let currentFatigue = state.fatigue;
     let currentSupplies = state.supplies;
     let currentTime = state.worldTime;
 
     for (const step of path) {
-        if (get().gameState !== GameState.OVERWORLD && get().gameState !== GameState.TOWN_EXPLORATION) break;
+        if (get().gameState !== GameState.OVERWORLD && get().gameState !== GameState.TOWN_EXPLORATION && get().gameState !== GameState.DUNGEON) break;
 
         let tile;
-        if (isTown) tile = state.townMapData.find(c => c.q === step.q && c.r === step.r);
+        if (isLocal) tile = state.townMapData.find(c => c.q === step.q && c.r === step.r);
         else tile = WorldGenerator.getTile(step.q, step.r, state.dimension);
 
+        const hours = Math.floor(currentTime / 60);
+        const isNight = hours < 6 || hours >= 22;
+
         const cost = TERRAIN_MOVEMENT_COST[moveType][tile.terrain] || 1;
-        const fatigueMult = isTown ? 0.2 : (state.dimension === Dimension.UPSIDE_DOWN ? 2.5 : 1.0);
+        
+        // El Vacío agota un 50% más adicional (2.5x en total si es noche + vacío)
+        const fatigueMult = (isNight ? 2.0 : 1.0) * (isVoid ? 1.5 : 1.0);
         currentFatigue += (cost * 0.15 * fatigueMult);
         
-        if (!isTown && Math.random() > 0.7) currentSupplies = Math.max(0, currentSupplies - 1);
+        // Consumo de suministros más alto en el Vacío
+        const supplyChance = isVoid ? 0.8 : 0.9;
+        if (!isLocal && Math.random() > supplyChance) currentSupplies = Math.max(0, currentSupplies - 1);
+        
         currentTime = (currentTime + (cost * 15)) % 1440;
 
-        if (!isTown && state.dimension === Dimension.NORMAL && Math.random() > 0.985) get().spawnIncursion();
-
-        if (!isTown) {
-            const vision = calculateVisionRange(leader.stats.attributes.WIS, leader.stats.corruption || 0);
+        if (!isLocal) {
+            const vision = calculateVisionRange(leader.stats.attributes.WIS, leader.stats.corruption || 0, currentTime, state.dimension);
             const newExplored = new Set(get().exploredTiles[get().dimension]);
             for(let dq = -vision; dq <= vision; dq++) {
                 for(let dr = -vision; dr <= vision; dr++) {
@@ -244,39 +214,46 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
             set({ exploredTiles: { ...get().exploredTiles, [get().dimension]: newExplored } });
         }
 
-        const incursionKey = `${step.q},${step.r}`;
-        const activeInc = state.incursions[incursionKey];
-
-        const isPOI = (tile.poiType === 'VILLAGE' || tile.poiType === 'TOWN' || tile.poiType === 'CITY');
-
         set({ 
             playerPos: { x: step.q, y: step.r },
             fatigue: Math.min(100, currentFatigue),
             supplies: currentSupplies,
             worldTime: currentTime,
-            standingOnSettlement: !isTown && isPOI,
-            standingOnPort: tile.poiType === 'PORT',
-            standingOnPortal: !isTown && (tile.hasPortal || !!activeInc),
-            standingOnTemple: tile.poiType === 'TEMPLE',
-            standingOnDungeon: tile.poiType === 'DUNGEON',
-            currentRegionName: isTown ? state.currentRegionName : tile.regionName
+            standingOnSettlement: !isLocal && (tile.poiType === 'VILLAGE' || tile.poiType === 'TOWN' || tile.poiType === 'CITY' || tile.poiType === 'CASTLE'),
+            standingOnDungeon: !isLocal && (tile.poiType === 'DUNGEON' || tile.poiType === 'RUINS'),
+            standingOnPortal: !isLocal && tile.hasPortal,
+            standingOnTemple: !isLocal && tile.poiType === 'TEMPLE',
+            currentRegionName: isLocal ? state.currentRegionName : tile.regionName
         });
 
-        if (isTown && tile.poiType === 'EXIT') {
+        // ENCUENTROS AGRESIVOS EN EL VACÍO
+        if (!isLocal && tile.hasEncounter) {
+            let baseChance = isNight ? 0.08 : 0.02; 
+            if (isVoid) baseChance = 0.15; // Probabilidad fija alta en el Vacío
+
+            if (Math.random() < baseChance) {
+                 set({ isPlayerMoving: false });
+                 const isAmbush = (isNight || isVoid) ? (Math.random() > 0.5) : (Math.random() > 0.85);
+                 
+                 if (isAmbush) {
+                     set({ isAmbushed: true });
+                     const ambushText = await GeminiService.generateAmbushFlavor(tile.terrain, isNight || isVoid);
+                     get().addLog(`PELIGRO: ${ambushText}`, "combat");
+                 }
+                 
+                 get().startBattle(tile.terrain, tile.weather);
+                 return;
+            }
+        }
+
+        if (isLocal && tile.poiType === 'EXIT') {
             set({ isPlayerMoving: false });
             get().exitSettlement();
             return;
         }
 
-        if (!isTown && activeInc) {
-            set({ isPlayerMoving: false, dimension: Dimension.UPSIDE_DOWN, incursions: Object.fromEntries(Object.entries(state.incursions).filter(([k]) => k !== incursionKey)) });
-            get().addLog("The Rift consumes you!", "narrative");
-            sfx.playMagic();
-            return;
-        }
-
         sfx.playStep();
-        await new Promise(res => setTimeout(res, 100));
+        await new Promise(res => setTimeout(res, 120));
     }
     set({ isPlayerMoving: false });
   },
@@ -284,7 +261,7 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
   enterSettlement: () => {
     const { playerPos, dimension } = get();
     const tile = WorldGenerator.getTile(playerPos.x, playerPos.y, dimension);
-    if (!tile.poiType || tile.poiType === 'DUNGEON' || tile.poiType === 'TEMPLE') return;
+    if (!tile.poiType || tile.poiType === 'DUNGEON' || tile.poiType === 'RUINS') return;
     
     const interiorMap = WorldGenerator.generateSettlementMap(playerPos.x, playerPos.y, tile.poiType as any);
     set({ 
@@ -295,20 +272,48 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
         currentSettlementName: tile.regionName,
         standingOnSettlement: false
     });
-    get().addLog(`Entering ${tile.regionName}...`, "narrative");
+    get().addLog(`Entrando en ${tile.regionName}...`, "narrative");
+  },
+
+  enterDungeon: () => {
+    const { playerPos, dimension } = get();
+    const tile = WorldGenerator.getTile(playerPos.x, playerPos.y, dimension);
+    if (tile.poiType !== 'DUNGEON' && tile.poiType !== 'RUINS') return;
+    
+    const dungeonMap = WorldGenerator.generateDungeon(tile.poiType === 'RUINS' ? 3 : 6);
+    set({ 
+        gameState: GameState.DUNGEON,
+        townMapData: dungeonMap,
+        lastOverworldPos: { ...playerPos },
+        playerPos: { x: 0, y: 0 },
+        currentSettlementName: tile.regionName || "Cripta Antigua",
+        standingOnDungeon: false
+    });
+    get().addLog(`Descendiendo a las profundidades de ${tile.regionName}...`, "narrative");
   },
 
   exitSettlement: () => {
     const { lastOverworldPos } = get();
-    set({ gameState: GameState.OVERWORLD, playerPos: lastOverworldPos || { x: 0, y: 0 }, townMapData: null, currentSettlementName: null });
+    set({ 
+        gameState: GameState.OVERWORLD, 
+        playerPos: lastOverworldPos || { x: 0, y: 0 }, 
+        townMapData: null, 
+        currentSettlementName: null,
+        standingOnSettlement: false,
+        standingOnDungeon: false
+    });
   },
 
   camp: async () => {
-    if (get().supplies < 5) return;
+    if (get().supplies < 5) {
+        get().addLog("No tienes suficientes suministros para acampar.", "info");
+        return;
+    }
     set({ isSleeping: true, supplies: get().supplies - 5 });
     await new Promise(r => setTimeout(r, 1500));
     set({ fatigue: 0, worldTime: (get().worldTime + 480) % 1440, isSleeping: false });
-    get().addLog("The party feels refreshed.", "narrative");
+    get().addLog("El grupo descansa bajo las estrellas de Aethelgard.", "narrative");
+    get().party.forEach(p => p.stats.hp = Math.min(p.stats.maxHp, p.stats.hp + Math.floor(p.stats.maxHp * 0.4)));
   },
 
   usePortal: () => set(s => ({ dimension: s.dimension === Dimension.NORMAL ? Dimension.UPSIDE_DOWN : Dimension.NORMAL })),

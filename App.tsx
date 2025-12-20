@@ -59,8 +59,6 @@ const App = () => {
       supabase.auth.getSession().then(({ data: { session } }) => setUserSession(session));
       supabase.auth.onAuthStateChange((_e, session) => setUserSession(session));
     }
-
-    // Listener para navegación manual del navegador
     const handleLocationChange = () => {
         setAdminMode(window.location.pathname.startsWith('/admin'));
     };
@@ -72,7 +70,6 @@ const App = () => {
     <main className={`relative w-screen h-screen overflow-hidden bg-black text-white transition-transform duration-75 ${isScreenShaking ? 'animate-shake' : ''}`}>
       <div className={`fixed inset-0 z-[999] bg-white pointer-events-none transition-opacity duration-150 ${isScreenFlashing ? 'opacity-40' : 'opacity-0'}`} />
 
-      {/* Asset Preloading Shield */}
       {!isAssetsLoaded && !isAdmin && <AssetLoaderOverlay />}
 
       {isAdmin ? <AdminDashboard /> : (
@@ -86,12 +83,12 @@ const App = () => {
           {(gameState === GameState.BATTLE_TACTICAL || gameState === GameState.BATTLE_INIT) && (
             <BattleScene entities={battleEntities} weather={battleWeather} terrainType={battleTerrain} currentTurnEntityId={turnOrder[currentTurnIndex]} onTileClick={handleTileInteraction} />
           )}
-          <UIOverlay onOpenTownService={setActiveTownService} />
+          <UIOverlay activeService={activeTownService} onOpenTownService={setActiveTownService} />
           {gameState === GameState.BATTLE_INIT && <BattleInitModal />}
           {(gameState === GameState.BATTLE_VICTORY || gameState === GameState.BATTLE_DEFEAT) && (
             <BattleResultModal type={gameState === GameState.BATTLE_VICTORY ? 'victory' : 'defeat'} rewards={battleRewards} onContinue={continueAfterVictory} onRestart={restartBattle} onQuit={quitToMenu} />
           )}
-          {gameState === GameState.TOWN_EXPLORATION && activeTownService !== 'NONE' && (
+          {(gameState === GameState.TOWN_EXPLORATION || gameState === GameState.DUNGEON) && activeTownService !== 'NONE' && (
             <TownServicesManager activeService={activeTownService} onClose={() => setActiveTownService('NONE')} />
           )}
           {gameState === GameState.LEVEL_UP && <LevelUpScreen />}

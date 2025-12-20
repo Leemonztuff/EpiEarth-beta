@@ -13,6 +13,7 @@ import { sfx } from '../../services/SoundSystem';
 import { TERRAIN_COLORS, ASSETS } from '../../constants';
 import { useContentStore } from '../contentStore';
 import { ActionResolver, ActionResolution } from '../../services/ActionResolver';
+import { WorldGenerator } from '../../services/WorldGenerator';
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
@@ -22,13 +23,11 @@ const applyResolutionToEntities = (res: ActionResolution, actor: Entity, target:
             let nextHp = e.stats.hp + res.hpChange;
             let finalStats = { ...e.stats };
             finalStats.hp = Math.max(0, Math.min(e.stats.maxHp, nextHp));
-            
             const nextStatus = [...(finalStats.activeStatusEffects || [])];
             if (res.statusChanges) {
                 res.statusChanges.forEach(sc => {
                     const existing = nextStatus.find(s => s.type === sc.type);
                     if (existing) {
-                        // Stacking logic: Max duration and increment intensity
                         existing.duration = Math.max(existing.duration, sc.duration);
                         existing.intensity = (existing.intensity || 1) + (sc.intensity || 0);
                     } else {
@@ -39,11 +38,10 @@ const applyResolutionToEntities = (res: ActionResolution, actor: Entity, target:
             finalStats.activeStatusEffects = nextStatus;
             return { ...e, stats: finalStats };
         }
-        // Handle immediate healing/drain effects on actor if present in resolution
         if (e.id === actor.id && res.actorStatusChanges) {
              let nextHp = e.stats.hp;
              res.actorStatusChanges.forEach(asc => {
-                 if (asc.type === 'REGEN' as any) nextHp += asc.intensity; // Immediate gain from DRAIN
+                 if (asc.type === 'REGEN' as any) nextHp += asc.intensity;
              });
              return { ...e, stats: { ...e.stats, hp: Math.min(e.stats.maxHp, nextHp) }};
         }
@@ -74,8 +72,9 @@ export interface BattleSlice {
   validMoves: { x: number; y: number }[];
   validTargets: { x: number; y: number }[];
   inspectedEntityId: string | null;
+  battleIntroText: string;
 
-  startBattle: (terrain: TerrainType, weather: WeatherType, enemyId?: string) => void;
+  startBattle: (terrain: TerrainType, weather: WeatherType, arenaId?: string) => void;
   confirmBattle: () => void;
   handleTileInteraction: (x: number, z: number) => void;
   handleTileHover: (x: number, z: number) => void;
@@ -116,25 +115,26 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
   validMoves: [],
   validTargets: [],
   inspectedEntityId: null,
+  battleIntroText: "El combate comienza...",
 
-  startBattle: (terrain, weather, enemyId) => {
+  startBattle: (terrain, weather, arenaId) => {
       const contentState = useContentStore.getState();
-      const terrainTexture = ASSETS.TERRAIN[terrain] || ASSETS.TERRAIN[TerrainType.GRASS];
+      const isAmbushed = get().isAmbushed;
+      const worldTime = get().worldTime;
+      const dimension = get().dimension;
+      const isVoid = dimension === Dimension.UPSIDE_DOWN;
+      const hours = Math.floor(worldTime / 60);
+      const isNight = hours < 6 || hours >= 22;
+      
+      let grid: BattleCell[] = [];
+      const customArena = arenaId ? contentState.maps[arenaId] : null;
 
-      const grid: BattleCell[] = [];
-      for(let x=0; x<16; x++) {
-          for(let z=0; z<16; z++) {
-              grid.push({ 
-                  x, z, 
-                  height: 1, 
-                  offsetY: 0, 
-                  color: TERRAIN_COLORS[terrain] || '#444', 
-                  textureUrl: terrainTexture, 
-                  isObstacle: false, 
-                  blocksSight: false, 
-                  movementCost: 1 
-              });
-          }
+      // --- FALLBACK TÁCTICO LORE-COHESIVO ---
+      if (customArena && customArena.type === 'BATTLE_ARENA' && customArena.battleCells) {
+          grid = customArena.battleCells;
+      } else {
+          // Generación dinámica basada en bioma y dimensión
+          grid = WorldGenerator.generateBattleArena(terrain, isVoid);
       }
 
       const partyEntities = get().party.map((p, i) => ({ 
@@ -142,21 +142,30 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
           position: { x: 4 + (i % 2), y: 6 + Math.floor(i / 2) } 
       }));
 
-      const encounterList = contentState.encounters[terrain] || ['skeleton'];
-      const enemyCount = enemyId ? 1 : Math.min(4, Math.floor(partyEntities.length * 1.2));
+      let encounterList = contentState.encounters[terrain] || ['skeleton'];
+      const voidPool = ['undead-spirit/shadow', 'undead-necromancers/ancient-lich', 'undead/ghoul', 'monsters/giant-spider'];
+      
+      if (isVoid) encounterList = voidPool;
+      else if (isNight) encounterList = [...encounterList, ...voidPool];
+
+      const enemyScale = isVoid ? 1.8 : (isNight ? 1.5 : 1.2);
+      const enemyCount = Math.min(8, Math.floor(partyEntities.length * enemyScale));
       const enemies = [];
+      const enemyNames = [];
 
       for(let i=0; i < enemyCount; i++) {
-          const defId = enemyId || encounterList[Math.floor(Math.random() * encounterList.length)];
-          const def = contentState.enemies[defId] || { name: 'Skeleton', sprite: 'units/undead-skeletal/skeleton.png', hp: 15, ac: 12, damage: '1d6', initiativeBonus: 1 };
+          const defId = encounterList[Math.floor(Math.random() * encounterList.length)];
+          const def = contentState.enemies[defId] || { name: 'Void Stalker', sprite: 'units/undead-spirit/shadow.png', hp: 20, ac: 13 };
+          enemyNames.push(def.name);
+          const startX = (isAmbushed || isVoid) ? 7 : 12;
           enemies.push({ 
-              id: `enemy_${i}_${generateId()}`, 
-              defId, 
-              name: def.name, 
-              type: 'ENEMY', 
-              stats: calculateEnemyStats(def, partyEntities[0].stats.level, get().difficulty || Difficulty.NORMAL), 
-              visual: { color: '#ef4444', modelType: 'billboard', spriteUrl: def.sprite }, 
-              position: { x: 11 - (i % 2), y: 6 + Math.floor(i / 2) }, 
+              id: `enemy_${i}_${generateId()}`, defId, name: def.name, type: 'ENEMY', 
+              stats: {
+                  ...calculateEnemyStats(def, partyEntities[0].stats.level, (isNight || isVoid) ? Difficulty.HARD : get().difficulty),
+                  initiativeBonus: (def.initiativeBonus || 0) + (isAmbushed ? 5 : 0) + (isVoid ? 4 : 0)
+              },
+              visual: { color: isVoid ? '#7c3aed' : '#ef4444', modelType: 'billboard', spriteUrl: def.sprite }, 
+              position: { x: startX - (i % 2), y: 6 + Math.floor(i / 2) }, 
               aiBehavior: def.aiBehavior || AIBehavior.BASIC_MELEE 
           });
       }
@@ -175,12 +184,19 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
         battleTerrain: terrain, 
         battleWeather: weather,
         gameState: GameState.BATTLE_INIT, 
-        hasMoved: false, 
-        hasActed: false, 
-        remainingActions: 1, 
-        damagePopups: [], 
-        lootDrops: [],
-        battleRewards: { xp: 50, gold: 20, items: [] } 
+        hasMoved: false, hasActed: false, 
+        remainingActions: 1, damagePopups: [], lootDrops: [],
+        battleRewards: { 
+            xp: Math.floor(100 * (isVoid ? 2.0 : (isNight ? 1.5 : 1.0))), 
+            gold: isVoid ? 0 : Math.floor(40 * (isNight ? 1.5 : 1.0)), 
+            shards: isVoid ? Math.floor(Math.random() * 5 + 3) : 0,
+            items: [] 
+        } 
+      });
+
+      import('../../services/GeminiService').then(({ GeminiService }) => {
+          GeminiService.generateBattleFlavor(terrain, Array.from(new Set(enemyNames)), get().dimension, isNight)
+            .then(text => set({ battleIntroText: text }));
       });
   },
 
@@ -189,7 +205,6 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
   handleTileInteraction: async (x, z) => {
       const state = get();
       if (state.isActionAnimating || state.gameState !== GameState.BATTLE_TACTICAL) return;
-
       const actor = state.battleEntities.find(e => e.id === state.turnOrder[state.currentTurnIndex]);
       if (!actor || actor.type !== 'PLAYER') return;
 
@@ -198,9 +213,7 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
           if (path) {
               set({ 
                   battleEntities: state.battleEntities.map(e => e.id === actor.id ? { ...e, position: { x, y: z } } : e), 
-                  hasMoved: true,
-                  selectedAction: null,
-                  validMoves: []
+                  hasMoved: true, selectedAction: null, validMoves: []
               });
               sfx.playStep();
           }
@@ -214,8 +227,6 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
       else if (state.selectedAction === BattleAction.MAGIC || state.selectedAction === BattleAction.SKILL) {
           const ability = state.selectedSpell || state.selectedSkill;
           if (!ability) return;
-
-          // AOE Logic
           let targets = [];
           if (ability.aoeRadius) {
               const aoeTiles = getAoETiles({ x: actor.position.x, y: actor.position.y }, { x, y: z }, ability.aoeType || 'CIRCLE', ability.aoeRadius);
@@ -224,56 +235,34 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
               const target = state.battleEntities.find(e => e.stats.hp > 0 && e.position.x === x && e.position.y === z);
               if (target) targets = [target];
           }
-
-          if (targets.length > 0) {
-              await get().executeAction(actor, targets, ability);
-          }
+          if (targets.length > 0) await get().executeAction(actor, targets, ability);
       }
   },
 
   executeAction: async (actor, targets, ability) => {
       const state = get();
       set({ isActionAnimating: true });
-      
       const mainTarget = targets[0];
       set({ 
           activeSpellEffect: { 
-              id: generateId(), 
-              type: ability ? 'PROJECTILE' : 'BURST', 
-              startPos: [actor.position.x, 1.5, actor.position.y], 
-              endPos: [mainTarget.position.x, 1, mainTarget.position.y], 
-              color: ability?.color || '#fff', 
-              duration: 600, 
-              timestamp: Date.now() 
+              id: generateId(), type: ability ? 'PROJECTILE' : 'BURST', startPos: [actor.position.x, 1.5, actor.position.y], endPos: [mainTarget.position.x, 1, mainTarget.position.y], color: ability?.color || '#fff', duration: 600, timestamp: Date.now() 
           } 
       });
-
       await new Promise(r => setTimeout(r, 600));
-
       let newEntities = [...get().battleEntities];
       let allPopups = [];
       const effects = ability ? ability.effects : [{ type: EffectType.DAMAGE, diceCount: 1, diceSides: 8, damageType: actor.stats.attackDamageType || DamageType.SLASHING }];
-
       targets.forEach(target => {
           const res = ActionResolver.resolve(actor, target, effects, state.dimension, state.battleEntities);
           newEntities = applyResolutionToEntities(res, actor, target, newEntities);
-          allPopups.push(...res.popups.map(p => ({ 
-              ...p, 
-              id: generateId(), 
-              position: [target.position.x, 2, target.position.y], 
-              timestamp: Date.now() 
-          })));
-          
+          allPopups.push(...res.popups.map(p => ({ ...p, id: generateId(), position: [target.position.x, 2, target.position.y], timestamp: Date.now() })));
           if (res.didHit) sfx.playHit();
-          
           const updatedTarget = newEntities.find(e => e.id === target.id);
           if (updatedTarget?.stats.hp === 0 && updatedTarget.type === 'ENEMY') {
               get().spawnLootDrop(updatedTarget);
               get().updateQuestProgress('KILL', updatedTarget.defId, 1);
           }
       });
-
-      // Deduction of Mana/Stamina if applicable
       if (ability) {
           newEntities = newEntities.map(e => {
               if (e.id === actor.id) {
@@ -285,118 +274,50 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
               return e;
           });
       }
-
-      set({ 
-          battleEntities: newEntities, 
-          damagePopups: [...get().damagePopups, ...allPopups], 
-          isActionAnimating: false, 
-          activeSpellEffect: null, 
-          hasActed: true, 
-          selectedAction: null,
-          selectedSpell: null,
-          selectedSkill: null,
-          validTargets: []
-      });
-
+      set({ battleEntities: newEntities, damagePopups: [...get().damagePopups, ...allPopups], isActionAnimating: false, activeSpellEffect: null, hasActed: true, selectedAction: null, selectedSpell: null, selectedSkill: null, validTargets: [] });
       const aliveEnemies = newEntities.filter(e => e.type === 'ENEMY' && e.stats.hp > 0);
       if (aliveEnemies.length === 0) {
-          set({ gameState: GameState.BATTLE_VICTORY });
-          return;
+          if (state.gameState === GameState.DUNGEON || state.gameState === GameState.TOWN_EXPLORATION) {
+              const currentTile = state.townMapData.find(c => c.q === state.playerPos.x && c.r === state.playerPos.y);
+              if (currentTile) {
+                   const locKey = `${state.currentSettlementName}_${currentTile.q}_${currentTile.r}`;
+                   const newCleared = new Set(state.clearedLocations);
+                   newCleared.add(locKey);
+                   set({ clearedLocations: newCleared });
+                   get().updateQuestProgress('CLEAR_LOCATION', state.currentSettlementName, 1);
+              }
+          }
+          set({ gameState: GameState.BATTLE_VICTORY }); return;
       }
-
-      if (get().hasActed && get().hasMoved) {
-          setTimeout(() => get().advanceTurn(), 1000);
-      }
+      if (get().hasActed && get().hasMoved) setTimeout(() => get().advanceTurn(), 1000);
   },
 
   advanceTurn: async () => {
       const state = get();
       let nextIdx = (state.currentTurnIndex + 1) % state.turnOrder.length;
-      
-      // Skip dead entities
-      while (state.battleEntities.find(e => e.id === state.turnOrder[nextIdx])?.stats.hp <= 0) { 
-          nextIdx = (nextIdx + 1) % state.turnOrder.length; 
-      }
-      
+      while (state.battleEntities.find(e => e.id === state.turnOrder[nextIdx])?.stats.hp <= 0) nextIdx = (nextIdx + 1) % state.turnOrder.length; 
       const nextEnt = state.battleEntities.find(e => e.id === state.turnOrder[nextIdx]);
       if (!nextEnt) return;
-
-      // --- STATUS TICK PHASE ---
-      const tickResult = ActionResolver.processStatusTick(nextEnt);
-      let updatedEntities = [...state.battleEntities];
-      let newPopups = [...state.damagePopups];
-
-      if (tickResult.hpChange !== 0 || tickResult.updatedEffects.length !== nextEnt.stats.activeStatusEffects.length) {
-          updatedEntities = updatedEntities.map(e => {
-              if (e.id === nextEnt.id) {
-                  const nextHp = Math.max(0, Math.min(e.stats.maxHp, e.stats.hp + tickResult.hpChange));
-                  return { ...e, stats: { ...e.stats, hp: nextHp, activeStatusEffects: tickResult.updatedEffects }};
-              }
-              return e;
-          });
-          
-          newPopups.push(...tickResult.popups.map(p => ({
-              ...p,
-              id: generateId(),
-              position: [nextEnt.position.x, 2.5, nextEnt.position.y],
-              timestamp: Date.now()
-          })));
-      }
-
-      set({ 
-          battleEntities: updatedEntities,
-          damagePopups: newPopups,
-          currentTurnIndex: nextIdx, 
-          hasMoved: false, 
-          hasActed: false, 
-          selectedAction: null, 
-          isUnitMenuOpen: false 
-      });
-
-      // Check if unit died from DoT
-      const checkedEnt = updatedEntities.find(e => e.id === nextEnt.id);
-      if (checkedEnt?.stats.hp <= 0) {
-          if (checkedEnt.type === 'ENEMY') {
-              get().spawnLootDrop(checkedEnt);
-              get().updateQuestProgress('KILL', checkedEnt.defId, 1);
-          }
-          const aliveEnemies = updatedEntities.filter(e => e.type === 'ENEMY' && e.stats.hp > 0);
-          if (aliveEnemies.length === 0) {
-              set({ gameState: GameState.BATTLE_VICTORY });
-              return;
-          }
-          get().advanceTurn();
-          return;
-      }
-
-      if (nextEnt?.type === 'ENEMY') {
-          setTimeout(() => get().performEnemyTurn(), 800);
-      }
+      set({ currentTurnIndex: nextIdx, hasMoved: false, hasActed: false, selectedAction: null, isUnitMenuOpen: false });
+      if (nextEnt?.type === 'ENEMY') setTimeout(() => get().performEnemyTurn(), 800);
   },
 
   performEnemyTurn: async () => {
       const state = get();
       const actor = state.battleEntities.find(e => e.id === state.turnOrder[state.currentTurnIndex]);
       if (!actor || actor.stats.hp <= 0 || actor.type !== 'ENEMY') { get().advanceTurn(); return; }
-      
       const players = state.battleEntities.filter(e => e.type === 'PLAYER' && e.stats.hp > 0);
       if (players.length === 0) { get().advanceTurn(); return; }
-
-      // Basic AI: Attack nearest
       const sortedPlayers = players.sort((a, b) => {
           const distA = Math.max(Math.abs(actor.position.x - a.position.x), Math.abs(actor.position.y - a.position.y));
           const distB = Math.max(Math.abs(actor.position.x - b.position.x), Math.abs(actor.position.y - b.position.y));
           return distA - distB;
       });
-
       const target = sortedPlayers[0];
       const dist = Math.max(Math.abs(actor.position.x - target.position.x), Math.abs(actor.position.y - target.position.y));
       const range = getAttackRange(actor);
-
-      if (dist <= range) {
-          await get().executeAction(actor, [target]);
-      } else {
-          // Move towards player
+      if (dist <= range) await get().executeAction(actor, [target]);
+      else {
           const reachable = getReachableTiles(actor.position, 5, state.battleMap, new Set());
           if (reachable.length > 0) {
               const bestTile = reachable.sort((a, b) => {
@@ -404,17 +325,10 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
                   const distB = Math.max(Math.abs(b.x - target.position.x), Math.abs(b.y - target.position.y));
                   return distA - distB;
               })[0];
-
-              set({ 
-                  battleEntities: state.battleEntities.map(e => e.id === actor.id ? { ...e, position: { x: bestTile.x, y: bestTile.y } } : e) 
-              });
+              set({ battleEntities: state.battleEntities.map(e => e.id === actor.id ? { ...e, position: { x: bestTile.x, y: bestTile.y } } : e) });
               sfx.playStep();
               await new Promise(r => setTimeout(r, 600));
-              
-              const newDist = Math.max(Math.abs(bestTile.x - target.position.x), Math.abs(bestTile.y - target.position.y));
-              if (newDist <= range) {
-                  await get().executeAction(actor, [target]);
-              }
+              if (Math.max(Math.abs(bestTile.x - target.position.x), Math.abs(bestTile.y - target.position.y)) <= range) await get().executeAction(actor, [target]);
           }
       }
       setTimeout(() => get().advanceTurn(), 1000);
@@ -422,34 +336,29 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
 
   handleTileHover: (x, z) => set({ selectedTile: { x, z } }),
   selectAction: (action) => {
-      const state = get();
-      const actor = state.battleEntities.find(e => e.id === state.turnOrder[state.currentTurnIndex]);
+      const state = get(); const actor = state.battleEntities.find(e => e.id === state.turnOrder[state.currentTurnIndex]);
       if (!actor) return;
-
-      let validTargets = [];
+      let vt = [];
       if (action === BattleAction.ATTACK) {
           const range = getAttackRange(actor);
-          validTargets = state.battleEntities
-            .filter(e => e.id !== actor.id && e.stats.hp > 0 && e.type === 'ENEMY')
-            .map(e => ({ x: e.position.x, y: e.position.y }))
-            .filter(pos => Math.max(Math.abs(pos.x - actor.position.x), Math.abs(pos.y - actor.position.y)) <= range);
+          vt = state.battleEntities.filter(e => e.id !== actor.id && e.stats.hp > 0 && e.type === 'ENEMY').map(e => ({ x: e.position.x, y: e.position.y })).filter(pos => Math.max(Math.abs(pos.x - actor.position.x), Math.abs(pos.y - actor.position.y)) <= range);
       } else if (action === BattleAction.MOVE) {
-          validTargets = getReachableTiles(actor.position, 5, state.battleMap, new Set(state.battleEntities.filter(e => e.stats.hp > 0).map(e => `${e.position.x},${e.position.y}`)));
+          vt = getReachableTiles(actor.position, 5, state.battleMap, new Set(state.battleEntities.filter(e => e.stats.hp > 0).map(e => `${e.position.x},${e.position.y}`)));
       }
-
-      set({ 
-          selectedAction: action, 
-          isUnitMenuOpen: false, 
-          validMoves: action === BattleAction.MOVE ? validTargets : [],
-          validTargets: action === BattleAction.ATTACK ? validTargets : []
-      });
+      set({ selectedAction: action, isUnitMenuOpen: false, validMoves: action === BattleAction.MOVE ? vt : [], validTargets: action === BattleAction.ATTACK ? vt : [] });
   },
   executeWait: () => get().advanceTurn(),
   removeDamagePopup: (id) => set(s => ({ damagePopups: s.damagePopups.filter(p => p.id !== id) })),
   inspectUnit: (id) => set({ inspectedEntityId: id }),
   closeInspection: () => set({ inspectedEntityId: null }),
   setUnitMenuOpen: (open) => set({ isUnitMenuOpen: open }),
-  continueAfterVictory: () => set({ gameState: GameState.OVERWORLD, battleRewards: null }),
+  continueAfterVictory: () => {
+       const state = get();
+       if (state.gameState === GameState.BATTLE_VICTORY) {
+           const nextGs = state.townMapData ? (state.gameState === GameState.DUNGEON ? GameState.DUNGEON : GameState.TOWN_EXPLORATION) : GameState.OVERWORLD;
+           set({ gameState: nextGs, battleRewards: null });
+       }
+  },
   restartBattle: () => set({ gameState: GameState.TITLE }),
   spawnLootDrop: (ent) => set(s => ({ lootDrops: [...s.lootDrops, { id: generateId(), position: { x: ent.position.x, y: ent.position.y }, rarity: ItemRarity.COMMON, itemId: 'gold_pouch' }] }))
 });

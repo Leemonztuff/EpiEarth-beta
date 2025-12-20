@@ -12,7 +12,7 @@ export const WESNOTH_CDN_URL = "https://cdn.jsdelivr.net/gh/wesnoth/wesnoth@mast
 
 export const NOISE_TEXTURE_URL = "https://www.transparenttextures.com/patterns/asfalt-dark.png";
 
-export const HEX_SIZE = 32;
+export const HEX_SIZE = 36; // Ligeramente más grande para ver los detalles Wesnoth
 export const BATTLE_MAP_SIZE = 16;
 export const DEFAULT_MAP_WIDTH = 40;
 export const DEFAULT_MAP_HEIGHT = 30;
@@ -36,7 +36,7 @@ export const ASSETS = {
         [TerrainType.PLAINS]: `terrain/grass/semi-dry.png`, 
         [TerrainType.FOREST]: `terrain/forest/deciduous-summer-tile.png`, 
         [TerrainType.JUNGLE]: `terrain/forest/rainforest-tile.png`, 
-        [TerrainType.MOUNTAIN]: `terrain/mountains/basic.png`, 
+        [TerrainType.MOUNTAIN]: `terrain/mountains/basic-tile.png`, 
         [TerrainType.WATER]: `terrain/water/coast-tile.png`, 
         [TerrainType.OCEAN]: `terrain/water/ocean-tile.png`, 
         [TerrainType.VILLAGE]: `terrain/village/human-cottage.png`, 

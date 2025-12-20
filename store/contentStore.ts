@@ -1,13 +1,14 @@
 
 import { create } from 'zustand';
-import { Item, TerrainType, Spell, Skill, EnemyDefinition, Attributes, CharacterClass, NPCEntity, Quest, HexCell } from '../types';
+import { Item, TerrainType, Spell, Skill, EnemyDefinition, Attributes, CharacterClass, NPCEntity, Quest, HexCell, BattleCell } from '../types';
 import { getSupabase } from '../services/supabaseClient';
 
 export interface CustomMap {
     id: string;
     name: string;
-    type: 'TOWN' | 'DUNGEON';
-    cells: HexCell[];
+    type: 'TOWN' | 'DUNGEON' | 'BATTLE_ARENA'; 
+    cells?: HexCell[]; // Para mapas de exploración 2D (Wesnoth style)
+    battleCells?: BattleCell[]; // Para escenas de batalla 3D (Voxel style)
     width: number;
     height: number;
 }
@@ -19,7 +20,7 @@ export interface ContentState {
     enemies: Record<string, EnemyDefinition>;
     npcs: Record<string, NPCEntity>;
     quests: Record<string, Quest>;
-    maps: Record<string, CustomMap>; // Soporte para mapas personalizados
+    maps: Record<string, CustomMap>;
     encounters: Partial<Record<TerrainType, string[]>>;
     classStats: Record<CharacterClass, Attributes>;
     gameConfig: { mapScale: number };

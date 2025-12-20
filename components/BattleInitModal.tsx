@@ -5,29 +5,13 @@ import { GameState, Dimension } from '../types';
 import { sfx } from '../services/SoundSystem';
 
 export const BattleInitModal = () => {
-    const { battleEntities, confirmBattle, gameState, currentRegionName, dimension } = useGameStore();
+    const { battleEntities, confirmBattle, gameState, battleIntroText, dimension } = useGameStore();
     
     if (gameState !== GameState.BATTLE_INIT) return null;
 
     const enemies = battleEntities?.filter(e => e.type === 'ENEMY') || [];
     const boss = enemies[0];
     const enemyCount = enemies.length;
-
-    const flavorText = useMemo(() => {
-        const isShadow = dimension === Dimension.UPSIDE_DOWN;
-        const region = currentRegionName || "the unknown";
-        
-        if (isShadow) {
-            return `In the cold mists of ${region}, a group of twisted souls blocks your path. The air feels heavy with malice.`;
-        }
-        
-        const scenarios = [
-            `Ambush! A pack of creatures emerges from the shadows of ${region}.`,
-            `Your progress through ${region} is interrupted by hostile scouts.`,
-            `The peace of ${region} is shattered. Draw your steel!`
-        ];
-        return scenarios[Math.floor(Math.random() * scenarios.length)];
-    }, [currentRegionName, dimension]);
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md animate-in fade-in duration-300 pointer-events-auto p-4">
@@ -40,7 +24,7 @@ export const BattleInitModal = () => {
                 <div className="p-8 flex flex-col items-center justify-center bg-slate-800/50">
                     <div className="text-center mb-8 px-4">
                         <p className="text-slate-300 font-serif italic text-lg leading-relaxed">
-                            "{flavorText}"
+                            "{battleIntroText}"
                         </p>
                     </div>
 

@@ -54,7 +54,7 @@ export const calculateDerivedStats = (attributes: Attributes, cls: CharacterClas
         crit: Math.floor(crit),
         mp: maxMp,
         maxMp: maxMp,
-        thriller: 0 // Added default for DerivedStats
+        thriller: 0 
     };
 };
 
@@ -79,16 +79,12 @@ export const calculateHp = (level: number, con: number, hitDie: number, race?: C
 
 export const isFlanking = (attacker: Entity, target: Entity, allies: Entity[]): boolean => {
     if (!attacker.position || !target.position) return false;
-    // Un flanqueo ocurre si hay un aliado del atacante exactamente al otro lado del objetivo
     const dx = target.position.x - attacker.position.x;
     const dy = target.position.y - attacker.position.y;
-    
-    // El aliado debe estar en (target.x + dx, target.y + dy)
     const allyPos = { x: target.position.x + dx, y: target.position.y + dy };
     return allies.some(a => a.id !== attacker.id && a.stats.hp > 0 && a.position?.x === allyPos.x && a.position?.y === allyPos.y);
 };
 
-// FIX: Improved typing for calculateAttackRoll and added missing getCorruptionPenalty
 export const getCorruptionPenalty = (corruption: number): number => {
   return Math.floor((corruption || 0) / 25);
 };
@@ -101,15 +97,16 @@ export const calculateAttackRoll = (attacker: Entity, target?: Entity, dimension
     if (stats.activeStatusEffects?.some(s => s.type === StatusEffectType.HASTE)) hasAdvantage = true;
     if (stats.activeStatusEffects?.some(s => s.type === StatusEffectType.SLOW)) hasDisadvantage = true;
 
-    // BONO DE FLANQUEO (Regla Táctica)
     if (target && allEntities.length > 0) {
         const allies = allEntities.filter(e => e.type === attacker.type);
         if (isFlanking(attacker, target, allies)) hasAdvantage = true;
     }
 
-    if (dimension === Dimension.UPSIDE_DOWN && target && attacker.position && target.position) {
+    // Penalización por distacia en el Vacío o penumbra
+    if (target && attacker.position && target.position) {
         const dist = Math.max(Math.abs(attacker.position.x - target.position.x), Math.abs(attacker.position.y - target.position.y));
-        if (dist > 3) hasDisadvantage = true; 
+        const limit = dimension === Dimension.UPSIDE_DOWN ? 2 : 5;
+        if (dist > limit) hasDisadvantage = true; 
     }
 
     let rollType: 'normal' | 'advantage' | 'disadvantage' = 'normal';
@@ -120,7 +117,6 @@ export const calculateAttackRoll = (attacker: Entity, target?: Entity, dimension
     const roll = rollD20(rollType);
     const mod = getRelevantAbilityMod(attacker, attacker.equipment?.[EquipmentSlot.MAIN_HAND]);
     const prof = getProficiencyBonus(stats.level || 1);
-    
     const total = roll.result + mod + prof;
 
     return { total, isCrit: roll.result >= critThreshold, isAutoMiss: roll.result === 1, roll: roll.result, mod, prof, rollType };
@@ -135,40 +131,28 @@ export const calculateHitChance = (attacker: any, target: any, dimension: Dimens
     if (winningOutcomes > 20) winningOutcomes = 20; 
     if (winningOutcomes < 1) winningOutcomes = 1;
     let probability = winningOutcomes / 20;
-    
     if (atkRoll.rollType === 'advantage') probability = 1 - Math.pow((1 - probability), 2);
     if (atkRoll.rollType === 'disadvantage') probability = Math.pow(probability, 2);
-    
     return Math.round(Math.max(5, Math.min(99, probability * 100)));
 };
 
 export const calculateDamage = (attacker: any, weaponSlot: EquipmentSlot = EquipmentSlot.MAIN_HAND, isCrit: boolean = false, target?: any, isFlanking?: boolean): { amount: number, type: DamageType, isMagical: boolean, isSneakAttack?: boolean } => {
     if (!attacker || !attacker.stats) return { amount: 0, type: DamageType.BLUDGEONING, isMagical: false };
-
     let extraDamage = 0;
     let appliedSneak = false;
-
     if (attacker.stats.traits?.includes('SNEAK_ATTACK') && isFlanking) {
         const sneakDice = Math.ceil(attacker.stats.level / 2);
         extraDamage += rollDice(6, sneakDice);
         appliedSneak = true;
     }
-
-    if (attacker.stats.activeStatusEffects?.some(s => s.type === 'RAGE')) {
-        extraDamage += 2;
-    }
-
-    const equipment = attacker?.equipment || {};
-    const weapon = equipment[weaponSlot];
+    if (attacker.stats.activeStatusEffects?.some(s => s.type === 'RAGE')) extraDamage += 2;
+    const weapon = attacker?.equipment?.[weaponSlot];
     const damageType = weapon?.equipmentStats?.damageType || DamageType.BLUDGEONING;
     const isMagical = weapon?.equipmentStats?.properties?.includes('Magical') || false;
-
     let diceCount = weapon?.equipmentStats?.diceCount || 1;
     let diceSides = weapon?.equipmentStats?.diceSides || 4; 
     const mod = getRelevantAbilityMod(attacker, weapon);
-    
     if (isCrit) diceCount *= 2;
-
     const baseDmg = rollDice(diceSides, diceCount) + mod;
     return { amount: Math.max(1, baseDmg + extraDamage), type: damageType, isMagical, isSneakAttack: appliedSneak };
 };
@@ -222,10 +206,21 @@ export const getDamageRange = (attacker: any): string => {
     return `${diceCount + mod}-${(diceCount * diceSides) + mod}`;
 };
 
-export const calculateVisionRange = (wis: number, corruption: number = 0): number => {
+export const calculateVisionRange = (wis: number, corruption: number = 0, worldTime: number = 480, dimension: Dimension = Dimension.NORMAL): number => {
   const mod = getModifier(wis);
   const corruptionPenalty = getCorruptionPenalty(corruption);
-  return Math.max(2, 4 + mod - corruptionPenalty);
+  const hours = Math.floor(worldTime / 60);
+  const isNight = hours < 6 || hours >= 22;
+  
+  let baseVision = 5;
+  if (dimension === Dimension.UPSIDE_DOWN) {
+      baseVision = 3; // El Vacío es intrínsecamente oscuro
+  }
+
+  const nightPenalty = isNight ? 3 : 0; 
+  const dimensionPenalty = dimension === Dimension.UPSIDE_DOWN ? 1 : 0;
+  
+  return Math.max(1, baseVision + mod - corruptionPenalty - nightPenalty - dimensionPenalty);
 };
 
 export const calculateEnemyStats = (def: EnemyDefinition, playerLevel: number, difficulty: Difficulty): CombatStatsComponent => {
