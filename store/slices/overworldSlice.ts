@@ -192,12 +192,10 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
 
         const cost = TERRAIN_MOVEMENT_COST[moveType][tile.terrain] || 1;
         
-        // El Vacío agota un 50% más adicional (2.5x en total si es noche + vacío)
         const fatigueMult = (isNight ? 2.0 : 1.0) * (isVoid ? 1.5 : 1.0);
         currentFatigue += (cost * 0.15 * fatigueMult);
         
-        // Consumo de suministros más alto en el Vacío
-        const supplyChance = isVoid ? 0.8 : 0.9;
+        const supplyChance = isVoid ? 0.7 : 0.85;
         if (!isLocal && Math.random() > supplyChance) currentSupplies = Math.max(0, currentSupplies - 1);
         
         currentTime = (currentTime + (cost * 15)) % 1440;
@@ -226,14 +224,14 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
             currentRegionName: isLocal ? state.currentRegionName : tile.regionName
         });
 
-        // ENCUENTROS AGRESIVOS EN EL VACÍO
-        if (!isLocal && tile.hasEncounter) {
-            let baseChance = isNight ? 0.08 : 0.02; 
-            if (isVoid) baseChance = 0.15; // Probabilidad fija alta en el Vacío
+        // ENCUENTROS: Probabilidad aumentada
+        if (!isLocal && (tile.hasEncounter || isVoid)) {
+            let baseChance = isNight ? 0.12 : 0.05; 
+            if (isVoid) baseChance = 0.25; 
 
             if (Math.random() < baseChance) {
                  set({ isPlayerMoving: false });
-                 const isAmbush = (isNight || isVoid) ? (Math.random() > 0.5) : (Math.random() > 0.85);
+                 const isAmbush = (isNight || isVoid) ? (Math.random() > 0.4) : (Math.random() > 0.8);
                  
                  if (isAmbush) {
                      set({ isAmbushed: true });
@@ -261,7 +259,7 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
   enterSettlement: () => {
     const { playerPos, dimension } = get();
     const tile = WorldGenerator.getTile(playerPos.x, playerPos.y, dimension);
-    if (!tile.poiType || tile.poiType === 'DUNGEON' || tile.poiType === 'RUINS') return;
+    if (!tile.poiType || tile.poiType === 'DUNGEON' || tile.poiType === 'RUINS' || tile.poiType === 'TEMPLE') return;
     
     const interiorMap = WorldGenerator.generateSettlementMap(playerPos.x, playerPos.y, tile.poiType as any);
     set({ 
@@ -280,7 +278,7 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
     const tile = WorldGenerator.getTile(playerPos.x, playerPos.y, dimension);
     if (tile.poiType !== 'DUNGEON' && tile.poiType !== 'RUINS') return;
     
-    const dungeonMap = WorldGenerator.generateDungeon(tile.poiType === 'RUINS' ? 3 : 6);
+    const dungeonMap = WorldGenerator.generateDungeon(tile.poiType === 'RUINS' ? 4 : 8);
     set({ 
         gameState: GameState.DUNGEON,
         townMapData: dungeonMap,
@@ -300,7 +298,8 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
         townMapData: null, 
         currentSettlementName: null,
         standingOnSettlement: false,
-        standingOnDungeon: false
+        standingOnDungeon: false,
+        standingOnTemple: false
     });
   },
 
@@ -316,7 +315,10 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
     get().party.forEach(p => p.stats.hp = Math.min(p.stats.maxHp, p.stats.hp + Math.floor(p.stats.maxHp * 0.4)));
   },
 
-  usePortal: () => set(s => ({ dimension: s.dimension === Dimension.NORMAL ? Dimension.UPSIDE_DOWN : Dimension.NORMAL })),
+  usePortal: () => {
+      sfx.playMagic();
+      set(s => ({ dimension: s.dimension === Dimension.NORMAL ? Dimension.UPSIDE_DOWN : Dimension.NORMAL }));
+  },
   buySupplies: (amount, cost) => { if (get().spendGold(cost)) set(s => ({ supplies: s.supplies + amount })); },
   resolveNarrativeOption: (idx) => { 
       const { activeNarrativeEvent } = get();

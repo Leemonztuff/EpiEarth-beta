@@ -74,7 +74,9 @@ export class WorldGenerator {
     private static isInitialized = false;
     private static seed = 12345;
     private static chunkCache = new Map<string, Record<string, HexCell>>();
-    private static HUB_SPACING = 12; 
+    
+    // REDUCIDO: Ciudades cada 8 tiles para que el jugador las encuentre rápido.
+    private static HUB_SPACING = 8; 
 
     static init(seed: number) {
         if (this.seed === seed && this.isInitialized) return;
@@ -112,9 +114,11 @@ export class WorldGenerator {
         const scale = 0.08;
         const elevation = noise2D(q * scale, r * scale);
         const chance = rng.next();
-        if (elevation > 0.3 && chance > 0.97) return 'DUNGEON';
-        if (elevation < -0.1 && chance > 0.975) return 'RUINS';
-        if (chance > 0.99) return 'TEMPLE';
+        
+        // AUMENTADO: Probabilidad de Mazmorras y Templos
+        if (elevation > 0.25 && chance > 0.94) return 'DUNGEON';
+        if (elevation < -0.1 && chance > 0.95) return 'RUINS';
+        if (chance > 0.98) return 'TEMPLE';
         return undefined;
     }
 
@@ -134,10 +138,13 @@ export class WorldGenerator {
         }
         const poiType = this.getPOITypeAt(q, r, dimension);
         const rng = new Mulberry32(fnv1a(`${q},${r},${dimension}`));
-        const hasPortal = rng.next() > 0.97;
+        
+        // AUMENTADO: 10% de probabilidad de Portales
+        const hasPortal = rng.next() > 0.90; 
+
         return {
             q, r, terrain, weather, isExplored: false, isVisible: false, hasPortal,
-            hasEncounter: !poiType && rng.next() > 0.95,
+            hasEncounter: !poiType && rng.next() > 0.92,
             regionName: this.getRegionName(q, r, poiType),
             poiType
         };
@@ -190,7 +197,6 @@ export class WorldGenerator {
         const cells: HexCell[] = [];
         const rng = new Mulberry32(Date.now());
         
-        // Entrada
         cells.push({ q: 0, r: 0, terrain: TerrainType.DUNGEON_FLOOR, weather: WeatherType.NONE, isExplored: true, isVisible: true, poiType: 'EXIT', regionName: "Dark Vault" });
 
         let currentQ = 0;
@@ -206,17 +212,13 @@ export class WorldGenerator {
                 regionName: "Dark Vault"
             });
 
-            // Habitaciones laterales
-            if (rng.next() > 0.6) {
-                cells.push({ q: currentQ, r: currentR + 1, terrain: TerrainType.DUNGEON_FLOOR, weather: WeatherType.NONE, isExplored: true, isVisible: true, poiType: rng.next() > 0.5 ? 'SHOP' : 'RAID_ENCOUNTER' });
+            if (rng.next() > 0.5) {
+                cells.push({ q: currentQ, r: currentR + 1, terrain: TerrainType.DUNGEON_FLOOR, weather: WeatherType.NONE, isExplored: true, isVisible: true, poiType: rng.next() > 0.6 ? 'SHOP' : 'RAID_ENCOUNTER' });
             }
         }
         return cells;
     }
 
-    /**
-     * Generador de Arena 3D Dinámica para cuando no hay mapas de Admin.
-     */
     static generateBattleArena(biome: TerrainType, isVoid: boolean): any[] {
         const cells = [];
         const rng = new Mulberry32(Date.now());
@@ -228,14 +230,12 @@ export class WorldGenerator {
                 let height = 1 + Math.max(0, elevation * 4);
                 let terrain = biome;
                 
-                // Obstáculos naturales
                 let isObstacle = false;
-                if (rng.next() > 0.92) {
+                if (rng.next() > 0.90) {
                     height += 2;
                     isObstacle = true;
                 }
 
-                // El Vacío tiene fosas
                 if (isVoid && rng.next() > 0.85) {
                     height = 0.2;
                     terrain = TerrainType.CHASM;
