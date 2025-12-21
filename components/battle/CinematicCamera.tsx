@@ -21,40 +21,42 @@ export const CinematicCamera = () => {
         const { 
             battleEntities, turnOrder, currentTurnIndex, 
             isUnitMenuOpen, isActionAnimating, isScreenShaking,
-            selectedTile
+            selectedTile, activeSpellEffect
         } = store;
 
-        // 1. DETERMINAR PUNTO DE ENFOQUE (Lógica de prioridad)
-        // Por defecto, el centro del mapa
+        // 1. DETERMINAR PUNTO DE ENFOQUE
         let focusPos = new THREE.Vector3(BATTLE_MAP_SIZE / 2, 0.5, BATTLE_MAP_SIZE / 2);
         
         const actorId = turnOrder[currentTurnIndex];
         const actor = battleEntities.find(e => e.id === actorId);
 
-        if (isActionAnimating || isUnitMenuOpen) {
-            // Enfoque en el personaje activo (a la altura del torso)
+        if (activeSpellEffect) {
+            // "ACTION CAM": Enfocar el punto medio entre atacante y objetivo durante el efecto
+            const start = new THREE.Vector3(...activeSpellEffect.startPos);
+            const end = new THREE.Vector3(...activeSpellEffect.endPos);
+            focusPos.lerpVectors(start, end, 0.5);
+            focusPos.y += 1.0;
+        } else if (isActionAnimating || isUnitMenuOpen) {
             if (actor?.position) {
                 focusPos.set(actor.position.x, 1.2, actor.position.y);
             }
         } else if (selectedTile) {
-            // Seguir el cursor táctico del jugador
             focusPos.set(selectedTile.x, 0.5, selectedTile.y);
         }
 
-        // 2. APLICAR AMORTIGUACIÓN (Damping)
-        // 8 = muy rápido/reactivo, 4 = suave/cinemático
-        const smoothingSpeed = isActionAnimating ? 8 : 4;
+        // 2. APLICAR AMORTIGUACIÓN DINÁMICA
+        // Si hay una acción, la cámara es más agresiva (12), si es calma es lenta (4)
+        const smoothingSpeed = activeSpellEffect ? 12 : (isActionAnimating ? 8 : 5);
         
         targetVec.current.x = THREE.MathUtils.damp(targetVec.current.x, focusPos.x, smoothingSpeed, delta);
         targetVec.current.y = THREE.MathUtils.damp(targetVec.current.y, focusPos.y, smoothingSpeed, delta);
         targetVec.current.z = THREE.MathUtils.damp(targetVec.current.z, focusPos.z, smoothingSpeed, delta);
 
-        // Actualizamos el objetivo de los controles de Three.js
         controls.target.copy(targetVec.current);
         
-        // 3. EFECTO DE IMPACTO (Screen Shake)
+        // 3. SCREEN SHAKE (EFECTO SÍSMICO)
         if (isScreenShaking) {
-            const intensity = 0.25;
+            const intensity = activeSpellEffect ? 0.4 : 0.2;
             shakeVec.current.set(
                 (Math.random() - 0.5) * intensity,
                 (Math.random() - 0.5) * intensity,
@@ -63,16 +65,17 @@ export const CinematicCamera = () => {
             camera.position.add(shakeVec.current);
         }
 
-        // 4. ZOOM CONTEXTUAL DINÁMICO
+        // 4. ZOOM DINÁMICO (Efecto Lente)
         if (camera.isOrthographicCamera) {
-            // Zoom in (90) cuando hay acción, zoom out (65) para ver el tablero
-            const targetZoom = (isUnitMenuOpen || isActionAnimating) ? 95 : 65;
-            currentZoom.current = THREE.MathUtils.damp(currentZoom.current, targetZoom, 3, delta);
+            let targetZoom = 65;
+            if (activeSpellEffect) targetZoom = 110; // Zoom máximo en el golpe
+            else if (isUnitMenuOpen || isActionAnimating) targetZoom = 95;
+            
+            currentZoom.current = THREE.MathUtils.damp(currentZoom.current, targetZoom, 4, delta);
             camera.zoom = currentZoom.current;
             camera.updateProjectionMatrix();
         }
 
-        // Obligatorio para que el damping de OrbitControls funcione
         controls.update();
     });
 
