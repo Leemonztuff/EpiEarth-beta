@@ -6,7 +6,6 @@ import { WorldGenerator } from '../../services/WorldGenerator';
 import { findPath } from '../../services/pathfinding';
 import { calculateVisionRange } from '../../services/dndRules';
 import { sfx } from '../../services/SoundSystem';
-import { GeminiService } from '../../services/GeminiService';
 import { TERRAIN_MOVEMENT_COST, ITEMS } from '../../constants';
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
@@ -59,6 +58,7 @@ export interface OverworldSlice {
   updateQuestProgress: (type: string, targetId: string, amount: number) => void;
   spawnIncursion: () => void;
   clearCurrentEncounter: () => void;
+  checkTileTriggers: (q: number, r: number) => boolean;
 }
 
 export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (set, get) => ({
@@ -100,16 +100,11 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
       const id = generateId();
       const q = playerPos.x + Math.floor((Math.random() - 0.5) * 12);
       const r = playerPos.y + Math.floor((Math.random() - 0.5) * 12);
-      set({ incursions: { ...incursions, [`${q},${r}`]: { id, q, r, difficulty: 1, rewardShards: 0, description: "A rift in reality." } } });
-      get().addLog("A Rift has appeared nearby!", "narrative");
+      set({ incursions: { ...incursions, [`${q},${r}`]: { id, q, r, difficulty: 1, rewardShards: 0, description: "Grieta en la realidad." } } });
+      get().addLog("¡Incursión detectada!", "narrative");
   },
 
-  logout: async () => {
-      const supabase = getSupabase();
-      if (supabase) await supabase.auth.signOut();
-      set({ userSession: null });
-      sfx.playUiClick();
-  },
+  logout: async () => { set({ userSession: null }); sfx.playUiClick(); },
 
   initializeWorld: () => { WorldGenerator.init(12345); },
 
@@ -119,13 +114,9 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
       if ((gameState === GameState.TOWN_EXPLORATION || gameState === GameState.DUNGEON) && townMapData) {
           tile = townMapData.find(c => c.q === playerPos.x && c.r === playerPos.y);
       }
-      
       if (tile && tile.npcs && tile.npcs.length > 0) {
           const npc = tile.npcs[0];
-          set({ 
-              gameState: GameState.DIALOGUE, 
-              activeNarrativeEvent: { npc, currentNodeId: npc.startNodeId || 'start' }
-          });
+          set({ gameState: GameState.DIALOGUE, activeNarrativeEvent: { npc, currentNodeId: npc.startNodeId || 'start' } });
           sfx.playUiClick();
       }
   },
@@ -133,83 +124,96 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
   clearCurrentEncounter: () => {
       const { playerPos, dimension } = get();
       const tile = WorldGenerator.getTile(playerPos.x, playerPos.y, dimension);
-      if (tile) {
-          tile.hasEncounter = false; // Mutamos la instancia del cache para este mapa
-      }
+      if (tile) tile.hasEncounter = false;
   },
 
-  updateQuestProgress: (type, targetId, amount) => {
-      const { quests } = get();
-      const updated = { ...quests };
-      let changed = false;
-      Object.values(updated).forEach(q => {
-          if (!q.completed && q.objective.type === type && (q.objective.targetId === targetId || q.objective.targetId === 'ANY')) {
-              q.objective.current = Math.min(q.objective.count, q.objective.current + amount);
-              if (q.objective.current >= q.objective.count) {
-                  q.completed = true;
-                  get().addLog(`QUEST COMPLETE: ${q.title}`, "levelup");
-                  get().addGold(q.reward.gold);
-                  get().addPartyXp(q.reward.xp);
-                  if (q.reward.items) q.reward.items.forEach(it => get().addItem(it));
-              }
-              changed = true;
-          }
-      });
-      if (changed) set({ quests: updated });
-  },
+  checkTileTriggers: (q, r) => {
+    const { dimension, gameState, townMapData } = get();
+    const isLocal = gameState === GameState.TOWN_EXPLORATION || gameState === GameState.DUNGEON;
+    let tile;
+    if (isLocal && townMapData) tile = townMapData.find(c => c.q === q && c.r === r);
+    else tile = WorldGenerator.getTile(q, r, dimension);
 
-  addQuest: (quest) => {
-    const { quests } = get();
-    if (quests[quest.id]) return;
-    set({ quests: { ...quests, [quest.id]: quest } });
-    get().addLog(`New Quest: ${quest.title}`, "narrative");
+    if (!tile) return false;
+
+    // EVENTO DE COMBATE (CALAVERAS)
+    if (!isLocal && tile.hasEncounter) {
+        set({ isPlayerMoving: false, isAmbushed: Math.random() > 0.75 });
+        get().startBattle(tile.terrain, tile.weather);
+        return true; 
+    }
+
+    // SALIDA DE LOCALIDADES
+    if (isLocal && tile.poiType === 'EXIT') {
+        set({ isPlayerMoving: false });
+        get().exitSettlement();
+        return true;
+    }
+
+    // ACTUALIZAR ESTADO DE INTERACCIÓN
+    set({ 
+        standingOnSettlement: !isLocal && (tile.poiType === 'VILLAGE' || tile.poiType === 'TOWN' || tile.poiType === 'CITY' || tile.poiType === 'CASTLE'),
+        standingOnDungeon: !isLocal && (tile.poiType === 'DUNGEON' || tile.poiType === 'RUINS'),
+        standingOnPortal: !isLocal && tile.hasPortal,
+        standingOnTemple: !isLocal && tile.poiType === 'TEMPLE',
+    });
+    return false;
   },
 
   movePlayerOverworld: async (q, r) => {
     const state = get();
     if (state.isPlayerMoving || state.party.length === 0) return;
     
+    if (q === state.playerPos.x && r === state.playerPos.y) {
+        get().checkTileTriggers(q, r);
+        return;
+    }
+
     const isLocal = state.gameState === GameState.TOWN_EXPLORATION || state.gameState === GameState.DUNGEON;
-    const leader = state.party[0];
-    const moveType = leader.stats.movementType || MovementType.WALK;
-    const isVoid = state.dimension === Dimension.UPSIDE_DOWN;
-    
     const path = findPath(
         {q: state.playerPos.x, r: state.playerPos.y}, 
         {q, r}, 
         isLocal ? state.townMapData : undefined, 
         isLocal ? undefined : (qx, rx) => WorldGenerator.getTile(qx, rx, state.dimension), 
-        moveType
+        state.party[0].stats.movementType || MovementType.WALK
     );
-    if (!path) return;
+    
+    if (!path || path.length === 0) {
+        get().checkTileTriggers(q, r);
+        return;
+    }
 
-    set({ isPlayerMoving: true, isAmbushed: false });
+    set({ isPlayerMoving: true });
     
     let currentFatigue = state.fatigue;
     let currentSupplies = state.supplies;
     let currentTime = state.worldTime;
 
     for (const step of path) {
-        if (get().gameState !== GameState.OVERWORLD && get().gameState !== GameState.TOWN_EXPLORATION && get().gameState !== GameState.DUNGEON) break;
+        const currentState = get();
+        if (currentState.gameState !== GameState.OVERWORLD && currentState.gameState !== GameState.TOWN_EXPLORATION && currentState.gameState !== GameState.DUNGEON) break;
 
         let tile;
-        if (isLocal) tile = state.townMapData.find(c => c.q === step.q && c.r === step.r);
-        else tile = WorldGenerator.getTile(step.q, step.r, state.dimension);
+        if (isLocal) tile = currentState.townMapData.find(c => c.q === step.q && c.r === step.r);
+        else tile = WorldGenerator.getTile(step.q, step.r, currentState.dimension);
 
-        const hours = Math.floor(currentTime / 60);
-        const isNight = hours < 6 || hours >= 22;
+        const oldHours = Math.floor(currentTime / 60);
+        currentTime = (currentTime + 15) % 1440;
+        const newHours = Math.floor(currentTime / 60);
 
-        const cost = TERRAIN_MOVEMENT_COST[moveType][tile.terrain] || 1;
-        const fatigueMult = (isNight ? 2.0 : 1.0) * (isVoid ? 1.5 : 1.0);
-        currentFatigue += (cost * 0.15 * fatigueMult);
-        
-        const supplyChance = isVoid ? 0.7 : 0.85;
-        if (!isLocal && Math.random() > supplyChance) currentSupplies = Math.max(0, currentSupplies - 1);
-        
-        currentTime = (currentTime + (cost * 15)) % 1440;
+        if (!isLocal && oldHours !== newHours && newHours % 4 === 0) {
+            if (currentSupplies > 0) currentSupplies -= 1;
+            else {
+                currentFatigue = Math.min(100, currentFatigue + 15);
+                get().addLog("¡Hambre! Sin raciones, la fatiga se dispara.", "info");
+            }
+        }
+
+        const fatigueStep = (newHours < 6 || newHours > 21) ? 0.6 : 0.2;
+        currentFatigue = Math.min(100, currentFatigue + fatigueStep);
 
         if (!isLocal) {
-            const vision = calculateVisionRange(leader.stats.attributes.WIS, leader.stats.corruption || 0, currentTime, state.dimension);
+            const vision = 4;
             const newExplored = new Set(get().exploredTiles[get().dimension]);
             for(let dq = -vision; dq <= vision; dq++) {
                 for(let dr = -vision; dr <= vision; dr++) {
@@ -222,103 +226,100 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
 
         set({ 
             playerPos: { x: step.q, y: step.r },
-            fatigue: Math.min(100, currentFatigue),
+            fatigue: currentFatigue,
             supplies: currentSupplies,
             worldTime: currentTime,
-            standingOnSettlement: !isLocal && (tile.poiType === 'VILLAGE' || tile.poiType === 'TOWN' || tile.poiType === 'CITY' || tile.poiType === 'CASTLE'),
-            standingOnDungeon: !isLocal && (tile.poiType === 'DUNGEON' || tile.poiType === 'RUINS'),
-            standingOnPortal: !isLocal && tile.hasPortal,
-            standingOnTemple: !isLocal && tile.poiType === 'TEMPLE',
             currentRegionName: isLocal ? state.currentRegionName : tile.regionName
         });
 
-        if (!isLocal && tile.hasEncounter) {
-            set({ isPlayerMoving: false });
-            const isAmbush = (isNight || isVoid) ? (Math.random() > 0.3) : (Math.random() > 0.8);
-            if (isAmbush) set({ isAmbushed: true });
-            get().startBattle(tile.terrain, tile.weather);
-            return;
-        }
-
-        if (isLocal && tile.poiType === 'EXIT') {
-            set({ isPlayerMoving: false });
-            get().exitSettlement();
-            return;
-        }
+        const triggered = get().checkTileTriggers(step.q, step.r);
+        if (triggered) break;
 
         sfx.playStep();
-        await new Promise(res => setTimeout(res, 120));
+        await new Promise(res => setTimeout(res, 110));
     }
+    
+    const finalState = get();
+    if (finalState.gameState === GameState.OVERWORLD) {
+        get().checkTileTriggers(finalState.playerPos.x, finalState.playerPos.y);
+    }
+    
     set({ isPlayerMoving: false });
   },
 
   enterSettlement: () => {
     const { playerPos, dimension } = get();
     const tile = WorldGenerator.getTile(playerPos.x, playerPos.y, dimension);
-    if (!tile.poiType || tile.poiType === 'DUNGEON' || tile.poiType === 'RUINS' || tile.poiType === 'TEMPLE') return;
-    
     const interiorMap = WorldGenerator.generateSettlementMap(playerPos.x, playerPos.y, tile.poiType as any);
     set({ 
-        gameState: GameState.TOWN_EXPLORATION,
-        townMapData: interiorMap,
-        lastOverworldPos: { ...playerPos },
-        playerPos: { x: 0, y: 0 },
-        currentSettlementName: tile.regionName,
-        standingOnSettlement: false
+        gameState: GameState.TOWN_EXPLORATION, townMapData: interiorMap,
+        lastOverworldPos: { ...playerPos }, playerPos: { x: 0, y: 0 },
+        currentSettlementName: tile.regionName, standingOnSettlement: false
     });
   },
 
   enterDungeon: () => {
     const { playerPos, dimension } = get();
     const tile = WorldGenerator.getTile(playerPos.x, playerPos.y, dimension);
-    if (tile.poiType !== 'DUNGEON' && tile.poiType !== 'RUINS') return;
-    
-    const dungeonMap = WorldGenerator.generateDungeon(tile.poiType === 'RUINS' ? 4 : 8);
+    const dungeonMap = WorldGenerator.generateDungeon(10);
     set({ 
-        gameState: GameState.DUNGEON,
-        townMapData: dungeonMap,
-        lastOverworldPos: { ...playerPos },
-        playerPos: { x: 0, y: 0 },
-        currentSettlementName: tile.regionName || "Cripta Antigua",
-        standingOnDungeon: false
+        gameState: GameState.DUNGEON, townMapData: dungeonMap,
+        lastOverworldPos: { ...playerPos }, playerPos: { x: 0, y: 0 },
+        currentSettlementName: tile.regionName || "Cripta Ancestral", standingOnDungeon: false
     });
   },
 
   exitSettlement: () => {
     const { lastOverworldPos } = get();
     set({ 
-        gameState: GameState.OVERWORLD, 
-        playerPos: lastOverworldPos || { x: 0, y: 0 }, 
-        townMapData: null, 
-        currentSettlementName: null,
-        standingOnSettlement: false,
-        standingOnDungeon: false,
-        standingOnTemple: false
+        gameState: GameState.OVERWORLD, playerPos: lastOverworldPos || { x: 0, y: 0 }, 
+        townMapData: null, currentSettlementName: null, standingOnSettlement: false, standingOnDungeon: false
     });
   },
 
   camp: async () => {
-    if (get().supplies < 5) {
-        get().addLog("No tienes suficientes suministros para acampar.", "info");
+    const { supplies, fatigue, party, worldTime } = get();
+    if (supplies < 5) {
+        get().addLog("Necesitas al menos 5 raciones para acampar con seguridad.", "info");
         return;
     }
-    set({ isSleeping: true, supplies: get().supplies - 5 });
-    await new Promise(r => setTimeout(r, 1500));
-    set({ fatigue: 0, worldTime: (get().worldTime + 480) % 1440, isSleeping: false });
-    get().party.forEach(p => p.stats.hp = Math.min(p.stats.maxHp, p.stats.hp + Math.floor(p.stats.maxHp * 0.4)));
+    
+    set({ isSleeping: true, supplies: supplies - 5 });
+    get().addLog("La party monta el campamento. El fuego ofrece protección...", "narrative");
+    
+    await new Promise(r => setTimeout(r, 2200));
+    
+    const healedParty = party.map(p => ({
+        ...p,
+        stats: { ...p.stats, hp: Math.min(p.stats.maxHp, p.stats.hp + Math.floor(p.stats.maxHp * 0.6)) }
+    }));
+    
+    set({ 
+        fatigue: 0, 
+        worldTime: (worldTime + 480) % 1440,
+        isSleeping: false,
+        party: healedParty
+    });
+    
+    sfx.playVictory();
   },
 
   usePortal: () => {
       sfx.playMagic();
       set(s => ({ dimension: s.dimension === Dimension.NORMAL ? Dimension.UPSIDE_DOWN : Dimension.NORMAL }));
+      get().addLog("Las fibras de la realidad se retuercen... Has cruzado.", "narrative");
   },
   buySupplies: (amount, cost) => { if (get().spendGold(cost)) set(s => ({ supplies: s.supplies + amount })); },
-  resolveNarrativeOption: (idx) => { 
-      const { activeNarrativeEvent } = get();
-      if (activeNarrativeEvent && activeNarrativeEvent.options && activeNarrativeEvent.options[idx]) {
-          const opt = activeNarrativeEvent.options[idx];
-          if (opt.action) opt.action();
-      }
-      set({ activeNarrativeEvent: null }); 
+  resolveNarrativeOption: (idx) => { set({ activeNarrativeEvent: null }); },
+  addQuest: (quest) => set(s => ({ quests: { ...s.quests, [quest.id]: quest } })),
+  updateQuestProgress: (type, targetId, amount) => {
+      const quests = { ...get().quests };
+      Object.values(quests).forEach(q => {
+          if (!q.completed && q.objective.type === type && q.objective.targetId === targetId) {
+              q.objective.current += amount;
+              if (q.objective.current >= q.objective.count) q.completed = true;
+          }
+      });
+      set({ quests });
   }
 });

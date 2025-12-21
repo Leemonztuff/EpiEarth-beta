@@ -9,36 +9,41 @@ import { BATTLE_MAP_SIZE } from '../../constants';
 export const CinematicCamera = () => {
     const { camera, controls } = useThree();
     const targetVec = useRef(new THREE.Vector3(BATTLE_MAP_SIZE / 2, 0, BATTLE_MAP_SIZE / 2));
-    const currentZoom = useRef(40);
+    const currentZoom = useRef(60);
     
     useFrame((state, delta) => {
         if (!controls || !camera) return;
 
         const store = useGameStore.getState();
-        const { battleEntities, turnOrder, currentTurnIndex, isUnitMenuOpen, isActionAnimating } = store;
+        const { battleEntities, turnOrder, currentTurnIndex, isUnitMenuOpen, isActionAnimating, isScreenShaking } = store;
 
-        if (!turnOrder || turnOrder.length === 0) return;
+        // Validar integridad de datos antes de calcular
+        if (!turnOrder || turnOrder.length === 0 || !battleEntities || currentTurnIndex < 0) return;
 
-        const activeId = turnOrder[currentTurnIndex];
-        const actor = battleEntities.find(e => e.id === activeId);
-
+        const actorId = turnOrder[currentTurnIndex];
+        const actor = battleEntities.find(e => e.id === actorId);
+        
         let idealPos = new THREE.Vector3(BATTLE_MAP_SIZE / 2, 0, BATTLE_MAP_SIZE / 2);
         
-        if (actor && actor.position) {
+        // Solo actualizar idealPos si el actor y su posición son válidos y numéricos
+        if (actor && actor.position && typeof actor.position.x === 'number' && typeof actor.position.y === 'number') {
             idealPos.set(actor.position.x, 0, actor.position.y);
         }
 
-        // Lerp del target de los controles (paneo)
-        // Si el menú está abierto o hay animación, lerpeamos mucho más rápido (8.0 vs 2.0)
-        const lerpFactor = (isUnitMenuOpen || isActionAnimating) ? 8.0 : 2.5;
-        targetVec.current.lerp(idealPos, delta * lerpFactor);
+        // Lerp defensivo: Prevenir NaN en la cámara que rompe el contexto de Three.js
+        if (!isNaN(idealPos.x) && !isNaN(idealPos.z)) {
+            targetVec.current.lerp(idealPos, delta * (isActionAnimating ? 10 : 4));
+            controls.target.copy(targetVec.current);
+        }
         
-        controls.target.copy(targetVec.current);
-        
-        // Manejo dinámico del ZOOM (Solo para OrthographicCamera)
+        if (isScreenShaking) {
+            camera.position.x += (Math.random() - 0.5) * 0.4;
+            camera.position.y += (Math.random() - 0.5) * 0.4;
+        }
+
         if (camera.isOrthographicCamera) {
-            const targetZoom = isUnitMenuOpen ? 65 : 40;
-            currentZoom.current = THREE.MathUtils.lerp(currentZoom.current, targetZoom, delta * 4);
+            const targetZoom = (isUnitMenuOpen || isActionAnimating) ? 85 : 60;
+            currentZoom.current = THREE.MathUtils.lerp(currentZoom.current, targetZoom, delta * 5);
             camera.zoom = currentZoom.current;
             camera.updateProjectionMatrix();
         }

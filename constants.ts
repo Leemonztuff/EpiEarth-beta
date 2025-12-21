@@ -7,17 +7,17 @@ export const SUPABASE_PROJECT_URL = "https://iukchvkoumfwaxlgfhso.supabase.co";
 export const ASSET_BUCKET = "game-assets";
 export const WESNOTH_BASE_URL = `${SUPABASE_PROJECT_URL}/storage/v1/object/public/${ASSET_BUCKET}`; 
 
-// CDN Configuration for Units (Wesnoth Repository)
+// CDN Configuration
 export const WESNOTH_CDN_URL = "https://cdn.jsdelivr.net/gh/wesnoth/wesnoth@master/data/core/images";
+export const MINECRAFT_ASSETS_URL = "https://cdn.jsdelivr.net/gh/InventivetalentDev/minecraft-assets@1.19.3/assets/minecraft/textures/block";
 
 export const NOISE_TEXTURE_URL = "https://www.transparenttextures.com/patterns/asfalt-dark.png";
 
-export const HEX_SIZE = 36; // Ligeramente más grande para ver los detalles Wesnoth
+export const HEX_SIZE = 36; 
 export const BATTLE_MAP_SIZE = 16;
 export const DEFAULT_MAP_WIDTH = 40;
 export const DEFAULT_MAP_HEIGHT = 30;
 
-// Terrain Visual Mapping (Colors used as fallback)
 export const TERRAIN_COLORS: Record<TerrainType, string> = {
     [TerrainType.GRASS]: '#4ade80', [TerrainType.PLAINS]: '#bef264', [TerrainType.FOREST]: '#15803d',
     [TerrainType.JUNGLE]: '#064e3b', [TerrainType.MOUNTAIN]: '#57534e', [TerrainType.WATER]: '#3b82f6',
@@ -28,6 +28,33 @@ export const TERRAIN_COLORS: Record<TerrainType, string> = {
     [TerrainType.CAVE_FLOOR]: '#292524', [TerrainType.DUNGEON_FLOOR]: '#44403c', [TerrainType.FUNGUS]: '#7e22ce',
     [TerrainType.LAVA]: '#ef4444', [TerrainType.CHASM]: '#020617', [TerrainType.VOID]: '#000000',
     [TerrainType.SAVANNAH]: '#d97706', [TerrainType.WASTELAND]: '#7f1d1d', [TerrainType.BADLANDS]: '#c2410c'
+};
+
+// Texturas estilo Minecraft para la batalla 3D
+export const BATTLE_TEXTURES: Record<TerrainType, string> = {
+    [TerrainType.GRASS]: `${MINECRAFT_ASSETS_URL}/grass_block_top.png`,
+    [TerrainType.PLAINS]: `${MINECRAFT_ASSETS_URL}/grass_block_top.png`,
+    [TerrainType.FOREST]: `${MINECRAFT_ASSETS_URL}/moss_block.png`,
+    [TerrainType.JUNGLE]: `${MINECRAFT_ASSETS_URL}/moss_block.png`,
+    [TerrainType.MOUNTAIN]: `${MINECRAFT_ASSETS_URL}/stone.png`,
+    [TerrainType.WATER]: `${MINECRAFT_ASSETS_URL}/water_still.png`,
+    [TerrainType.OCEAN]: `${MINECRAFT_ASSETS_URL}/water_still.png`,
+    [TerrainType.DESERT]: `${MINECRAFT_ASSETS_URL}/sand.png`,
+    [TerrainType.SWAMP]: `${MINECRAFT_ASSETS_URL}/mud.png`,
+    [TerrainType.TUNDRA]: `${MINECRAFT_ASSETS_URL}/snow.png`,
+    [TerrainType.TAIGA]: `${MINECRAFT_ASSETS_URL}/podzol_top.png`,
+    [TerrainType.COBBLESTONE]: `${MINECRAFT_ASSETS_URL}/cobblestone.png`,
+    [TerrainType.DIRT_ROAD]: `${MINECRAFT_ASSETS_URL}/dirt.png`,
+    [TerrainType.STONE_FLOOR]: `${MINECRAFT_ASSETS_URL}/stone_bricks.png`,
+    [TerrainType.CAVE_FLOOR]: `${MINECRAFT_ASSETS_URL}/deepslate.png`,
+    [TerrainType.DUNGEON_FLOOR]: `${MINECRAFT_ASSETS_URL}/polished_blackstone_bricks.png`,
+    [TerrainType.LAVA]: `${MINECRAFT_ASSETS_URL}/lava_still.png`,
+    [TerrainType.CHASM]: `${MINECRAFT_ASSETS_URL}/black_concrete.png`,
+    [TerrainType.VOID]: `${MINECRAFT_ASSETS_URL}/crying_obsidian.png`,
+    [TerrainType.WASTELAND]: `${MINECRAFT_ASSETS_URL}/dead_bubble_coral_block.png`,
+    [TerrainType.CASTLE]: `${MINECRAFT_ASSETS_URL}/stone_bricks.png`,
+    [TerrainType.RUINS]: `${MINECRAFT_ASSETS_URL}/cracked_stone_bricks.png`,
+    [TerrainType.FUNGUS]: `${MINECRAFT_ASSETS_URL}/mycelium_top.png`
 };
 
 export const ASSETS = { 
@@ -97,17 +124,17 @@ export const RARITY_COLORS: Record<ItemRarity, string> = { [ItemRarity.COMMON]: 
 export const SCHOOL_COLORS: Record<MagicSchool, string> = { [MagicSchool.ABJURATION]: '#60a5fa', [MagicSchool.CONJURATION]: '#f59e0b', [MagicSchool.DIVINATION]: '#a855f7', [MagicSchool.ENCHANTMENT]: '#ec4899', [MagicSchool.EVOCATION]: '#ef4444', [MagicSchool.ILLUSION]: '#8b5cf6', [MagicSchool.NECROMANCY]: '#4b5563', [MagicSchool.TRANSMUTATION]: '#10b981' };
 
 export const CLASS_CONFIG: Record<CharacterClass, any> = {
-    [CharacterClass.FIGHTER]: { icon: `units/human-loyalists/swordsman.png`, archetype: 'Melee Specialist' },
-    [CharacterClass.RANGER]: { icon: `units/human-loyalists/huntsman.png`, archetype: 'Ranged Scout' },
-    [CharacterClass.WIZARD]: { icon: `units/human-magi/red-mage.png`, archetype: 'Arcane Master' },
-    [CharacterClass.CLERIC]: { icon: `units/human-magi/white-mage.png`, archetype: 'Divine Healer' },
-    [CharacterClass.ROGUE]: { icon: `units/human-outlaws/thief.png`, archetype: 'Cunning Infiltrator' },
-    [CharacterClass.BARBARIAN]: { icon: `units/human-outlaws/thug.png`, archetype: 'Furious Warrior' },
-    [CharacterClass.PALADIN]: { icon: `units/human-loyalists/paladin.png`, archetype: 'Holy Protector' },
-    [CharacterClass.SORCERER]: { icon: `units/human-magi/silver-mage.png`, archetype: 'Innate Spellcaster' },
-    [CharacterClass.WARLOCK]: { icon: `units/human-magi/dark-adept.png`, archetype: 'Pact Maker' },
-    [CharacterClass.DRUID]: { icon: `units/elves-wood/shaman.png`, archetype: 'Nature Guardian' },
-    [CharacterClass.BARD]: { icon: `units/human-loyalists/fencer.png`, archetype: 'Master Performer' }
+    [CharacterClass.FIGHTER]: { icon: `units/human-loyalists/swordsman.png`, archetype: 'Guerrero' },
+    [CharacterClass.RANGER]: { icon: `units/human-loyalists/huntsman.png`, archetype: 'Explorador' },
+    [CharacterClass.WIZARD]: { icon: `units/human-magi/red-mage.png`, archetype: 'Mago Arcano' },
+    [CharacterClass.CLERIC]: { icon: `units/human-magi/white-mage.png`, archetype: 'Clérigo' },
+    [CharacterClass.ROGUE]: { icon: `units/human-outlaws/thief.png`, archetype: 'Pícaro' },
+    [CharacterClass.BARBARIAN]: { icon: `units/human-outlaws/thug.png`, archetype: 'Bárbaro' },
+    [CharacterClass.PALADIN]: { icon: `units/human-loyalists/paladin.png`, archetype: 'Paladín' },
+    [CharacterClass.SORCERER]: { icon: `units/human-magi/silver-mage.png`, archetype: 'Hechicero' },
+    [CharacterClass.WARLOCK]: { icon: `units/human-magi/dark-adept.png`, archetype: 'Brujo' },
+    [CharacterClass.DRUID]: { icon: `units/elves-wood/shaman.png`, archetype: 'Druida' },
+    [CharacterClass.BARD]: { icon: `units/human-loyalists/fencer.png`, archetype: 'Bardo' }
 };
 
 export const RACE_ICONS: Record<string, string> = { 
@@ -122,7 +149,7 @@ export const RACE_ICONS: Record<string, string> = {
 };
 
 export const getSprite = (race: CharacterRace, cls: CharacterClass): string => {
-    return CLASS_CONFIG[cls]?.icon || RACE_ICONS[race];
+    return CLASS_CONFIG[cls]?.icon || RACE_ICONS[race] || `units/human-loyalists/lieutenant.png`;
 };
 
 export const XP_TABLE: Record<number, number> = { 1: 300, 2: 900, 3: 2700, 4: 6500, 5: 14000, 6: 23000, 7: 34000, 8: 48000, 9: 64000, 10: 85000 };
@@ -130,7 +157,7 @@ export const DAMAGE_ICONS: Record<DamageType, string> = {
     [DamageType.SLASHING]: `attacks/sword-human.png`, 
     [DamageType.PIERCING]: `attacks/spear.png`, 
     [DamageType.BLUDGEONING]: `attacks/mace.png`, 
-    [DamageType.FIRE]: `attacks/fireball.png`, 
+    [TerrainType.FIRE]: `attacks/fireball.png`, 
     [DamageType.COLD]: `attacks/iceball.png`, 
     [DamageType.LIGHTNING]: `attacks/lightning.png`, 
     [DamageType.POISON]: `attacks/fang.png`, 
@@ -154,26 +181,90 @@ export const DIFFICULTY_SETTINGS: Record<Difficulty, { enemyStatMod: number }> =
 export const CORRUPTION_THRESHOLDS = [25, 50, 75, 100];
 
 export const ITEMS: Record<string, any> = {
-    shortbow: { id: 'shortbow', name: 'Shortbow', type: 'equipment', rarity: ItemRarity.COMMON, description: 'A simple bow.', icon: `items/bow.png`, equipmentStats: { slot: EquipmentSlot.MAIN_HAND, diceCount: 1, diceSides: 6, damageType: DamageType.PIERCING, properties: ['Range'] } },
-    longsword: { id: 'longsword', name: 'Longsword', type: 'equipment', rarity: ItemRarity.COMMON, description: 'A sturdy blade.', icon: `items/sword.png`, equipmentStats: { slot: EquipmentSlot.MAIN_HAND, diceCount: 1, diceSides: 8, damageType: DamageType.SLASHING } },
-    ration: { id: 'ration', name: 'Ration', type: 'consumable', rarity: ItemRarity.COMMON, description: 'Travel food.', icon: `items/grain-sheaf.png`, effect: { type: EffectType.HEAL, fixedValue: 5 } }
+    shortbow: { id: 'shortbow', name: 'Arco Corto', type: 'equipment', rarity: ItemRarity.COMMON, description: 'Un arco simple.', icon: `items/bow.png`, equipmentStats: { slot: EquipmentSlot.MAIN_HAND, diceCount: 1, diceSides: 6, damageType: DamageType.PIERCING, properties: ['Range'] } },
+    longsword: { id: 'longsword', name: 'Espada Larga', type: 'equipment', rarity: ItemRarity.COMMON, description: 'Una hoja robusta.', icon: `items/sword.png`, equipmentStats: { slot: EquipmentSlot.MAIN_HAND, diceCount: 1, diceSides: 8, damageType: DamageType.SLASHING } },
+    ration: { id: 'ration', name: 'Ración', type: 'consumable', rarity: ItemRarity.COMMON, description: 'Comida de viaje.', icon: `items/grain-sheaf.png`, effect: { type: EffectType.HEAL, fixedValue: 5 } }
 };
 
-export const CLASS_TREES: Record<string, any> = {
+export const CLASS_TREES: Record<CharacterClass, any[]> = {
     [CharacterClass.FIGHTER]: [
-        { level: 2, unlocksSkill: 'action_surge', passiveEffect: 'FIGHTING_STYLE' },
+        { level: 2, unlocksSkill: 'action_surge' },
         { level: 3, choices: [
-            { id: 'champion', featureName: 'Champion', description: 'Improved critical hits.', passiveEffect: 'CRIT_FOCUS' },
-            { id: 'battlemaster', featureName: 'Battle Master', description: 'Master of combat maneuvers.', unlocksSkill: 'maneuver' }
+            { id: 'f_champ', featureName: 'Champion', description: 'Improved Criticals.', passiveEffect: 'CRIT_FOCUS' },
+            { id: 'f_bm', featureName: 'Battle Master', description: 'Tactical Maneuvers.', unlocksSkill: 'maneuver' }
+        ]},
+        { level: 5, passiveEffect: 'EXTRA_ATTACK' }
+    ],
+    [CharacterClass.RANGER]: [
+        { level: 2, unlocksSpell: 'hunters_mark' },
+        { level: 3, choices: [
+            { id: 'r_hunter', featureName: 'Hunter', description: 'Expert prey tracking.', passiveEffect: 'HUNTER_SENSE' },
+            { id: 'r_beast', featureName: 'Beast Master', description: 'Animal companion.', unlocksSkill: 'summon_beast' }
         ]},
         { level: 5, passiveEffect: 'EXTRA_ATTACK' }
     ],
     [CharacterClass.WIZARD]: [
-        { level: 2, unlocksSpell: 'magic_missile' },
+        { level: 2, unlocksSpell: 'shield' },
         { level: 3, choices: [
-            { id: 'evocation', featureName: 'Evocation Savant', description: 'Specialized in destructive magic.', magicSchool: MagicSchool.EVOCATION, passiveEffect: 'SCULPT_SPELLS' },
-            { id: 'abjuration', featureName: 'Abjuration Savant', description: 'Specialized in protective magic.', magicSchool: MagicSchool.ABJURATION, passiveEffect: 'ARCANE_WARD' }
+            { id: 'w_evo', featureName: 'School of Evocation', description: 'Mastery of destructive elements.', magicSchool: MagicSchool.EVOCATION },
+            { id: 'w_abj', featureName: 'School of Abjuration', description: 'Mastery of protective wards.', magicSchool: MagicSchool.ABJURATION }
         ]}
     ],
-    [CharacterClass.RANGER]: [], [CharacterClass.CLERIC]: [], [CharacterClass.ROGUE]: [], [CharacterClass.BARBARIAN]: [], [CharacterClass.PALADIN]: [], [CharacterClass.SORCERER]: [], [CharacterClass.WARLOCK]: [], [CharacterClass.DRUID]: [], [CharacterClass.BARD]: []
+    [CharacterClass.CLERIC]: [
+        { level: 2, unlocksSkill: 'channel_divinity' },
+        { level: 3, choices: [
+            { id: 'c_life', featureName: 'Life Domain', description: 'Divine healing energy.', magicSchool: MagicSchool.ABJURATION },
+            { id: 'c_war', featureName: 'War Domain', description: 'Holy warrior spirit.', unlocksSkill: 'divine_strike' }
+        ]}
+    ],
+    [CharacterClass.ROGUE]: [
+        { level: 2, unlocksSkill: 'cunning_action' },
+        { level: 3, choices: [
+            { id: 'rog_thief', featureName: 'Thief', description: 'Expert infiltration.', passiveEffect: 'FAST_HANDS' },
+            { id: 'rog_ass', featureName: 'Assassin', description: 'Lethal efficiency.', passiveEffect: 'SNEAK_ATTACK' }
+        ]}
+    ],
+    [CharacterClass.BARBARIAN]: [
+        { level: 2, unlocksSkill: 'reckless_attack' },
+        { level: 3, choices: [
+            { id: 'b_berserker', featureName: 'Path of the Berserker', description: 'Unstoppable rage.', passiveEffect: 'FRENZY' },
+            { id: 'b_totem', featureName: 'Path of the Totem Warrior', description: 'Spirit animal guidance.', passiveEffect: 'BEAR_TOTEM' }
+        ]},
+        { level: 5, passiveEffect: 'EXTRA_ATTACK' }
+    ],
+    [CharacterClass.PALADIN]: [
+        { level: 2, unlocksSkill: 'divine_smite' },
+        { level: 3, choices: [
+            { id: 'p_devotion', featureName: 'Oath of Devotion', description: 'Sacred protector.', magicSchool: MagicSchool.ABJURATION },
+            { id: 'p_vengeance', featureName: 'Oath of Vengeance', description: 'Relentless pursuer.', unlocksSkill: 'vow_of_enmity' }
+        ]}
+    ],
+    [CharacterClass.SORCERER]: [
+        { level: 2, unlocksSkill: 'font_of_magic' },
+        { level: 3, choices: [
+            { id: 's_draconic', featureName: 'Draconic Bloodline', description: 'Inherited elemental power.', passiveEffect: 'DRACONIC_RESILIENCE' },
+            { id: 's_wild', featureName: 'Wild Magic', description: 'Unpredictable chaos.', unlocksSkill: 'tides_of_chaos' }
+        ]}
+    ],
+    [CharacterClass.WARLOCK]: [
+        { level: 2, unlocksSkill: 'eldritch_invocations' },
+        { level: 3, choices: [
+            { id: 'war_fiend', featureName: 'The Fiend', description: 'Infernal patron gift.', unlocksSkill: 'dark_ones_blessing' },
+            { id: 'war_fey', featureName: 'The Archfey', description: 'Fey presence charm.', unlocksSkill: 'fey_presence' }
+        ]}
+    ],
+    [CharacterClass.DRUID]: [
+        { level: 2, unlocksSkill: 'wild_shape' },
+        { level: 3, choices: [
+            { id: 'd_moon', featureName: 'Circle of the Moon', description: 'Primal shapeshifting.', unlocksSkill: 'wild_shape_combat' },
+            { id: 'd_land', featureName: 'Circle of the Land', description: 'Nature recovery.', magicSchool: MagicSchool.CONJURATION }
+        ]}
+    ],
+    [CharacterClass.BARD]: [
+        { level: 2, unlocksSkill: 'jack_of_all_trades' },
+        { level: 3, choices: [
+            { id: 'brd_lore', featureName: 'College of Lore', description: 'Ancient knowledge mastery.', magicSchool: MagicSchool.DIVINATION },
+            { id: 'brd_valor', featureName: 'College of Valor', description: 'Inspirational combat.', passiveEffect: 'COMBAT_INSPIRATION' }
+        ]}
+    ]
 };

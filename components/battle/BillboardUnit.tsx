@@ -4,205 +4,132 @@ import React, { useRef, useState, useEffect, useMemo, Suspense } from 'react';
 import { useFrame, useLoader } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
 import * as THREE from 'three';
-import { StatusEffectType, BattleAction } from '../../types';
-import { TextureErrorBoundary } from './Shared';
+import { StatusEffectType } from '../../types';
 import { AssetManager } from '../../services/AssetManager';
 import { useGameStore } from '../../store/gameStore';
 
-const SpriteRenderer = ({ url, isHit, statusEffects }: any) => {
-    // Return null immediately if no URL is provided to trigger the ErrorBoundary or show nothing
-    if (!url || url.includes('undefined')) return null;
-
-    const safeUrl = useMemo(() => AssetManager.getSafeSprite(url), [url]);
-    
-    // Configurar CORS para permitir texturas del CDN
-    const texture = useLoader(THREE.TextureLoader, safeUrl, (loader) => {
-        loader.setCrossOrigin('anonymous');
-    });
-    
-    useEffect(() => {
-        if (texture) {
-            texture.magFilter = THREE.NearestFilter;
-            texture.minFilter = THREE.NearestFilter;
-            texture.needsUpdate = true;
-        }
-    }, [texture]);
-
-    const tintColor = useMemo(() => {
-        if (isHit) return new THREE.Color('#ff4444');
-        if (!statusEffects || statusEffects.length === 0) return new THREE.Color('white');
-        const primary = statusEffects[0].type;
-        if (primary === StatusEffectType.POISON) return new THREE.Color('#4ade80');
-        if (primary === StatusEffectType.BURN) return new THREE.Color('#fb923c');
-        if (primary === StatusEffectType.FREEZE) return new THREE.Color('#60a5fa');
-        return new THREE.Color('white');
-    }, [isHit, statusEffects]);
-
-    return (
-        <sprite scale={[1.8, 1.8, 1]}>
-            <spriteMaterial 
-                map={texture} 
-                transparent={true} 
-                alphaTest={0.5} 
-                color={tintColor} 
-                depthWrite={false}
-                toneMapped={false}
-            />
-        </sprite>
-    );
+const StatusBadge = ({ type }: { type: StatusEffectType }) => {
+    const icons = { [StatusEffectType.POISON]: '🤢', [StatusEffectType.BURN]: '🔥', [StatusEffectType.HASTE]: '⚡', [StatusEffectType.SLOW]: '❄️' };
+    return <span className="text-[8px] bg-black/80 rounded px-1">{icons[type] || '✨'}</span>;
 };
 
-const RadialMenu = ({ onSelect, remainingActions, hasMoved, canMagic, canSkill, onClose, entity }: any) => {
-    const stats = entity?.stats;
-    const actions = [
-        { id: BattleAction.MOVE, icon: '👣', label: 'Mover', disabled: hasMoved, cost: null },
-        { id: BattleAction.ATTACK, icon: '⚔️', label: 'Atacar', disabled: remainingActions <= 0, cost: null },
-        { id: BattleAction.MAGIC, icon: '✨', label: 'Magia', disabled: remainingActions <= 0 || !canMagic || (stats?.spellSlots?.current || 0) <= 0, cost: stats?.spellSlots?.current, costType: 'MP' },
-        { id: BattleAction.SKILL, icon: '🔥', label: 'Técnica', disabled: remainingActions <= 0 || !canSkill || (stats?.stamina || 0) < 10, cost: stats?.stamina, costType: 'ST' },
-        { id: BattleAction.WAIT, icon: '🛡️', label: 'Pasar', disabled: false, cost: null },
-    ];
+// Componente interno para cargar la textura con seguridad extrema
+const SafeSprite = ({ url, isHit }: { url: string, isHit: boolean }) => {
+    const [tex, setTex] = useState<THREE.Texture | null>(null);
+    const [hasError, setHasError] = useState(false);
 
-    const radius = 95; 
+    useEffect(() => {
+        let active = true;
+        const loader = new THREE.TextureLoader();
+        const finalUrl = AssetManager.getSafeSprite(url);
+
+        loader.load(
+            finalUrl,
+            (loadedTex) => {
+                if (!active) return;
+                loadedTex.magFilter = THREE.NearestFilter;
+                loadedTex.minFilter = THREE.NearestFilter;
+                setTex(loadedTex);
+            },
+            undefined,
+            () => {
+                if (!active) return;
+                console.warn("Failed to load battle sprite, using fallback:", finalUrl);
+                setHasError(true);
+                // Cargar el sprite de seguridad si el original falla
+                loader.load(AssetManager.getSafeSprite(AssetManager.FALLBACK_SPRITE), (fbTex) => {
+                    if (active) setTex(fbTex);
+                });
+            }
+        );
+        return () => { active = false; };
+    }, [url]);
+
+    if (!tex) return null;
 
     return (
-        <div className="relative w-0 h-0 flex items-center justify-center animate-in zoom-in-75 duration-300">
-            <div className="fixed inset-0 z-[-1]" onClick={(e) => { e.stopPropagation(); onClose(); }} />
-            <div className="relative w-64 h-64 flex items-center justify-center">
-                <div className="absolute w-20 h-20 rounded-full bg-slate-900/80 backdrop-blur-2xl border-2 border-white/10 shadow-[0_0_50px_rgba(0,0,0,0.8)]" />
-                {actions.map((action, i) => {
-                    const angle = (i / actions.length) * Math.PI * 2 - Math.PI / 2;
-                    const x = Math.cos(angle) * radius;
-                    const y = Math.sin(angle) * radius;
-                    
-                    const isDisabled = action.disabled;
-
-                    return (
-                        <button 
-                            key={action.id} 
-                            onClick={(e) => { e.stopPropagation(); if(!isDisabled) onSelect(action.id); }} 
-                            className={`absolute w-14 h-14 rounded-full border-2 flex flex-col items-center justify-center shadow-2xl transition-all duration-300 group ${isDisabled ? 'bg-slate-900/40 border-white/5 opacity-40 scale-75 cursor-not-allowed' : 'bg-slate-900 border-white/20 text-white hover:bg-amber-600 hover:scale-125 hover:border-amber-400 active:scale-95'}`}
-                            style={{ transform: `translate(${x}px, ${y}px)` }}
-                        >
-                            <span className="text-2xl">{action.icon}</span>
-                            {action.cost !== null && (
-                                <span className={`text-[7px] font-black absolute -top-1 -right-1 px-1 rounded-full border ${action.costType === 'MP' ? 'bg-blue-600 border-blue-400' : 'bg-orange-600 border-orange-400'}`}>
-                                    {action.cost}
-                                </span>
-                            )}
-                            <div className="absolute top-16 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap bg-black/80 px-2 py-1 rounded text-[8px] font-black uppercase tracking-widest pointer-events-none">
-                                {action.label}
-                            </div>
-                        </button>
-                    );
-                })}
-            </div>
-        </div>
+        <spriteMaterial 
+            map={tex} 
+            transparent 
+            alphaTest={0.5} 
+            color={isHit ? '#ff4444' : 'white'} 
+            depthWrite={true}
+        />
     );
 };
 
 export const BillboardUnit = React.memo(({ 
     position, color, isCurrentTurn, hp, maxHp, 
-    onUnitClick, onInspect, isActing, actionType, 
-    entityType, spriteUrl, entity, activeStatusEffects
+    onUnitClick, isActing, actionType, 
+    entityType, spriteUrl, entity
 }: any) => {
   const groupRef = useRef<THREE.Group>(null);
-  const [isHovered, setIsHovered] = useState(false);
-  const lastHp = useRef(hp);
   const [shouldShake, setShouldShake] = useState(false);
+  const lastHp = useRef(hp);
   
-  const { isUnitMenuOpen, setUnitMenuOpen, selectAction, remainingActions, hasMoved, executeWait } = useGameStore();
+  const { isUnitMenuOpen, setUnitMenuOpen, selectAction, hasMoved, hasActed, executeWait } = useGameStore();
 
   useEffect(() => {
     if (hp < lastHp.current) {
         setShouldShake(true);
-        const t = setTimeout(() => setShouldShake(false), 400);
-        return () => clearTimeout(t);
+        setTimeout(() => setShouldShake(false), 300);
     }
     lastHp.current = hp;
   }, [hp]);
 
   useFrame((state) => {
-      if (groupRef.current && position && hp > 0) {
-          const bob = Math.sin(state.clock.elapsedTime * 2 + (position[0] + position[2])) * 0.05;
+      if (groupRef.current) {
+          const t = state.clock.elapsedTime;
+          const bob = Math.sin(t * 3) * 0.04;
           groupRef.current.position.set(position[0], position[1] + bob, position[2]);
-          if (isActing && actionType === 'ATTACK') groupRef.current.position.x += Math.sin(state.clock.elapsedTime * 25) * 0.12;
           if (shouldShake) groupRef.current.position.x += (Math.random() - 0.5) * 0.15;
       }
   });
 
-  if (hp <= 0) return null;
-  const hpPercent = Math.max(0, Math.min(1, hp / (maxHp || 1)));
+  const hpPercent = Math.max(0, hp / (maxHp || 1));
+  const activeEffects = entity?.stats?.activeStatusEffects || [];
 
   return (
     <group 
         ref={groupRef} 
-        onPointerOver={(e) => { e.stopPropagation(); setIsHovered(true); }}
-        onPointerOut={(e) => { e.stopPropagation(); setIsHovered(false); }}
         onClick={(e) => { 
             e.stopPropagation(); 
-            // Left click: Open menu or select target
             if (isCurrentTurn && entityType === 'PLAYER') setUnitMenuOpen(!isUnitMenuOpen);
             else if (onUnitClick) onUnitClick(position[0], position[2]);
         }}
-        onContextMenu={(e) => {
-            e.nativeEvent.preventDefault();
-            e.stopPropagation();
-            if (onInspect) onInspect();
-        }}
     >
         {isCurrentTurn && (
-            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.05, 0]}>
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
                 <ringGeometry args={[0.55, 0.65, 32]} />
                 <meshBasicMaterial color="#fbbf24" transparent opacity={0.6} />
             </mesh>
         )}
         
-        <TextureErrorBoundary fallback={
-            <mesh position={[0, 0.75, 0]}>
-                <capsuleGeometry args={[0.3, 0.8, 4, 8]} />
-                <meshStandardMaterial color={color || '#ff00ff'} emissive={color} emissiveIntensity={0.2} />
-            </mesh>
-        }>
-            <Suspense fallback={
-                <mesh position={[0, 0.75, 0]}>
-                    <boxGeometry args={[0.4, 0.4, 0.4]} />
-                    <meshStandardMaterial color="#444" wireframe />
-                </mesh>
-            }>
-                <group position={[0, 0.8, 0]}>
-                    <SpriteRenderer url={spriteUrl} isHit={shouldShake} statusEffects={activeStatusEffects} />
-                </group>
-            </Suspense>
-        </TextureErrorBoundary>
-
-        {isCurrentTurn && isUnitMenuOpen && (
-            <Html position={[0, 1.0, 0]} center zIndexRange={[100, 0]}>
-                <RadialMenu 
-                    entity={entity} 
-                    onSelect={(id) => id === BattleAction.WAIT ? executeWait() : selectAction(id)} 
-                    onClose={() => setUnitMenuOpen(false)} 
-                    remainingActions={remainingActions} 
-                    hasMoved={hasMoved} 
-                    canMagic={(entity?.stats?.knownSpells?.length || 0) > 0} 
-                    canSkill={(entity?.stats?.knownSkills?.length || 0) > 0} 
-                />
-            </Html>
-        )}
+        <sprite scale={[2.0, 2.0, 1]} position={[0, 1.0, 0]}>
+            <SafeSprite url={spriteUrl} isHit={shouldShake} />
+        </sprite>
 
         <Html position={[0, 2.3, 0]} center style={{ pointerEvents: 'none' }}>
-            <div className={`flex flex-col items-center gap-1 transition-opacity duration-300 ${(isCurrentTurn || isHovered || hpPercent < 1) ? 'opacity-100' : 'opacity-0'}`}>
-                <div className="w-16 h-1.5 bg-black border border-white/10 rounded-full overflow-hidden shadow-lg">
-                    <div className={`h-full transition-all duration-500 ${hpPercent > 0.5 ? 'bg-emerald-500' : hpPercent > 0.25 ? 'bg-amber-500' : 'bg-red-600'}`} style={{ width: `${hpPercent * 100}%` }} />
+            <div className="flex flex-col items-center gap-1 select-none">
+                <div className="flex gap-0.5 mb-0.5">
+                    {activeEffects.map((eff, i) => <StatusBadge key={i} type={eff.type} />)}
                 </div>
-                <div className="flex gap-1 h-3">
-                    {activeStatusEffects?.map((s, i) => (
-                        <span key={i} className="text-[10px] animate-bounce" style={{ animationDelay: `${i * 100}ms` }}>
-                            {s.type === StatusEffectType.POISON ? '🧪' : s.type === StatusEffectType.BURN ? '🔥' : s.type === StatusEffectType.STUN ? '🌀' : ''}
-                        </span>
-                    ))}
+                <div className="w-14 h-1.5 bg-black/60 rounded-full overflow-hidden border border-white/20 shadow-xl">
+                    <div className={`h-full transition-all duration-500 ${hpPercent > 0.5 ? 'bg-emerald-500' : 'bg-red-500'}`} style={{ width: `${hpPercent * 100}%` }} />
                 </div>
+                <div className="text-[7px] font-black text-white/50 uppercase tracking-tighter drop-shadow-md">{entity?.name}</div>
             </div>
         </Html>
+
+        {isCurrentTurn && isUnitMenuOpen && (
+            <Html position={[0, 1.0, 0]} center>
+                <div className="flex flex-wrap gap-2 w-48 justify-center animate-in zoom-in-75 duration-200">
+                    <button onClick={(e) => { e.stopPropagation(); selectAction('MOVE'); }} disabled={hasMoved} className={`w-12 h-12 rounded-full border-2 bg-slate-900 flex items-center justify-center text-xl ${hasMoved ? 'opacity-20' : 'border-blue-500 shadow-lg hover:bg-blue-600'}`}>👣</button>
+                    <button onClick={(e) => { e.stopPropagation(); selectAction('ATTACK'); }} disabled={hasActed} className={`w-12 h-12 rounded-full border-2 bg-slate-900 flex items-center justify-center text-xl ${hasActed ? 'opacity-20' : 'border-red-500 shadow-lg hover:bg-red-600'}`}>⚔️</button>
+                    <button onClick={(e) => { e.stopPropagation(); executeWait(); }} className="w-12 h-12 rounded-full border-2 border-amber-500 bg-slate-900 flex items-center justify-center text-xl text-white hover:bg-amber-600">🛡️</button>
+                </div>
+            </Html>
+        )}
     </group>
   );
 });

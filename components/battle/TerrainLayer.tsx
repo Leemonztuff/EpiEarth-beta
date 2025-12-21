@@ -2,44 +2,51 @@
 // @ts-nocheck
 import React, { useRef, useLayoutEffect, useMemo } from 'react';
 import * as THREE from 'three';
-import { TileEffectType, TerrainType } from '../../types';
+import { TileEffectType } from '../../types';
 import { AssetManager } from '../../services/AssetManager';
 
 const _tempObj = new THREE.Object3D();
 const _tempColor = new THREE.Color();
 
-/**
- * Standard material for terrain blocks using bridged textures.
- */
 const TexturedTerrainBlock = React.memo(({ blocks, textureUrl, onTileClick, onTileHover }: any) => {
     const meshRef = useRef<THREE.InstancedMesh>(null);
-    const count = blocks.length;
+    const count = blocks?.length || 0;
 
-    // Use Bridged Texture (Guaranteed to be ready because of Preloader)
-    const texture = useMemo(() => AssetManager.getTexture(textureUrl), [textureUrl]);
+    const texture = useMemo(() => {
+        try {
+            const tex = AssetManager.getTexture(textureUrl);
+            if (tex) {
+                tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+                tex.magFilter = tex.minFilter = THREE.NearestFilter;
+            }
+            return tex;
+        } catch (e) {
+            return AssetManager.getTexture(undefined); 
+        }
+    }, [textureUrl]);
 
     useLayoutEffect(() => {
         if (!meshRef.current || count === 0) return;
         
         blocks.forEach((block, i) => {
-            const y = (block.offsetY || 0) + (block.height || 1) / 2;
-            _tempObj.position.set(block.x || 0, y, block.z || 0);
-            _tempObj.scale.set(1.0, block.height || 1, 1.0); // Full size for better overlap
+            if (!block || i >= count) return;
+            // Posicionamos el bloque considerando su altura destructible
+            const yCenter = (block.offsetY || 0) + (block.height || 1) / 2;
+            _tempObj.position.set(block.x || 0, yCenter, block.z || 0);
+            _tempObj.scale.set(1.0, block.height || 0.1, 1.0); 
             _tempObj.updateMatrix();
             meshRef.current.setMatrixAt(i, _tempObj.matrix);
             
-            let color = block.color || '#ffffff';
-            if (block.effect) {
-                if (block.effect.type === TileEffectType.FIRE) color = '#ff8888';
-                if (block.effect.type === TileEffectType.POISON_CLOUD) color = '#88ff88';
-            }
-            _tempColor.set(color);
+            const healthRatio = (block.hp || 1) / (block.maxHp || 1);
+            _tempColor.set(block.color || '#ffffff').multiplyScalar(0.4 + (healthRatio * 0.6));
             meshRef.current.setColorAt(i, _tempColor);
         });
         
         meshRef.current.instanceMatrix.needsUpdate = true;
         if (meshRef.current.instanceColor) meshRef.current.instanceColor.needsUpdate = true;
-    }, [blocks, count, texture]);
+    }, [blocks, count]);
+
+    if (count === 0) return null;
 
     return (
         <instancedMesh 
@@ -64,12 +71,13 @@ const TexturedTerrainBlock = React.memo(({ blocks, textureUrl, onTileClick, onTi
     );
 });
 
-export const TerrainLayer = React.memo(({ mapData, isShadowRealm, onTileClick, onTileHover }: any) => {
+export const TerrainLayer = React.memo(({ mapData, onTileClick, onTileHover }: any) => {
     const groups = useMemo(() => {
         const g: Record<string, any[]> = {};
         if (!mapData) return g;
         mapData.forEach(block => {
-            const tex = block.textureUrl || 'terrain/flat/grass.png';
+            if (!block) return;
+            const tex = block.textureUrl || 'stone.png';
             if (!g[tex]) g[tex] = [];
             g[tex].push(block);
         });

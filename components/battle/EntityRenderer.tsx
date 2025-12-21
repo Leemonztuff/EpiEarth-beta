@@ -23,15 +23,17 @@ export const EntityRenderer = React.memo(({
     isActing, 
     actionType 
 }: EntityRendererProps) => {
+    // Protección total contra entidades malformadas
     if (!entity || !entity.position || !entity.stats) return null;
 
-    // Calculate Y position based on terrain height/offset
+    // Calcular Y basado en la altura de la celda (Voxels)
     const yPos = useMemo(() => {
-        const cell = mapData?.find((c: BattleCell) => c.x === entity.position.x && c.z === entity.position.y);
-        return cell ? (cell.offsetY + cell.height) : 1.0;
+        if (!mapData || !entity.position) return 0;
+        const cell = mapData.find((c: BattleCell) => c.x === entity.position.x && c.z === entity.position.y);
+        // Si el bloque tiene altura 3, la superficie está en Y=3.
+        return cell ? (cell.offsetY + cell.height) : 0;
     }, [mapData, entity.position.x, entity.position.y]);
 
-    // Robust visual data
     const visual = entity.visual || { color: '#ffffff', spriteUrl: '' };
     const stats = entity.stats;
 

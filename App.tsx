@@ -77,14 +77,30 @@ const App = () => {
           <div className={`fixed inset-0 z-[998] bg-black transition-opacity duration-1000 pointer-events-none ${isSleeping ? 'opacity-100' : 'opacity-0'}`} />
           {gameState === GameState.TITLE && <TitleScreen onComplete={createCharacter} />}
           {gameState === GameState.GAME_WON && <EndingScreen />}
-          {(gameState === GameState.OVERWORLD || gameState === GameState.TOWN_EXPLORATION || gameState === GameState.DUNGEON || gameState === GameState.DIALOGUE) && (
+          
+          {/* OVERWORLD MAP: Visible durante exploración, diálogo */}
+          {(gameState === GameState.OVERWORLD || 
+            gameState === GameState.TOWN_EXPLORATION || 
+            gameState === GameState.DUNGEON || 
+            gameState === GameState.DIALOGUE) && (
             <OverworldMap playerPos={playerPos} onMove={movePlayerOverworld} dimension={dimension} />
           )}
+
+          {/* ESCENA DE BATALLA: Ahora visible desde INIT para precarga y ambiente */}
           {(gameState === GameState.BATTLE_TACTICAL || gameState === GameState.BATTLE_INIT) && (
-            <BattleScene entities={battleEntities} weather={battleWeather} terrainType={battleTerrain} currentTurnEntityId={turnOrder[currentTurnIndex]} onTileClick={handleTileInteraction} />
+            <BattleScene 
+                entities={battleEntities} 
+                weather={battleWeather} 
+                terrainType={battleTerrain} 
+                currentTurnEntityId={turnOrder[currentTurnIndex]} 
+                onTileClick={handleTileInteraction} 
+            />
           )}
+
           <UIOverlay activeService={activeTownService} onOpenTownService={setActiveTownService} />
+          
           {gameState === GameState.BATTLE_INIT && <BattleInitModal />}
+          
           {(gameState === GameState.BATTLE_VICTORY || gameState === GameState.BATTLE_DEFEAT) && (
             <BattleResultModal type={gameState === GameState.BATTLE_VICTORY ? 'victory' : 'defeat'} rewards={battleRewards} onContinue={continueAfterVictory} onRestart={restartBattle} onQuit={quitToMenu} />
           )}

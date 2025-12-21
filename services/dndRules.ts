@@ -30,6 +30,99 @@ export const rollD20 = (type: 'normal' | 'advantage' | 'disadvantage' = 'normal'
   return { result: r1, raw: [r1] };
 };
 
+// --- NUEVA LÓGICA TÁCTICA ---
+
+export const calculateTacticalBonuses = (attacker: Entity, target: Entity, map: BattleCell[]) => {
+    const attackerCell = map.find(c => c.x === attacker.position?.x && c.z === attacker.position?.y);
+    const targetCell = map.find(c => c.x === target.position?.x && c.z === target.position?.y);
+    
+    if (!attackerCell || !targetCell) return { attackMod: 0, damageMod: 0, hasAdvantage: false };
+
+    const heightDiff = attackerCell.height - targetCell.height;
+    let attackMod = 0;
+    let damageMod = 0;
+    let hasAdvantage = false;
+
+    // Ventaja por Altura (High Ground)
+    if (heightDiff >= 2) {
+        attackMod += 2;
+        damageMod += rollDice(4, 1);
+        hasAdvantage = true;
+    } else if (heightDiff <= -2) {
+        attackMod -= 2; // Desventaja por estar abajo
+    }
+
+    return { attackMod, damageMod, hasAdvantage };
+};
+
+export const calculateAttackRoll = (attacker: Entity, target?: Entity, dimension: Dimension = Dimension.NORMAL, allEntities: Entity[] = [], map: BattleCell[] = []) => {
+    const stats = attacker.stats;
+    let hasAdvantage = false;
+    let hasDisadvantage = false;
+    let bonusMod = 0;
+    
+    if (stats.activeStatusEffects?.some(s => s.type === StatusEffectType.HASTE)) hasAdvantage = true;
+    if (stats.activeStatusEffects?.some(s => s.type === StatusEffectType.SLOW)) hasDisadvantage = true;
+
+    // Tactical Check
+    if (target && map.length > 0) {
+        const tactical = calculateTacticalBonuses(attacker, target, map);
+        bonusMod += tactical.attackMod;
+        if (tactical.hasAdvantage) hasAdvantage = true;
+    }
+
+    let rollType: 'normal' | 'advantage' | 'disadvantage' = 'normal';
+    if (hasAdvantage && !hasDisadvantage) rollType = 'advantage';
+    else if (!hasAdvantage && hasDisadvantage) rollType = 'disadvantage';
+    
+    const critThreshold = stats.traits?.includes('CRIT_FOCUS') ? 19 : 20;
+    const roll = rollD20(rollType);
+    const mod = getRelevantAbilityMod(attacker, attacker.equipment?.[EquipmentSlot.MAIN_HAND]);
+    const prof = getProficiencyBonus(stats.level || 1);
+    const total = roll.result + mod + prof + bonusMod;
+
+    return { total, isCrit: roll.result >= critThreshold, isAutoMiss: roll.result === 1, roll: roll.result, mod, prof, rollType };
+};
+
+export const calculateDamage = (attacker: any, weaponSlot: EquipmentSlot = EquipmentSlot.MAIN_HAND, isCrit: boolean = false, target?: any, map: BattleCell[] = []) => {
+    if (!attacker || !attacker.stats) return { amount: 0, type: DamageType.BLUDGEONING, isMagical: false };
+    
+    let extraDamage = 0;
+    
+    // Bono de altura en daño
+    if (target && map.length > 0) {
+        const tactical = calculateTacticalBonuses(attacker, target, map);
+        extraDamage += tactical.damageMod;
+    }
+
+    if (attacker.stats.activeStatusEffects?.some(s => s.type === 'RAGE')) extraDamage += 2;
+    
+    const weapon = attacker?.equipment?.[weaponSlot];
+    const damageType = weapon?.equipmentStats?.damageType || DamageType.BLUDGEONING;
+    const isMagical = weapon?.equipmentStats?.properties?.includes('Magical') || false;
+    let diceCount = weapon?.equipmentStats?.diceCount || 1;
+    let diceSides = weapon?.equipmentStats?.diceSides || 4; 
+    
+    const mod = getRelevantAbilityMod(attacker, weapon);
+    if (isCrit) diceCount *= 2;
+    
+    const baseDmg = rollDice(diceSides, diceCount) + mod;
+    return { amount: Math.max(1, baseDmg + extraDamage), type: damageType, isMagical };
+};
+
+// Fixed: Added missing calculateFinalDamage function to handle resistances and vulnerabilities
+export const calculateFinalDamage = (amount: number, type: DamageType, target: Entity): { finalDamage: number } => {
+    if (!target || !target.stats) return { finalDamage: amount };
+    
+    let multiplier = 1.0;
+    const stats = target.stats;
+    if (stats.immunities?.includes(type)) multiplier = 0;
+    else if (stats.resistances?.includes(type)) multiplier = 0.5;
+    else if (stats.vulnerabilities?.includes(type)) multiplier = 2.0;
+    
+    return { finalDamage: Math.floor(amount * multiplier) };
+};
+
 export const calculateDerivedStats = (attributes: Attributes, cls: CharacterClass, level: number, equipment?: any): DerivedStats => {
     const str = attributes.STR;
     const dex = attributes.DEX;
@@ -77,98 +170,6 @@ export const calculateHp = (level: number, con: number, hitDie: number, race?: C
   return Math.floor((baseHp + raceBonus) * 1.5);
 };
 
-export const isFlanking = (attacker: Entity, target: Entity, allies: Entity[]): boolean => {
-    if (!attacker.position || !target.position) return false;
-    const dx = target.position.x - attacker.position.x;
-    const dy = target.position.y - attacker.position.y;
-    const allyPos = { x: target.position.x + dx, y: target.position.y + dy };
-    return allies.some(a => a.id !== attacker.id && a.stats.hp > 0 && a.position?.x === allyPos.x && a.position?.y === allyPos.y);
-};
-
-export const getCorruptionPenalty = (corruption: number): number => {
-  return Math.floor((corruption || 0) / 25);
-};
-
-export const calculateAttackRoll = (attacker: Entity, target?: Entity, dimension: Dimension = Dimension.NORMAL, allEntities: Entity[] = []) => {
-    const stats = attacker.stats;
-    let hasAdvantage = false;
-    let hasDisadvantage = false;
-    
-    if (stats.activeStatusEffects?.some(s => s.type === StatusEffectType.HASTE)) hasAdvantage = true;
-    if (stats.activeStatusEffects?.some(s => s.type === StatusEffectType.SLOW)) hasDisadvantage = true;
-
-    if (target && allEntities.length > 0) {
-        const allies = allEntities.filter(e => e.type === attacker.type);
-        if (isFlanking(attacker, target, allies)) hasAdvantage = true;
-    }
-
-    // Penalización por distacia en el Vacío o penumbra
-    if (target && attacker.position && target.position) {
-        const dist = Math.max(Math.abs(attacker.position.x - target.position.x), Math.abs(attacker.position.y - target.position.y));
-        const limit = dimension === Dimension.UPSIDE_DOWN ? 2 : 5;
-        if (dist > limit) hasDisadvantage = true; 
-    }
-
-    let rollType: 'normal' | 'advantage' | 'disadvantage' = 'normal';
-    if (hasAdvantage && !hasDisadvantage) rollType = 'advantage';
-    else if (!hasAdvantage && hasDisadvantage) rollType = 'disadvantage';
-    
-    const critThreshold = stats.traits?.includes('CRIT_FOCUS') ? 19 : 20;
-    const roll = rollD20(rollType);
-    const mod = getRelevantAbilityMod(attacker, attacker.equipment?.[EquipmentSlot.MAIN_HAND]);
-    const prof = getProficiencyBonus(stats.level || 1);
-    const total = roll.result + mod + prof;
-
-    return { total, isCrit: roll.result >= critThreshold, isAutoMiss: roll.result === 1, roll: roll.result, mod, prof, rollType };
-};
-
-export const calculateHitChance = (attacker: any, target: any, dimension: Dimension = Dimension.NORMAL): number => {
-    if (!attacker || !attacker.stats || !target || !target.stats) return 0;
-    const atkRoll = calculateAttackRoll(attacker, target, dimension);
-    const targetAC = target.stats.ac;
-    const requiredRoll = targetAC - (atkRoll.mod + atkRoll.prof);
-    let winningOutcomes = 21 - requiredRoll;
-    if (winningOutcomes > 20) winningOutcomes = 20; 
-    if (winningOutcomes < 1) winningOutcomes = 1;
-    let probability = winningOutcomes / 20;
-    if (atkRoll.rollType === 'advantage') probability = 1 - Math.pow((1 - probability), 2);
-    if (atkRoll.rollType === 'disadvantage') probability = Math.pow(probability, 2);
-    return Math.round(Math.max(5, Math.min(99, probability * 100)));
-};
-
-export const calculateDamage = (attacker: any, weaponSlot: EquipmentSlot = EquipmentSlot.MAIN_HAND, isCrit: boolean = false, target?: any, isFlanking?: boolean): { amount: number, type: DamageType, isMagical: boolean, isSneakAttack?: boolean } => {
-    if (!attacker || !attacker.stats) return { amount: 0, type: DamageType.BLUDGEONING, isMagical: false };
-    let extraDamage = 0;
-    let appliedSneak = false;
-    if (attacker.stats.traits?.includes('SNEAK_ATTACK') && isFlanking) {
-        const sneakDice = Math.ceil(attacker.stats.level / 2);
-        extraDamage += rollDice(6, sneakDice);
-        appliedSneak = true;
-    }
-    if (attacker.stats.activeStatusEffects?.some(s => s.type === 'RAGE')) extraDamage += 2;
-    const weapon = attacker?.equipment?.[weaponSlot];
-    const damageType = weapon?.equipmentStats?.damageType || DamageType.BLUDGEONING;
-    const isMagical = weapon?.equipmentStats?.properties?.includes('Magical') || false;
-    let diceCount = weapon?.equipmentStats?.diceCount || 1;
-    let diceSides = weapon?.equipmentStats?.diceSides || 4; 
-    const mod = getRelevantAbilityMod(attacker, weapon);
-    if (isCrit) diceCount *= 2;
-    const baseDmg = rollDice(diceSides, diceCount) + mod;
-    return { amount: Math.max(1, baseDmg + extraDamage), type: damageType, isMagical, isSneakAttack: appliedSneak };
-};
-
-export const calculateFinalDamage = (amount: number, type: DamageType, target: any): { finalDamage: number, isResistant: boolean, isVulnerable: boolean } => {
-    const stats = target?.stats;
-    if (!stats) return { finalDamage: amount, isResistant: false, isVulnerable: false };
-    let multiplier = 1;
-    let isResistant = false;
-    let isVulnerable = false;
-    if (stats.resistances?.includes(type)) { multiplier *= 0.5; isResistant = true; }
-    if (stats.vulnerabilities?.includes(type)) { multiplier *= 2; isVulnerable = true; }
-    const finalDamage = Math.max(0, Math.floor(amount * multiplier));
-    return { finalDamage, isResistant, isVulnerable };
-};
-
 export const getRelevantAbilityMod = (attacker: any, weapon: any): number => {
     const attributes = attacker?.stats?.attributes || { STR: 10, DEX: 10 };
     if (weapon?.equipmentStats?.properties?.includes('Range')) return getModifier(attributes.DEX);
@@ -185,42 +186,17 @@ export const getAttackRange = (entity: any): number => {
     return baseRange;
 };
 
-export const getAoETiles = (center: PositionComponent, target: PositionComponent, type: 'CIRCLE' | 'CONE', radius: number): {x: number, y: number}[] => {
-    const tiles: {x: number, y: number}[] = [];
-    if (type === 'CIRCLE') {
-        for (let x = target.x - radius; x <= target.x + radius; x++) {
-            for (let y = target.y - radius; y <= target.y + radius; y++) {
-                if (Math.sqrt(Math.pow(x - target.x, 2) + Math.pow(y - target.y, 2)) <= radius) tiles.push({ x, y });
-            }
-        }
-    }
-    return tiles;
-};
-
-export const checkLineOfSight = (start: PositionComponent, end: PositionComponent, map: BattleCell[]): boolean => true;
-export const getDamageRange = (attacker: any): string => {
-    const weapon = attacker.equipment?.[EquipmentSlot.MAIN_HAND];
-    const diceCount = weapon?.equipmentStats?.diceCount || 1;
-    const diceSides = weapon?.equipmentStats?.diceSides || 4;
-    const mod = getRelevantAbilityMod(attacker, weapon);
-    return `${diceCount + mod}-${(diceCount * diceSides) + mod}`;
-};
-
 export const calculateVisionRange = (wis: number, corruption: number = 0, worldTime: number = 480, dimension: Dimension = Dimension.NORMAL): number => {
   const mod = getModifier(wis);
-  const corruptionPenalty = getCorruptionPenalty(corruption);
+  const corruptionPenalty = Math.floor((corruption || 0) / 25);
   const hours = Math.floor(worldTime / 60);
   const isNight = hours < 6 || hours >= 22;
   
   let baseVision = 5;
-  if (dimension === Dimension.UPSIDE_DOWN) {
-      baseVision = 3; // El Vacío es intrínsecamente oscuro
-  }
+  if (dimension === Dimension.UPSIDE_DOWN) baseVision = 3;
 
   const nightPenalty = isNight ? 3 : 0; 
-  const dimensionPenalty = dimension === Dimension.UPSIDE_DOWN ? 1 : 0;
-  
-  return Math.max(1, baseVision + mod - corruptionPenalty - nightPenalty - dimensionPenalty);
+  return Math.max(1, baseVision + mod - corruptionPenalty - nightPenalty);
 };
 
 export const calculateEnemyStats = (def: EnemyDefinition, playerLevel: number, difficulty: Difficulty): CombatStatsComponent => {

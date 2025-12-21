@@ -9,17 +9,16 @@ export const FogController = React.memo(({ isShadowRealm, terrain }: { isShadowR
     
     useEffect(() => {
         if (terrain === TerrainType.LAVA) {
-            // Boss Arena / Lava: Dark Red/Orange Atmosphere
-            // Lower density (0.02) to ensure visibility across the map
-            scene.fog = new THREE.FogExp2('#3f0f0f', 0.02); 
+            // Lava Arena: Tono cálido, visibilidad media-alta
+            scene.fog = new THREE.Fog('#1a0505', 20, 80); 
             scene.background = new THREE.Color('#1a0505');
         } else if (isShadowRealm) {
-            // Standard Shadow Realm: Deep Purple/Blue
-            scene.fog = new THREE.FogExp2('#1e1b4b', 0.035); 
+            // Shadow Realm: Violeta oscuro, visibilidad clara en el centro
+            scene.fog = new THREE.Fog('#020617', 15, 70); 
             scene.background = new THREE.Color('#020617');
         } else {
-            // Normal World: Night/Dark Blue
-            scene.fog = new THREE.FogExp2('#0f172a', 0.015);
+            // Normal World: Máxima nitidez táctica
+            scene.fog = new THREE.Fog('#0f172a', 30, 100);
             scene.background = new THREE.Color('#0f172a');
         }
     }, [isShadowRealm, terrain, scene]);

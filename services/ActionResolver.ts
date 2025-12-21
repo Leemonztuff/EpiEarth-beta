@@ -1,5 +1,5 @@
 
-import { Entity, EffectType, ActionEffect, DamageType, StatusEffectType, Ability, MagicSchool, Dimension, TileEffectType, StatusEffect } from '../types';
+import { Entity, EffectType, ActionEffect, DamageType, StatusEffectType, Ability, MagicSchool, Dimension, TileEffectType, StatusEffect, BattleCell } from '../types';
 import { rollDice, calculateFinalDamage, getModifier, calculateAttackRoll } from './dndRules';
 
 export interface ActionResolution {
@@ -15,9 +15,9 @@ export interface ActionResolution {
 export const ActionResolver = {
     /**
      * Resolves an array of ActionEffects against a target.
-     * Handles hit rolls, criticals, and individual effect calculations.
+     * Handles hit rolls, criticals, and tactical bonuses.
      */
-    resolve: (actor: Entity, target: Entity, effects: ActionEffect[], dimension: Dimension = Dimension.NORMAL, allEntities: Entity[] = []): ActionResolution => {
+    resolve: (actor: Entity, target: Entity, effects: ActionEffect[], dimension: Dimension = Dimension.NORMAL, allEntities: Entity[] = [], map: BattleCell[] = []): ActionResolution => {
         let totalHpChange = 0;
         const popups: ActionResolution['popups'] = [];
         const statusChanges: ActionResolution['statusChanges'] = [];
@@ -26,13 +26,12 @@ export const ActionResolver = {
 
         if (!actor.stats || !target.stats) return { targetId: target.id, hpChange: 0, popups, didHit: false };
 
-        // 1. Check if the action requires a hit roll (most damage-dealing actions do)
         const needsHitRoll = effects.some(e => e.type === EffectType.DAMAGE || e.type === EffectType.DRAIN);
         let didHit = true;
         let isCrit = false;
 
         if (needsHitRoll) {
-            const attack = calculateAttackRoll(actor, target, dimension, allEntities);
+            const attack = calculateAttackRoll(actor, target, dimension, allEntities, map);
             didHit = attack.total >= target.stats.ac && !attack.isAutoMiss;
             isCrit = attack.isCrit;
             
@@ -42,26 +41,26 @@ export const ActionResolver = {
             }
         }
 
-        // 2. Process each effect
         effects.forEach(effect => {
-            // Chance check (if specified)
             if (effect.chance && Math.random() * 100 > effect.chance) return;
-
             const attrValue = effect.attributeScale ? actor.stats.attributes[effect.attributeScale] : undefined;
             const scaleMod = (attrValue !== undefined) ? getModifier(attrValue) : 0;
 
             switch (effect.type) {
                 case EffectType.DAMAGE: {
                     let diceCount = (effect.diceCount || 1) * (isCrit ? 2 : 1);
-                    let baseRoll = rollDice(effect.diceSides || 6, diceCount) + scaleMod + (effect.fixedValue || 0);
+                    // Bono extra por táctica de altura
+                    let tacticalBonus = 0;
+                    if (map.length > 0) {
+                        const actorCell = map.find(c => c.x === actor.position?.x && c.z === actor.position?.y);
+                        const targetCell = map.find(c => c.x === target.position?.x && c.z === target.position?.y);
+                        if (actorCell && targetCell && actorCell.height - targetCell.height >= 2) tacticalBonus = rollDice(4, 1);
+                    }
+                    
+                    let baseRoll = rollDice(effect.diceSides || 6, diceCount) + scaleMod + (effect.fixedValue || 0) + tacticalBonus;
                     const final = calculateFinalDamage(baseRoll, effect.damageType || DamageType.MAGIC, target);
                     totalHpChange -= final.finalDamage;
-                    popups.push({ 
-                        amount: final.finalDamage, 
-                        color: isCrit ? '#f59e0b' : '#ef4444', 
-                        isCrit, 
-                        damageType: effect.damageType 
-                    });
+                    popups.push({ amount: final.finalDamage, color: isCrit ? '#f59e0b' : '#ef4444', isCrit, damageType: effect.damageType });
                     break;
                 }
                 case EffectType.HEAL: {
@@ -71,86 +70,36 @@ export const ActionResolver = {
                     break;
                 }
                 case EffectType.STATUS: {
-                    if (effect.statusType) {
-                        statusChanges.push({ 
-                            type: effect.statusType, 
-                            duration: effect.duration || 1,
-                            intensity: 1 // Baseline intensity for stacking
-                        });
-                    }
-                    break;
-                }
-                case EffectType.DRAIN: {
-                    let baseRoll = rollDice(effect.diceSides || 6, effect.diceCount || 1) + scaleMod + (effect.fixedValue || 0);
-                    const final = calculateFinalDamage(baseRoll, effect.damageType || DamageType.MAGIC, target);
-                    totalHpChange -= final.finalDamage;
-                    // Actor gains half damage as HP
-                    const drainHeal = Math.floor(final.finalDamage * 0.5);
-                    actorStatusChanges.push({ type: 'REGEN' as any, duration: 0, intensity: drainHeal }); // Use intensity as value for immediate effect
-                    popups.push({ amount: final.finalDamage, color: '#f87171', isCrit: false });
+                    if (effect.statusType) statusChanges.push({ type: effect.statusType, duration: effect.duration || 1, intensity: 1 });
                     break;
                 }
             }
         });
 
-        return { 
-            targetId: target.id, 
-            hpChange: totalHpChange, 
-            popups, 
-            statusChanges, 
-            actorStatusChanges, 
-            didHit: true, 
-            transformation: transformationId 
-        };
+        return { targetId: target.id, hpChange: totalHpChange, popups, statusChanges, actorStatusChanges, didHit: true, transformation: transformationId };
     },
 
-    /**
-     * Processes damage-over-time (DoT) and duration reduction for status effects.
-     * Should be called at the start of a unit's turn.
-     */
     processStatusTick: (entity: Entity): { hpChange: number, popups: any[], updatedEffects: StatusEffect[] } => {
         let hpChange = 0;
         const popups = [];
         const updatedEffects: StatusEffect[] = [];
+        if (!entity.stats.activeStatusEffects) return { hpChange: 0, popups: [], updatedEffects: [] };
 
         entity.stats.activeStatusEffects.forEach(effect => {
             let effectDamage = 0;
             let color = '#ffffff';
             let label = '';
-
             switch (effect.type) {
-                case StatusEffectType.POISON:
-                    effectDamage = (effect.intensity || 1) * rollDice(4, 1);
-                    color = '#4ade80';
-                    label = 'Poisoned';
-                    break;
-                case StatusEffectType.BURN:
-                    effectDamage = (effect.intensity || 1) * rollDice(6, 1);
-                    color = '#fb923c';
-                    label = 'Burning';
-                    break;
-                case StatusEffectType.REGEN:
-                    effectDamage = -((effect.intensity || 1) * rollDice(4, 1));
-                    color = '#22c55e';
-                    break;
+                case StatusEffectType.POISON: effectDamage = (effect.intensity || 1) * rollDice(4, 1); color = '#4ade80'; label = 'Poisoned'; break;
+                case StatusEffectType.BURN: effectDamage = (effect.intensity || 1) * rollDice(6, 1); color = '#fb923c'; label = 'Burning'; break;
+                case StatusEffectType.REGEN: effectDamage = -((effect.intensity || 1) * rollDice(4, 1)); color = '#22c55e'; break;
             }
-
             if (effectDamage !== 0) {
                 hpChange -= effectDamage;
-                popups.push({
-                    amount: effectDamage > 0 ? effectDamage : `+${Math.abs(effectDamage)}`,
-                    color,
-                    isCrit: false,
-                    label
-                });
+                popups.push({ amount: effectDamage > 0 ? effectDamage : `+${Math.abs(effectDamage)}`, color, isCrit: false, label });
             }
-
-            // Reduce duration
-            if (effect.duration > 1) {
-                updatedEffects.push({ ...effect, duration: effect.duration - 1 });
-            }
+            if (effect.duration > 1) updatedEffects.push({ ...effect, duration: effect.duration - 1 });
         });
-
         return { hpChange, popups, updatedEffects };
     }
 };
