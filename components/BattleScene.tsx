@@ -97,7 +97,6 @@ export const BattleScene = ({ entities, weather, terrainType, currentTurnEntityI
     const aliveEntities = useMemo(() => entities?.filter(e => e.stats.hp > 0) || [], [entities]);
     const isShadowRealm = dimension === Dimension.UPSIDE_DOWN;
 
-    // DATA INTEGRITY CHECK
     if (!battleMap || battleMap.length === 0) return null;
 
     return (
@@ -110,7 +109,7 @@ export const BattleScene = ({ entities, weather, terrainType, currentTurnEntityI
                 shadows 
                 gl={{ antialias: false, logarithmicDepthBuffer: true }} 
                 orthographic
-                camera={{ position: [50, 50, 50], zoom: 60, near: -200, far: 2000 }}
+                camera={{ position: [50, 50, 50], zoom: 65, near: -200, far: 2000 }}
             >
                 <color attach="background" args={[isShadowRealm ? "#020510" : "#0f172a"]} />
                 <Suspense fallback={null}>
@@ -123,6 +122,9 @@ export const BattleScene = ({ entities, weather, terrainType, currentTurnEntityI
                         maxPolarAngle={Math.PI / 2.5} 
                         target={[8, 0, 8]} 
                         enableDamping={true}
+                        dampingFactor={0.07}
+                        rotateSpeed={0.5}
+                        makeDefault
                     />
                     
                     <ambientLight intensity={1.5} />
