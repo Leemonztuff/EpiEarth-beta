@@ -70,6 +70,39 @@
       }
       .animate-pulse-encounter { animation: pulse-encounter 2s infinite ease-in-out; }
       
+      /* Toast animations */
+      @keyframes toast-in {
+        0% { opacity: 0; transform: translateX(100px) scale(0.8); }
+        100% { opacity: 1; transform: translateX(0) scale(1); }
+      }
+      @keyframes toast-out {
+        0% { opacity: 1; transform: translateX(0) scale(1); }
+        100% { opacity: 0; transform: translateX(100px) scale(0.8); }
+      }
+      
+      /* Screen flash */
+      @keyframes screen-flash {
+        0% { opacity: 0.8; }
+        100% { opacity: 0; }
+      }
+      
+      /* Border glow pulse */
+      @keyframes border-pulse {
+        0%, 100% { opacity: 0.3; }
+        50% { opacity: 0.6; }
+      }
+      
+      /* Shimmer effect */
+      @keyframes shimmer {
+        0% { background-position: -200% 0; }
+        100% { background-position: 200% 0; }
+      }
+      .shimmer {
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+        background-size: 200% 100%;
+        animation: shimmer 2s infinite;
+      }
+      
       .eternum-glow { box-shadow: 0 0 15px rgba(168, 85, 247, 0.4); border: 1px solid rgba(168, 85, 247, 0.3); }
       .panel-fantasy { background: linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(30, 41, 59, 0.9) 100%); border: 1px solid rgba(255, 255, 255, 0.1); backdrop-filter: blur(12px); }
       
