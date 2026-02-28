@@ -121,12 +121,12 @@ export const BillboardUnit = React.memo(({
             </div>
         </Html>
 
-        {isCurrentTurn && isUnitMenuOpen && (
-            <Html position={[0, 1.0, 0]} center>
-                <div className="flex flex-wrap gap-2 w-48 justify-center animate-in zoom-in-75 duration-200">
-                    <button onClick={(e) => { e.stopPropagation(); selectAction('MOVE'); }} disabled={hasMoved} className={`w-12 h-12 rounded-full border-2 bg-slate-900 flex items-center justify-center text-xl ${hasMoved ? 'opacity-20' : 'border-blue-500 shadow-lg hover:bg-blue-600'}`}>👣</button>
-                    <button onClick={(e) => { e.stopPropagation(); selectAction('ATTACK'); }} disabled={hasActed} className={`w-12 h-12 rounded-full border-2 bg-slate-900 flex items-center justify-center text-xl ${hasActed ? 'opacity-20' : 'border-red-500 shadow-lg hover:bg-red-600'}`}>⚔️</button>
-                    <button onClick={(e) => { e.stopPropagation(); executeWait(); }} className="w-12 h-12 rounded-full border-2 border-amber-500 bg-slate-900 flex items-center justify-center text-xl text-white hover:bg-amber-600">🛡️</button>
+        {isCurrentTurn && (
+            <Html position={[0, 2.8, 0]} center style={{ pointerEvents: 'none' }}>
+                <div className="flex items-center justify-center animate-pulse">
+                    <div className="bg-amber-500/90 text-black text-[8px] font-black px-3 py-1.5 rounded-full shadow-lg whitespace-nowrap uppercase tracking-wider">
+                        Tocá para actuar
+                    </div>
                 </div>
             </Html>
         )}

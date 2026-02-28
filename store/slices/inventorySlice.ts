@@ -188,7 +188,10 @@ export const createInventorySlice: StateCreator<any, [], [], InventorySlice> = (
     if (slotIndex === -1) return;
     
     const item = state.inventory[slotIndex].item;
-    let targetId = characterId || state.activeInventoryCharacterId || state.party[0].id;
+    
+    // BUG FIX: Verificar que party no esté vacío
+    let targetId = characterId || state.activeInventoryCharacterId || (state.party[0]?.id || null);
+    if (!targetId) return; // No hay objetivo válido
     
     // Auto-target in battle context
     if (state.gameState === GameState.BATTLE_TACTICAL) {

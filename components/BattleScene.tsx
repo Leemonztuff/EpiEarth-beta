@@ -15,6 +15,7 @@ import { TerrainLayer } from './battle/TerrainLayer';
 import { InteractionLayer } from './battle/InteractionLayer';
 import { EntityRenderer } from './battle/EntityRenderer';
 import { SpellEffectsRenderer } from './battle/SpellEffectsRenderer';
+import { BattleActionBar } from './battle/BattleActionBar';
 
 const TurnAnnouncement = () => {
     const text = useGameStore(s => s.turnAnnouncement);
@@ -23,8 +24,8 @@ const TurnAnnouncement = () => {
 
     return (
         <div className="fixed inset-0 z-[200] flex items-center justify-center pointer-events-none overflow-hidden">
-            <div className={`w-full py-12 ${isPlayer ? 'bg-blue-600/30 border-blue-400' : 'bg-red-900/30 border-red-500'} border-y-2 backdrop-blur-md flex items-center justify-center animate-in slide-in-from-left duration-500`}>
-                <h2 className={`text-5xl md:text-8xl font-serif font-black tracking-[0.2em] italic ${isPlayer ? 'text-blue-100' : 'text-red-100'} drop-shadow-2xl animate-pulse`}>
+            <div className={`w-full py-8 md:py-12 ${isPlayer ? 'bg-blue-600/30 border-blue-400' : 'bg-red-900/30 border-red-500'} border-y-2 backdrop-blur-md flex items-center justify-center animate-in slide-in-from-left duration-500`}>
+                <h2 className={`text-4xl md:text-8xl font-serif font-black tracking-[0.2em] italic ${isPlayer ? 'text-blue-100' : 'text-red-100'} drop-shadow-2xl animate-pulse`}>
                     {text}
                 </h2>
             </div>
@@ -37,7 +38,7 @@ const TurnTimeline = () => {
     if (!turnOrder || !battleEntities) return null;
     
     return (
-        <div className="absolute top-4 left-0 right-0 flex justify-center items-center gap-0.5 z-[110] pointer-events-none px-4">
+        <div className="absolute top-2 md:top-4 left-0 right-0 flex justify-center items-center gap-0.5 z-[110] pointer-events-none px-2 md:px-4">
             <div className="bg-black/60 backdrop-blur-xl border border-white/10 p-1.5 rounded-full flex items-center gap-1 shadow-2xl">
                 {turnOrder.map((id, i) => {
                     const ent = battleEntities.find(e => e.id === id);
@@ -48,7 +49,7 @@ const TurnTimeline = () => {
                     return (
                         <div 
                             key={id} 
-                            className={`transition-all duration-500 flex flex-col items-center relative ${isCurrent ? 'w-12 mx-1' : 'w-8 opacity-40 grayscale'}`}
+                            className={`transition-all duration-500 flex flex-col items-center relative ${isCurrent ? 'w-14 md:w-12 mx-1' : 'w-10 md:w-8 opacity-40 grayscale'}`}
                         >
                             <div className={`aspect-square w-full rounded-full border-2 overflow-hidden shadow-xl transition-transform ${isCurrent ? 'border-amber-400 scale-110 ring-2 ring-amber-500/30' : isEnemy ? 'border-red-600/50' : 'border-blue-500/50'} bg-slate-900`}>
                                 <img 
@@ -57,7 +58,7 @@ const TurnTimeline = () => {
                                 />
                             </div>
                             {isCurrent && (
-                                <div className="absolute -bottom-4 bg-amber-500 text-black text-[6px] font-black px-1.5 py-0.5 rounded shadow-lg whitespace-nowrap animate-bounce">
+                                <div className="absolute -bottom-5 md:-bottom-4 bg-amber-500 text-black text-[7px] md:text-[6px] font-black px-2 md:px-1.5 py-1 md:py-0.5 rounded shadow-lg whitespace-nowrap animate-bounce">
                                     ACTUANDO
                                 </div>
                             )}
@@ -123,14 +124,19 @@ export const BattleScene = ({ entities, weather, terrainType, currentTurnEntityI
                     <CinematicCamera />
                     
                     <OrbitControls 
-                        enablePan={false} 
-                        minPolarAngle={Math.PI / 6} 
-                        maxPolarAngle={Math.PI / 2.5} 
-                        target={[8, 0, 8]} 
+                        enablePan={false}
+                        minPolarAngle={Math.PI / 5} 
+                        maxPolarAngle={Math.PI / 2.2}
+                        target={[8, 0, 8]}
                         enableDamping={true}
-                        dampingFactor={0.06}
-                        rotateSpeed={0.4}
+                        dampingFactor={0.08}
+                        rotateSpeed={0.5}
+                        zoomSpeed={0.8}
+                        panSpeed={0}
+                        minZoom={40}
+                        maxZoom={100}
                         makeDefault
+                        touches={{ ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_ROTATE }}
                     />
                     
                     <ambientLight intensity={1.5} />
@@ -161,11 +167,13 @@ export const BattleScene = ({ entities, weather, terrainType, currentTurnEntityI
             {/* Status Report Compacto */}
             <div className="absolute bottom-6 left-6 z-[110] bg-black/60 backdrop-blur-xl p-2 rounded-2xl border border-white/10 pointer-events-none">
                 <div className="flex items-center gap-3 px-2">
-                    <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_5px_#3b82f6]" /> <span className="text-[9px] font-black text-white/80">{aliveEntities.filter(e=>e.type==='PLAYER').length}</span></div>
+                    <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_5px_#3b82f6]" /> <span className="text-xs font-black text-white/80">{aliveEntities.filter(e=>e.type==='PLAYER').length}</span></div>
                     <div className="w-px h-3 bg-white/10" />
-                    <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_5px_#ef4444]" /> <span className="text-[9px] font-black text-white/80">{aliveEntities.filter(e=>e.type==='ENEMY').length}</span></div>
+                    <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_5px_#ef4444]" /> <span className="text-xs font-black text-white/80">{aliveEntities.filter(e=>e.type==='ENEMY').length}</span></div>
                 </div>
             </div>
+
+            <BattleActionBar />
         </div>
     );
 };

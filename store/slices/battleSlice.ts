@@ -46,6 +46,7 @@ export interface BattleSlice {
     executeMove: (x: number, z: number) => Promise<void>;
     executeAction: (actor: Entity, targets: Entity[]) => Promise<void>;
     executeWait: () => void;
+    endTurn: () => void;
     selectAction: (action: BattleAction) => void;
     damageVoxel: (x: number, z: number, amount: number) => void;
     triggerScreenShake: (duration: number) => void;
@@ -141,6 +142,19 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
         if (!turnOrder || turnOrder.length === 0) return;
 
         const nextIdx = (currentTurnIndex + 1) % turnOrder.length;
+        
+        // BUG FIX: Verificar que el siguiente turno tenga entidades vivas
+        let aliveCount = 0;
+        for (let i = 0; i < turnOrder.length; i++) {
+            const checkIdx = (currentTurnIndex + 1 + i) % turnOrder.length;
+            const checkActor = battleEntities.find(e => e.id === turnOrder[checkIdx]);
+            if (checkActor && checkActor.stats.hp > 0) {
+                aliveCount++;
+            }
+        }
+        
+        // Si no hay entidades vivas, no avanzar
+        if (aliveCount === 0) return;
         const actorId = turnOrder[nextIdx];
         const actor = battleEntities.find(e => e.id === actorId);
 
@@ -316,6 +330,11 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
 
     executeWait: () => {
         set({ hasActed: true, isUnitMenuOpen: false });
+        get().advanceTurn();
+    },
+
+    endTurn: () => {
+        set({ hasMoved: true, hasActed: true, isUnitMenuOpen: false, selectedAction: null, validMoves: [], validTargets: [] });
         get().advanceTurn();
     },
 

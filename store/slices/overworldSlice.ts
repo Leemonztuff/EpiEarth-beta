@@ -170,12 +170,17 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
     }
 
     const isLocal = state.gameState === GameState.TOWN_EXPLORATION || state.gameState === GameState.DUNGEON;
+    
+    // BUG FIX: Verificar que party no esté vacío
+    const leader = state.party[0];
+    if (!leader) return;
+    
     const path = findPath(
         {q: state.playerPos.x, r: state.playerPos.y}, 
         {q, r}, 
         isLocal ? state.townMapData : undefined, 
         isLocal ? undefined : (qx, rx) => WorldGenerator.getTile(qx, rx, state.dimension), 
-        state.party[0].stats.movementType || MovementType.WALK
+        leader.stats.movementType || MovementType.WALK
     );
     
     if (!path || path.length === 0) {

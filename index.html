@@ -1,10 +1,17 @@
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#0f172a" />
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="apple-touch-fullscreen" content="yes" />
     <title>Epic Earth: Shards of Eternum</title>
+    <link rel="apple-touch-icon" href="/logo.png" />
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Lato:wght@400;700&display=swap" rel="stylesheet">
     <script>
@@ -19,6 +26,18 @@
       }
     </script>
     <style>
+      :root {
+        --sat: env(safe-area-inset-top);
+        --sab: env(safe-area-inset-bottom);
+        --sal: env(safe-area-inset-left);
+        --sar: env(safe-area-inset-right);
+      }
+      html, body, #root {
+        height: 100%;
+        width: 100%;
+        position: fixed;
+        overflow: hidden;
+      }
       body {
         font-family: 'Lato', sans-serif;
         overflow: hidden;
@@ -27,11 +46,17 @@
         touch-action: none;
         -webkit-user-select: none;
         user-select: none;
+        padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
       }
       h1, h2, h3, h4, h5, h6 { font-family: 'Cinzel', serif; }
       ::-webkit-scrollbar { width: 4px; }
       ::-webkit-scrollbar-track { background: #0f172a; }
       ::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+      
+      * {
+        -webkit-tap-highlight-color: transparent;
+        touch-action: manipulation;
+      }
 
       @keyframes float-damage {
           0% { opacity: 0; transform: translateY(20px) scale(0.5); }
@@ -47,6 +72,10 @@
       
       .eternum-glow { box-shadow: 0 0 15px rgba(168, 85, 247, 0.4); border: 1px solid rgba(168, 85, 247, 0.3); }
       .panel-fantasy { background: linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(30, 41, 59, 0.9) 100%); border: 1px solid rgba(255, 255, 255, 0.1); backdrop-filter: blur(12px); }
+      
+      @media (display-mode: standalone) {
+        body { padding-top: env(safe-area-inset-top); }
+      }
     </style>
   <script type="importmap">
 {

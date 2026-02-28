@@ -1,25 +1,36 @@
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, Suspense, lazy } from 'react';
 import { GameState, BattleAction } from './types';
-import { OverworldMap } from './components/OverworldMap';
-import { BattleScene } from './components/BattleScene';
-import { TitleScreen } from './components/CharacterCreation';
 import { UIOverlay } from './components/UIOverlay';
-import { BattleResultModal } from './components/BattleResultModal';
-import { BattleInitModal } from './components/BattleInitModal';
-import { EndingScreen } from './components/EndingScreen';
-import { useGameStore } from './store/gameStore';
-import { useContentStore } from './store/contentStore'; 
-import { AdminDashboard } from './components/admin/AdminDashboard';
-import { TownServicesManager } from './components/TownServices';
-import { InspectionPanel } from './components/InspectionPanel';
-import { LevelUpScreen } from './components/LevelUpScreen';
-import { SummoningScreen } from './components/SummoningScreen';
-import { TempleScreen } from './components/TempleScreen';
-import { PartyManager } from './components/PartyManager';
-import { DialogueOverlay } from './components/DialogueOverlay';
 import { AssetLoaderOverlay } from './components/AssetLoaderOverlay';
 import { getSupabase } from './services/supabaseClient';
+import { useGameStore } from './store/gameStore';
+import { useContentStore } from './store/contentStore';
+
+// Code Splitting - Lazy Loading de componentes pesados
+const OverworldMap = lazy(() => import('./components/OverworldMap').then(m => ({ default: m.OverworldMap })));
+const BattleScene = lazy(() => import('./components/BattleScene').then(m => ({ default: m.BattleScene })));
+const TitleScreen = lazy(() => import('./components/CharacterCreation').then(m => ({ default: m.TitleScreen })));
+const BattleResultModal = lazy(() => import('./components/BattleResultModal').then(m => ({ default: m.BattleResultModal })));
+const BattleInitModal = lazy(() => import('./components/BattleInitModal').then(m => ({ default: m.BattleInitModal })));
+const EndingScreen = lazy(() => import('./components/EndingScreen').then(m => ({ default: m.EndingScreen })));
+const TownServicesManager = lazy(() => import('./components/TownServices').then(m => ({ default: m.TownServicesManager })));
+const LevelUpScreen = lazy(() => import('./components/LevelUpScreen').then(m => ({ default: m.LevelUpScreen })));
+const SummoningScreen = lazy(() => import('./components/SummoningScreen').then(m => ({ default: m.SummoningScreen })));
+const TempleScreen = lazy(() => import('./components/TempleScreen').then(m => ({ default: m.TempleScreen })));
+const PartyManager = lazy(() => import('./components/PartyManager').then(m => ({ default: m.PartyManager })));
+const DialogueOverlay = lazy(() => import('./components/DialogueOverlay').then(m => ({ default: m.DialogueOverlay })));
+const InspectionPanel = lazy(() => import('./components/InspectionPanel').then(m => ({ default: m.InspectionPanel })));
+const AdminDashboard = lazy(() => import('./components/admin/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
+
+const LoadingFallback = () => (
+  <div className="fixed inset-0 flex items-center justify-center bg-slate-950 z-[9999]">
+    <div className="flex flex-col items-center gap-4">
+      <div className="w-12 h-12 border-4 border-amber-500 border-t-transparent rounded-full animate-spin" />
+      <span className="text-amber-500 font-black uppercase tracking-widest text-sm">Cargando...</span>
+    </div>
+  </div>
+);
 
 const App = () => {
   const isAdmin = useGameStore(s => s.isAdmin);
@@ -72,47 +83,54 @@ const App = () => {
 
       {!isAssetsLoaded && !isAdmin && <AssetLoaderOverlay />}
 
-      {isAdmin ? <AdminDashboard /> : (
+      {isAdmin ? (
+        <Suspense fallback={<LoadingFallback />}>
+          <AdminDashboard />
+        </Suspense>
+      ) : (
         <div className="w-full h-full">
           <div className={`fixed inset-0 z-[998] bg-black transition-opacity duration-1000 pointer-events-none ${isSleeping ? 'opacity-100' : 'opacity-0'}`} />
-          {gameState === GameState.TITLE && <TitleScreen onComplete={createCharacter} />}
-          {gameState === GameState.GAME_WON && <EndingScreen />}
           
-          {/* OVERWORLD MAP: Visible durante exploración, diálogo */}
-          {(gameState === GameState.OVERWORLD || 
-            gameState === GameState.TOWN_EXPLORATION || 
-            gameState === GameState.DUNGEON || 
-            gameState === GameState.DIALOGUE) && (
-            <OverworldMap playerPos={playerPos} onMove={movePlayerOverworld} dimension={dimension} />
-          )}
+          <Suspense fallback={<LoadingFallback />}>
+            {gameState === GameState.TITLE && <TitleScreen onComplete={createCharacter} />}
+            {gameState === GameState.GAME_WON && <EndingScreen />}
+            
+            {/* OVERWORLD MAP */}
+            {(gameState === GameState.OVERWORLD || 
+              gameState === GameState.TOWN_EXPLORATION || 
+              gameState === GameState.DUNGEON || 
+              gameState === GameState.DIALOGUE) && (
+              <OverworldMap playerPos={playerPos} onMove={movePlayerOverworld} dimension={dimension} />
+            )}
 
-          {/* ESCENA DE BATALLA: Ahora visible desde INIT para precarga y ambiente */}
-          {(gameState === GameState.BATTLE_TACTICAL || gameState === GameState.BATTLE_INIT) && (
-            <BattleScene 
-                entities={battleEntities} 
-                weather={battleWeather} 
-                terrainType={battleTerrain} 
-                currentTurnEntityId={turnOrder[currentTurnIndex]} 
-                onTileClick={handleTileInteraction} 
-            />
-          )}
+            {/* BATALLA */}
+            {(gameState === GameState.BATTLE_TACTICAL || gameState === GameState.BATTLE_INIT) && (
+              <BattleScene 
+                  entities={battleEntities} 
+                  weather={battleWeather} 
+                  terrainType={battleTerrain} 
+                  currentTurnEntityId={turnOrder[currentTurnIndex]} 
+                  onTileClick={handleTileInteraction} 
+              />
+            )}
 
+            {/* MODALS */}
+            {gameState === GameState.BATTLE_INIT && <BattleInitModal />}
+            {(gameState === GameState.BATTLE_VICTORY || gameState === GameState.BATTLE_DEFEAT) && (
+              <BattleResultModal type={gameState === GameState.BATTLE_VICTORY ? 'victory' : 'defeat'} rewards={battleRewards} onContinue={continueAfterVictory} onRestart={restartBattle} onQuit={quitToMenu} />
+            )}
+            {(gameState === GameState.TOWN_EXPLORATION || gameState === GameState.DUNGEON) && activeTownService !== 'NONE' && (
+              <TownServicesManager activeService={activeTownService} onClose={() => setActiveTownService('NONE')} />
+            )}
+            {gameState === GameState.LEVEL_UP && <LevelUpScreen />}
+            {gameState === GameState.SUMMONING && <SummoningScreen />}
+            {gameState === GameState.TEMPLE_HUB && <TempleScreen />}
+            {gameState === GameState.PARTY_MANAGEMENT && <PartyManager />}
+            {gameState === GameState.DIALOGUE && <DialogueOverlay />}
+            <InspectionPanel />
+          </Suspense>
+          
           <UIOverlay activeService={activeTownService} onOpenTownService={setActiveTownService} />
-          
-          {gameState === GameState.BATTLE_INIT && <BattleInitModal />}
-          
-          {(gameState === GameState.BATTLE_VICTORY || gameState === GameState.BATTLE_DEFEAT) && (
-            <BattleResultModal type={gameState === GameState.BATTLE_VICTORY ? 'victory' : 'defeat'} rewards={battleRewards} onContinue={continueAfterVictory} onRestart={restartBattle} onQuit={quitToMenu} />
-          )}
-          {(gameState === GameState.TOWN_EXPLORATION || gameState === GameState.DUNGEON) && activeTownService !== 'NONE' && (
-            <TownServicesManager activeService={activeTownService} onClose={() => setActiveTownService('NONE')} />
-          )}
-          {gameState === GameState.LEVEL_UP && <LevelUpScreen />}
-          {gameState === GameState.SUMMONING && <SummoningScreen />}
-          {gameState === GameState.TEMPLE_HUB && <TempleScreen />}
-          {gameState === GameState.PARTY_MANAGEMENT && <PartyManager />}
-          {gameState === GameState.DIALOGUE && <DialogueOverlay />}
-          <InspectionPanel />
         </div>
       )}
     </main>
