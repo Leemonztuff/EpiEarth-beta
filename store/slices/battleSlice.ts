@@ -254,6 +254,16 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
                 })
                 .map(e => e.position);
             set({ selectedAction: action, validTargets: targets, validMoves: [] });
+        } else if (action === BattleAction.SPELL) {
+            const range = 6;
+            const targets = battleEntities
+                .filter(e => e.type !== actor.type && e.stats.hp > 0)
+                .filter(e => {
+                    const d = Math.sqrt(Math.pow(e.position.x - actor.position.x, 2) + Math.pow(e.position.y - actor.position.y, 2));
+                    return d <= range;
+                })
+                .map(e => e.position);
+            set({ selectedAction: action, validTargets: targets, validMoves: [] });
         }
     },
 
@@ -267,6 +277,9 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
         } else if (selectedAction === BattleAction.ATTACK) {
             const target = battleEntities.find(e => e.position.x === x && e.position.y === z && e.stats.hp > 0);
             if (target && validTargets.some(t => t.x === x && t.y === z)) get().executeAction(actor, [target]);
+        } else if (selectedAction === BattleAction.SPELL) {
+            const target = battleEntities.find(e => e.position.x === x && e.position.y === z && e.stats.hp > 0);
+            if (target && validTargets.some(t => t.x === x && t.y === z)) get().executeSpell(actor, [target]);
         }
     },
 
@@ -313,6 +326,54 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
         set({ 
             battleEntities: newEntities, 
             damagePopups: [...state.damagePopups, ...res.popups.map(p => ({ ...p, id: generateId(), position: [target.position.x, 2, target.position.y], timestamp: Date.now() }))],
+            isActionAnimating: false, activeSpellEffect: null, hasActed: true 
+        });
+
+        const aliveEnemies = newEntities.filter(e => e.type === 'ENEMY' && e.stats.hp > 0);
+        const alivePlayers = newEntities.filter(e => e.type === 'PLAYER' && e.stats.hp > 0);
+
+        if (aliveEnemies.length === 0) {
+            set({ gameState: GameState.BATTLE_VICTORY, battleRewards: { xp: 150, gold: 80, items: [] } });
+        } else if (alivePlayers.length === 0) {
+            set({ gameState: GameState.BATTLE_DEFEAT });
+        } else {
+            setTimeout(() => get().advanceTurn(), 800);
+        }
+    },
+
+    executeSpell: async (actor, targets) => {
+        const state = get();
+        set({ isActionAnimating: true, isUnitMenuOpen: false, validTargets: [] });
+        const target = targets[0];
+
+        set({ activeSpellEffect: { 
+            id: generateId(), type: 'MAGIC', 
+            startPos: [actor.position.x, 1, actor.position.y], 
+            endPos: [target.position.x, 1, target.position.y], 
+            color: '#a855f7', duration: 500, timestamp: Date.now() 
+        }});
+
+        await new Promise(r => setTimeout(r, 500));
+
+        const spellDamage = rollDice(6, 2) + 3;
+        get().damageVoxel(target.position.x, target.position.y, spellDamage);
+
+        get().triggerScreenShake(400);
+        sfx.playAttack();
+
+        const newEntities = state.battleEntities.map(e => {
+            if (e.id === target.id) {
+                const hpChange = -spellDamage;
+                return { ...e, stats: { ...e.stats, hp: Math.max(0, e.stats.hp + hpChange) } };
+            }
+            return e;
+        });
+
+        const popups = [{ id: generateId(), amount: spellDamage, isCrit: false, isHeal: false, position: [target.position.x, 2, target.position.y], timestamp: Date.now() }];
+
+        set({ 
+            battleEntities: newEntities, 
+            damagePopups: [...state.damagePopups, ...popups],
             isActionAnimating: false, activeSpellEffect: null, hasActed: true 
         });
 

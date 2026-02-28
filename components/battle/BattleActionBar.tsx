@@ -20,12 +20,14 @@ export const BattleActionBar: React.FC = () => {
         HapticFeedback.medium();
         if (action === 'MOVE') selectAction('MOVE');
         else if (action === 'ATTACK') selectAction('ATTACK');
+        else if (action === 'SPELL') selectAction('SPELL');
         else if (action === 'WAIT') executeWait();
         else if (action === 'END') endTurn();
     };
 
     const moveDisabled = hasMoved;
     const attackDisabled = hasActed;
+    const spellDisabled = hasActed;
 
     return (
         <div className="fixed bottom-0 left-0 right-0 z-[150] bg-gradient-to-t from-black/95 via-black/90 to-transparent pb-6 pt-12 px-4 pointer-events-auto">
@@ -46,6 +48,15 @@ export const BattleActionBar: React.FC = () => {
                     disabled={attackDisabled}
                     isSelected={selectedAction === 'ATTACK'}
                     onClick={() => handleAction('ATTACK')}
+                    isMobile={isMobile}
+                />
+                <ActionButton 
+                    icon="✨" 
+                    label="HECHIZO" 
+                    color="purple" 
+                    disabled={spellDisabled}
+                    isSelected={selectedAction === 'SPELL'}
+                    onClick={() => handleAction('SPELL')}
                     isMobile={isMobile}
                 />
                 <ActionButton 
@@ -98,6 +109,12 @@ const ActionButton: React.FC<{
             border: 'border-red-400',
             hover: 'hover:bg-red-500',
             selected: 'bg-red-500 shadow-[0_0_20px_rgba(239,68,68,0.6)]'
+        },
+        purple: {
+            bg: 'bg-purple-600',
+            border: 'border-purple-400',
+            hover: 'hover:bg-purple-500',
+            selected: 'bg-purple-500 shadow-[0_0_20px_rgba(168,85,247,0.6)]'
         },
         amber: {
             bg: 'bg-amber-600',

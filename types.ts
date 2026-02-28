@@ -80,7 +80,7 @@ export enum GameState {
 }
 
 export enum BattleAction {
-    MOVE = 'MOVE', ATTACK = 'ATTACK', WAIT = 'WAIT', ITEM = 'ITEM', SKILL = 'SKILL'
+    MOVE = 'MOVE', ATTACK = 'ATTACK', WAIT = 'WAIT', ITEM = 'ITEM', SPELL = 'SPELL', SKILL = 'SKILL'
 }
 
 export enum TileEffectType {
