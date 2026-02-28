@@ -16,6 +16,7 @@ import { InteractionLayer } from './battle/InteractionLayer';
 import { EntityRenderer } from './battle/EntityRenderer';
 import { SpellEffectsRenderer } from './battle/SpellEffectsRenderer';
 import { BattleActionBar } from './battle/BattleActionBar';
+import { LightingSystem, CelestialBody, ActionLight } from './battle/LightingSystem';
 
 const TurnAnnouncement = () => {
     const text = useGameStore(s => s.turnAnnouncement);
@@ -139,9 +140,14 @@ export const BattleScene = ({ entities, weather, terrainType, currentTurnEntityI
                         touches={{ ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_ROTATE }}
                     />
                     
-                    <ambientLight intensity={1.5} />
-                    <hemisphereLight intensity={0.8} />
-                    <directionalLight position={[15, 30, 5]} intensity={2.5} castShadow shadow-mapSize={[1024, 1024]} />
+                    {/* Sistema de Iluminación Profesional */}
+                    <LightingSystem 
+                        terrain={terrainType} 
+                        weather={weather} 
+                        dimension={dimension} 
+                    />
+                    <CelestialBody dimension={dimension} />
+                    <ActionLight />
                     
                     <TerrainLayer mapData={battleMap} onTileClick={onTileClick} onTileHover={(x, z) => handleTileHover(x, z)} />
                     <InteractionLayer mapData={battleMap} validMoves={validMoves} validTargets={validTargets} />
