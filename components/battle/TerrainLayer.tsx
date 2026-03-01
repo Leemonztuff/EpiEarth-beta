@@ -2,6 +2,7 @@
 // @ts-nocheck
 import React, { useRef, useLayoutEffect, useMemo } from 'react';
 import * as THREE from 'three';
+import { useFrame } from '@react-three/fiber';
 import { TileEffectType } from '../../types';
 import { AssetManager } from '../../services/AssetManager';
 
@@ -17,11 +18,12 @@ const TexturedTerrainBlock = React.memo(({ blocks, textureUrl, onTileClick, onTi
             const tex = AssetManager.getTexture(textureUrl);
             if (tex) {
                 tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-                tex.magFilter = tex.minFilter = THREE.NearestFilter;
+                tex.magFilter = THREE.NearestFilter;
+                tex.minFilter = THREE.NearestFilter;
             }
             return tex;
         } catch (e) {
-            return AssetManager.getTexture(undefined); 
+            return null; 
         }
     }, [textureUrl]);
 
@@ -30,7 +32,6 @@ const TexturedTerrainBlock = React.memo(({ blocks, textureUrl, onTileClick, onTi
         
         blocks.forEach((block, i) => {
             if (!block || i >= count) return;
-            // Posicionamos el bloque considerando su altura destructible
             const yCenter = (block.offsetY || 0) + (block.height || 1) / 2;
             _tempObj.position.set(block.x || 0, yCenter, block.z || 0);
             _tempObj.scale.set(1.0, block.height || 0.1, 1.0); 
@@ -38,7 +39,9 @@ const TexturedTerrainBlock = React.memo(({ blocks, textureUrl, onTileClick, onTi
             meshRef.current.setMatrixAt(i, _tempObj.matrix);
             
             const healthRatio = (block.hp || 1) / (block.maxHp || 1);
-            _tempColor.set(block.color || '#ffffff').multiplyScalar(0.6 + (healthRatio * 0.6));
+            const baseColor = new THREE.Color(block.color || '#ffffff');
+            const darkenFactor = 0.5 + (healthRatio * 0.5);
+            _tempColor.copy(baseColor).multiplyScalar(darkenFactor);
             meshRef.current.setColorAt(i, _tempColor);
         });
         
@@ -66,10 +69,68 @@ const TexturedTerrainBlock = React.memo(({ blocks, textureUrl, onTileClick, onTi
             receiveShadow
         >
             <boxGeometry args={[1, 1, 1]} />
-            <meshStandardMaterial map={texture} roughness={1} metalness={0} vertexColors={true} />
+            <meshStandardMaterial 
+                map={texture} 
+                roughness={0.85}
+                metalness={0.1}
+                vertexColors={true}
+                flatShading={false}
+            />
         </instancedMesh>
     );
 });
+
+// Edge lines for block definition
+const TerrainEdges: React.FC<{ mapData: any[] }> = ({ mapData }) => {
+    const edgesRef = useRef<THREE.LineSegments>(null);
+    
+    const geometry = useMemo(() => {
+        if (!mapData || mapData.length === 0) return null;
+        
+        const positions: number[] = [];
+        
+        mapData.forEach((block) => {
+            if (!block) return;
+            const x = block.x || 0;
+            const y = (block.offsetY || 0);
+            const z = block.z || 0;
+            const h = block.height || 1;
+            
+            const x1 = x - 0.5, x2 = x + 0.5;
+            const y1 = y, y2 = y + h;
+            const z1 = z - 0.5, z2 = z + 0.5;
+            
+            positions.push(
+                x1, y1, z1, x2, y1, z1,
+                x2, y1, z1, x2, y1, z2,
+                x2, y1, z2, x1, y1, z2,
+                x1, y1, z2, x1, y1, z1,
+                
+                x1, y2, z1, x2, y2, z1,
+                x2, y2, z1, x2, y2, z2,
+                x2, y2, z2, x1, y2, z2,
+                x1, y2, z2, x1, y2, z1,
+                
+                x1, y1, z1, x1, y2, z1,
+                x2, y1, z1, x2, y2, z1,
+                x2, y1, z2, x2, y2, z2,
+                x1, y1, z2, x1, y2, z2
+            );
+        });
+        
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        return geo;
+    }, [mapData]);
+    
+    if (!geometry) return null;
+    
+    return (
+        <lineSegments ref={edgesRef} geometry={geometry}>
+            <lineBasicMaterial color="#ffffff" opacity={0.08} transparent />
+        </lineSegments>
+    );
+};
 
 export const TerrainLayer = React.memo(({ mapData, onTileClick, onTileHover }: any) => {
     const groups = useMemo(() => {
@@ -95,6 +156,7 @@ export const TerrainLayer = React.memo(({ mapData, onTileClick, onTileHover }: a
                     onTileHover={onTileHover} 
                 />
             ))}
+            <TerrainEdges mapData={mapData} />
         </group>
     );
 });

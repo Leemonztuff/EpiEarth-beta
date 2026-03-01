@@ -18,6 +18,7 @@ import { SpellEffectsRenderer } from './battle/SpellEffectsRenderer';
 import { BattleActionBar } from './battle/BattleActionBar';
 import { LightingSystem, CelestialBody, ActionLight } from './battle/LightingSystem';
 import { ContextualMenu } from './battle/ContextualMenu';
+import { DecorationLayer, BattleParticles, BattleGlow, BattleMist } from './battle/DecorationLayer';
 
 const TurnAnnouncement = () => {
     const text = useGameStore(s => s.turnAnnouncement);
@@ -216,6 +217,10 @@ export const BattleScene = ({ entities, weather, terrainType, currentTurnEntityI
                     <ActionLight />
                     
                     <TerrainLayer mapData={battleMap} onTileClick={onTileClick} onTileHover={(x, z) => handleTileHover(x, z)} />
+                    <DecorationLayer mapData={battleMap} dimension={dimension} terrain={terrainType} />
+                    <BattleParticles dimension={dimension} terrain={terrainType} />
+                    <BattleGlow terrain={terrainType} />
+                    <BattleMist />
                     <InteractionLayer mapData={battleMap} validMoves={validMoves} validTargets={validTargets} />
                     
                     {aliveEntities.map((ent: Entity) => (
