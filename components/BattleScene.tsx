@@ -119,7 +119,7 @@ export const BattleScene = ({ entities, weather, terrainType, currentTurnEntityI
                 orthographic
                 camera={{ position: [50, 50, 50], zoom: 65, near: -200, far: 2000 }}
             >
-                <color attach="background" args={[isShadowRealm ? "#020510" : "#0f172a"]} />
+                <color attach="background" args={[isShadowRealm ? "#1a1525" : "#1a2530"]} />
                 <Suspense fallback={null}>
                     <FogController isShadowRealm={isShadowRealm} terrain={terrainType} />
                     <CinematicCamera />

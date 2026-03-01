@@ -38,7 +38,7 @@ const TexturedTerrainBlock = React.memo(({ blocks, textureUrl, onTileClick, onTi
             meshRef.current.setMatrixAt(i, _tempObj.matrix);
             
             const healthRatio = (block.hp || 1) / (block.maxHp || 1);
-            _tempColor.set(block.color || '#ffffff').multiplyScalar(0.4 + (healthRatio * 0.6));
+            _tempColor.set(block.color || '#ffffff').multiplyScalar(0.6 + (healthRatio * 0.6));
             meshRef.current.setColorAt(i, _tempColor);
         });
         

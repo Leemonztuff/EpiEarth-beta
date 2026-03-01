@@ -8,34 +8,34 @@ import { useGameStore } from '../../store/gameStore';
 // Configuración de iluminación por biome
 const BIOME_LIGHTING = {
   FOREST: {
-    ambient: { color: '#1a2f1a', intensity: 0.4 },
-    directional: { color: '#ffe4b5', intensity: 1.2, position: [15, 25, 10] },
-    hemisphere: { skyColor: '#87ceeb', groundColor: '#2d4a2d', intensity: 0.5 }
+    ambient: { color: '#4a6b4a', intensity: 0.6 },
+    directional: { color: '#fffaf0', intensity: 1.8, position: [15, 25, 10] },
+    hemisphere: { skyColor: '#b8d4e3', groundColor: '#3d5c3d', intensity: 0.7 }
   },
   DESERT: {
-    ambient: { color: '#2a2520', intensity: 0.5 },
-    directional: { color: '#fff5e0', intensity: 1.5, position: [20, 30, 5] },
-    hemisphere: { skyColor: '#ffecd2', groundColor: '#c2956e', intensity: 0.4 }
+    ambient: { color: '#5a4a3a', intensity: 0.7 },
+    directional: { color: '#fff8e0', intensity: 2.0, position: [20, 30, 5] },
+    hemisphere: { skyColor: '#ffe4b5', groundColor: '#d4a574', intensity: 0.6 }
   },
   SNOW: {
-    ambient: { color: '#1a1a2e', intensity: 0.3 },
-    directional: { color: '#e0f0ff', intensity: 1.0, position: [10, 20, 15] },
-    hemisphere: { skyColor: '#b0c4de', groundColor: '#f0f8ff', intensity: 0.6 }
+    ambient: { color: '#6a7a8a', intensity: 0.5 },
+    directional: { color: '#f0f8ff', intensity: 1.5, position: [10, 20, 15] },
+    hemisphere: { skyColor: '#d0e0f0', groundColor: '#e8f0f8', intensity: 0.8 }
   },
   DUNGEON: {
-    ambient: { color: '#0a0a0a', intensity: 0.2 },
-    directional: { color: '#ff6600', intensity: 0.8, position: [8, 15, 8] },
-    hemisphere: { skyColor: '#1a0a0a', groundColor: '#0a0505', intensity: 0.3 }
+    ambient: { color: '#1a1a1a', intensity: 0.4 },
+    directional: { color: '#ff8844', intensity: 1.2, position: [8, 15, 8] },
+    hemisphere: { skyColor: '#3a2a1a', groundColor: '#2a1a0a', intensity: 0.5 }
   },
   SWAMP: {
-    ambient: { color: '#1a1a0a', intensity: 0.35 },
-    directional: { color: '#90ee90', intensity: 0.9, position: [12, 20, 8] },
-    hemisphere: { skyColor: '#556b2f', groundColor: '#2f4f2f', intensity: 0.4 }
+    ambient: { color: '#3a4a2a', intensity: 0.5 },
+    directional: { color: '#cceeaa', intensity: 1.4, position: [12, 20, 8] },
+    hemisphere: { skyColor: '#7a9a6a', groundColor: '#4a6a4a', intensity: 0.6 }
   },
   DEFAULT: {
-    ambient: { color: '#1a1a2e', intensity: 0.4 },
-    directional: { color: '#ffffff', intensity: 1.2, position: [15, 30, 10] },
-    hemisphere: { skyColor: '#87ceeb', groundColor: '#3d3d3d', intensity: 0.5 }
+    ambient: { color: '#4a5a6a', intensity: 0.65 },
+    directional: { color: '#ffffff', intensity: 1.8, position: [15, 30, 10] },
+    hemisphere: { skyColor: '#a8c8d8', groundColor: '#5a6a5a', intensity: 0.7 }
   }
 };
 
@@ -93,8 +93,8 @@ export const LightingSystem: React.FC<LightingSystemProps> = ({
       .forEach(c => scene.remove(c));
 
     // Ambient light
-    const ambientColor = isShadowRealm ? '#0a0515' : (isEternumRealm ? '#1a0a2a' : biomeConfig.ambient.color);
-    const ambientIntensity = isShadowRealm ? 0.15 : (isEternumRealm ? 0.25 : biomeConfig.ambient.intensity);
+    const ambientColor = isShadowRealm ? '#2a1a3a' : (isEternumRealm ? '#3a2a4a' : biomeConfig.ambient.color);
+    const ambientIntensity = isShadowRealm ? 0.35 : (isEternumRealm ? 0.4 : biomeConfig.ambient.intensity);
     
     lightsRef.current.ambient = new THREE.AmbientLight(ambientColor, ambientIntensity);
     scene.add(lightsRef.current.ambient);
@@ -133,13 +133,18 @@ export const LightingSystem: React.FC<LightingSystemProps> = ({
     scene.add(lightsRef.current.directional);
 
     // Luz de Fill (suavizado de sombras)
-    const fillLight = new THREE.DirectionalLight('#6688cc', 0.3);
-    fillLight.position.set(-10, 10, -5);
+    const fillLight = new THREE.DirectionalLight('#aabbdd', 0.5);
+    fillLight.position.set(-10, 15, -5);
     scene.add(fillLight);
 
+    // Luz de relleno lateral
+    const fillLight2 = new THREE.DirectionalLight('#ddccaa', 0.3);
+    fillLight2.position.set(10, 8, 10);
+    scene.add(fillLight2);
+
     // Rim light para destacados
-    const rimLight = new THREE.DirectionalLight('#ff8866', 0.2);
-    rimLight.position.set(5, 5, -10);
+    const rimLight = new THREE.DirectionalLight('#ffddaa', 0.35);
+    rimLight.position.set(5, 8, -10);
     scene.add(rimLight);
 
     isInitialized.current = true;
