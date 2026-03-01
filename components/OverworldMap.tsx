@@ -57,16 +57,20 @@ export const OverworldMap = ({ playerPos, onMove, dimension }: any) => {
     const isAssetsLoaded = useGameStore(s => s.isAssetsLoaded);
 
     const isLocal = gameState === GameState.TOWN_EXPLORATION || gameState === GameState.DUNGEON;
-    const hours = Math.floor(worldTime / 60);
+    const hours = Math.floor((worldTime || 480) / 60);
     const isNight = hours < 6 || hours >= 22;
 
     useEffect(() => {
         if (!isAssetsLoaded) return;
-        
         if (!terrainCacheRef.current) {
-            terrainCacheRef.current = document.createElement('canvas');
-            terrainCacheRef.current.width = 8000; 
-            terrainCacheRef.current.height = 8000;
+            try {
+                terrainCacheRef.current = document.createElement('canvas');
+                terrainCacheRef.current.width = 8000; 
+                terrainCacheRef.current.height = 8000;
+            } catch (e) {
+                console.warn('Failed to create terrain cache:', e);
+                return;
+            }
         }
 
         const canvas = terrainCacheRef.current;
@@ -76,20 +80,28 @@ export const OverworldMap = ({ playerPos, onMove, dimension }: any) => {
         ctx.clearRect(0,0,8000,8000);
 
         const drawLoop = (tiles) => {
+            if (!tiles || !Array.isArray(tiles)) return;
             tiles.forEach(tile => {
-                const { x, y } = hexToPixel(tile.q, tile.r);
-                drawWesnothHex(ctx, x + 4000, y + 4000, tile);
+                if (!tile) return;
+                try {
+                    const { x, y } = hexToPixel(tile.q, tile.r);
+                    drawWesnothHex(ctx, x + 4000, y + 4000, tile);
+                } catch (e) {
+                    // Skip bad tiles
+                }
             });
         };
 
-        if (isLocal && townMapData) {
+        if (isLocal && townMapData && Array.isArray(townMapData)) {
             drawLoop(townMapData);
         } else {
-            const currentExplored = exploredTiles[dimension] || new Set();
+            const currentExplored = exploredTiles?.[dimension] || new Set();
+            if (!currentExplored || currentExplored.size === 0) return;
+            
             const tilesToDraw = Array.from(currentExplored).map(key => {
                 const [q, r] = key.split(',').map(Number);
                 return WorldGenerator.getTile(q, r, dimension);
-            });
+            }).filter(Boolean);
             drawLoop(tilesToDraw);
         }
     }, [isLocal, townMapData, exploredTiles, dimension, isAssetsLoaded]);
@@ -164,7 +176,11 @@ export const OverworldMap = ({ playerPos, onMove, dimension }: any) => {
     const render = useCallback(() => {
         const canvas = canvasRef.current;
         const container = containerRef.current;
-        if (!canvas || !container || !playerPos || !party?.[0]) return;
+        try {
+            if (!canvas || !container || !playerPos || !party?.[0]) return;
+        } catch (e) {
+            return;
+        }
         
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
