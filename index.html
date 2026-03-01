@@ -106,6 +106,34 @@
       .eternum-glow { box-shadow: 0 0 15px rgba(168, 85, 247, 0.4); border: 1px solid rgba(168, 85, 247, 0.3); }
       .panel-fantasy { background: linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(30, 41, 59, 0.9) 100%); border: 1px solid rgba(255, 255, 255, 0.1); backdrop-filter: blur(12px); }
       
+      /* Turn transition animations */
+      @keyframes fade-in {
+        0% { opacity: 0; }
+        100% { opacity: 1; }
+      }
+      @keyframes slide-up {
+        0% { opacity: 0; transform: translateY(30px); }
+        100% { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes slide-down {
+        0% { opacity: 0; transform: translateY(-30px); }
+        100% { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes scale-in {
+        0% { opacity: 0; transform: scale(0.8); }
+        100% { opacity: 1; transform: scale(1); }
+      }
+      @keyframes turn-flash {
+        0% { opacity: 0; }
+        30% { opacity: 1; }
+        100% { opacity: 0; }
+      }
+      .animate-fade-in { animation: fade-in 0.3s ease-out; }
+      .animate-slide-up { animation: slide-up 0.4s ease-out; }
+      .animate-slide-down { animation: slide-down 0.4s ease-out; }
+      .animate-scale-in { animation: scale-in 0.3s ease-out; }
+      .animate-turn-flash { animation: turn-flash 0.5s ease-out; }
+      
       @media (display-mode: standalone) {
         body { padding-top: env(safe-area-inset-top); }
       }
