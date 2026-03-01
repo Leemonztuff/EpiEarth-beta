@@ -90,6 +90,8 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
         const content = useContentStore.getState();
         const map = WorldGenerator.generateBattleArena(biome, dimension === Dimension.UPSIDE_DOWN);
         
+        sfx.startBattleMusic();
+        
         const enemies: Entity[] = [];
         const possibleEnemies = Object.values(content.enemies).length > 0 
             ? Object.values(content.enemies) 
@@ -169,6 +171,13 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
             set({ currentTurnIndex: nextIdx });
             get().advanceTurn();
             return;
+        }
+
+        // Sonido según tipo de entidad
+        if (actor.type === 'PLAYER') {
+            sfx.playPlayerTurn();
+        } else {
+            sfx.playEnemyTurn();
         }
 
         // --- PROCESAR ESTADOS AL INICIO DEL TURNO ---
@@ -359,6 +368,8 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
             const lootDrops = enemies.map(() => SummoningService.generateRandomItem(1));
             const xpReward = enemies.reduce((sum, e) => sum + (e.stats.xpReward || 50), 0);
             const goldReward = enemies.reduce((sum, e) => sum + Math.floor((e.stats.xpReward || 50) / 2), 0);
+            sfx.startVictoryMusic();
+            sfx.playLoot();
             set({ 
                 gameState: GameState.BATTLE_VICTORY, 
                 battleRewards: { 
@@ -369,6 +380,7 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
                 } 
             });
         } else if (alivePlayers.length === 0) {
+            sfx.playDefeat();
             set({ gameState: GameState.BATTLE_DEFEAT });
         } else {
             setTimeout(() => get().advanceTurn(), 800);
@@ -421,6 +433,8 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
             const lootDrops = enemies.map(() => SummoningService.generateRandomItem(1));
             const xpReward = enemies.reduce((sum, e) => sum + (e.stats.xpReward || 50), 0);
             const goldReward = enemies.reduce((sum, e) => sum + Math.floor((e.stats.xpReward || 50) / 2), 0);
+            sfx.startVictoryMusic();
+            sfx.playLoot();
             set({ 
                 gameState: GameState.BATTLE_VICTORY, 
                 battleRewards: { 
@@ -431,6 +445,7 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
                 } 
             });
         } else if (alivePlayers.length === 0) {
+            sfx.playDefeat();
             set({ gameState: GameState.BATTLE_DEFEAT });
         } else {
             setTimeout(() => get().advanceTurn(), 800);
@@ -489,6 +504,7 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
         }
         
         if (effect.type === 'HEAL') {
+            sfx.playHeal();
             const healAmount = effect.fixedValue || rollDice(6, 1) + 2;
             const newEntities = state.battleEntities.map(e => {
                 if (e.id === actorId) {
