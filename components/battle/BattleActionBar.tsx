@@ -7,11 +7,12 @@ import { HapticFeedback, isTouchDevice } from '../../services/TouchFeedback';
 export const BattleActionBar: React.FC = () => {
     const { 
         selectAction, hasMoved, hasActed, executeWait, 
-        selectedAction, endTurn, currentTurnEntityId, party, battleEntities 
+        selectedAction, endTurn, turnOrder, currentTurnIndex, battleEntities 
     } = useGameStore();
     
     const isMobile = isTouchDevice();
-    const currentEntity = battleEntities?.find(e => e.id === currentTurnEntityId);
+    const currentEntityId = turnOrder?.[currentTurnIndex];
+    const currentEntity = battleEntities?.find(e => e.id === currentEntityId);
     const isPlayerTurn = currentEntity?.type === 'PLAYER';
     
     if (!isPlayerTurn) return null;
