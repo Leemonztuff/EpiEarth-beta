@@ -13,6 +13,7 @@ import { sfx } from '../../services/SoundSystem';
 import { ActionResolver } from '../../services/ActionResolver';
 import { WorldGenerator } from '../../services/WorldGenerator';
 import { GeminiService } from '../../services/GeminiService';
+import { SummoningService } from '../../services/SummoningService';
 import { useContentStore } from '../contentStore';
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
@@ -30,12 +31,13 @@ export interface BattleSlice {
     activeSpellEffect: SpellEffectData | null;
     isActionAnimating: boolean;
     isUnitMenuOpen: boolean;
+    isItemMenuOpen: boolean;
     hasMoved: boolean;
     hasActed: boolean;
     battleIntroText: string;
     battleTerrain: TerrainType;
     battleWeather: WeatherType;
-    battleRewards: { xp: number, gold: number, items: any[], shards?: number } | null;
+    battleRewards: { xp: number, gold: number, items: any[], shards?: number, lootDrops?: any[] } | null;
     turnAnnouncement: string | null;
 
     startBattle: (biome: TerrainType, weather: WeatherType) => Promise<void>;
@@ -45,6 +47,9 @@ export interface BattleSlice {
     handleTileHover: (x: number, z: number) => void;
     executeMove: (x: number, z: number) => Promise<void>;
     executeAction: (actor: Entity, targets: Entity[]) => Promise<void>;
+    executeSpell: (actor: Entity, targets: Entity[]) => Promise<void>;
+    executeItem: (item: any, targetId?: string) => Promise<void>;
+    useItemInBattle: (item: any) => Promise<void>;
     executeWait: () => void;
     endTurn: () => void;
     selectAction: (action: BattleAction) => void;
@@ -52,6 +57,7 @@ export interface BattleSlice {
     triggerScreenShake: (duration: number) => void;
     removeDamagePopup: (id: string) => void;
     setUnitMenuOpen: (open: boolean) => void;
+    setItemMenuOpen: (open: boolean) => void;
     continueAfterVictory: () => void;
     restartBattle: () => void;
     closeInspection: () => void;
@@ -70,6 +76,7 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
     activeSpellEffect: null,
     isActionAnimating: false,
     isUnitMenuOpen: false,
+    isItemMenuOpen: false,
     hasMoved: false,
     hasActed: false,
     battleIntroText: "Te has encontrado con una amenaza...",
@@ -264,6 +271,8 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
                 })
                 .map(e => e.position);
             set({ selectedAction: action, validTargets: targets, validMoves: [] });
+        } else if (action === BattleAction.ITEM) {
+            set({ selectedAction: action, validTargets: [], validMoves: [], isItemMenuOpen: true });
         }
     },
 
@@ -333,7 +342,19 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
         const alivePlayers = newEntities.filter(e => e.type === 'PLAYER' && e.stats.hp > 0);
 
         if (aliveEnemies.length === 0) {
-            set({ gameState: GameState.BATTLE_VICTORY, battleRewards: { xp: 150, gold: 80, items: [] } });
+            const enemies = state.battleEntities.filter(e => e.type === 'ENEMY');
+            const lootDrops = enemies.map(() => SummoningService.generateRandomItem(1));
+            const xpReward = enemies.reduce((sum, e) => sum + (e.stats.xpReward || 50), 0);
+            const goldReward = enemies.reduce((sum, e) => sum + Math.floor((e.stats.xpReward || 50) / 2), 0);
+            set({ 
+                gameState: GameState.BATTLE_VICTORY, 
+                battleRewards: { 
+                    xp: xpReward, 
+                    gold: goldReward, 
+                    items: lootDrops,
+                    lootDrops: lootDrops
+                } 
+            });
         } else if (alivePlayers.length === 0) {
             set({ gameState: GameState.BATTLE_DEFEAT });
         } else {
@@ -381,7 +402,19 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
         const alivePlayers = newEntities.filter(e => e.type === 'PLAYER' && e.stats.hp > 0);
 
         if (aliveEnemies.length === 0) {
-            set({ gameState: GameState.BATTLE_VICTORY, battleRewards: { xp: 150, gold: 80, items: [] } });
+            const enemies = state.battleEntities.filter(e => e.type === 'ENEMY');
+            const lootDrops = enemies.map(() => SummoningService.generateRandomItem(1));
+            const xpReward = enemies.reduce((sum, e) => sum + (e.stats.xpReward || 50), 0);
+            const goldReward = enemies.reduce((sum, e) => sum + Math.floor((e.stats.xpReward || 50) / 2), 0);
+            set({ 
+                gameState: GameState.BATTLE_VICTORY, 
+                battleRewards: { 
+                    xp: xpReward, 
+                    gold: goldReward, 
+                    items: lootDrops,
+                    lootDrops: lootDrops
+                } 
+            });
         } else if (alivePlayers.length === 0) {
             set({ gameState: GameState.BATTLE_DEFEAT });
         } else {
@@ -424,6 +457,59 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
 
     removeDamagePopup: (id) => set(s => ({ damagePopups: s.damagePopups.filter(p => p.id !== id) })),
     setUnitMenuOpen: (open) => set({ isUnitMenuOpen: open }),
+    setItemMenuOpen: (open) => set({ isItemMenuOpen: open, selectedAction: open ? BattleAction.ITEM : null }),
+    
+    executeItem: async (item, targetId) => {
+        const state = get();
+        const actorId = state.turnOrder[state.currentTurnIndex];
+        const actor = state.battleEntities.find(e => e.id === actorId);
+        if (!actor || !item) return;
+        
+        set({ isActionAnimating: true, isItemMenuOpen: false, selectedAction: null });
+        
+        const effect = item.effect;
+        if (!effect) {
+            set({ isActionAnimating: false });
+            return;
+        }
+        
+        if (effect.type === 'HEAL') {
+            const healAmount = effect.fixedValue || rollDice(6, 1) + 2;
+            const newEntities = state.battleEntities.map(e => {
+                if (e.id === actorId) {
+                    const newHp = Math.min(e.stats.maxHp, e.stats.hp + healAmount);
+                    return { ...e, stats: { ...e.stats, hp: newHp } };
+                }
+                return e;
+            });
+            
+            set({ 
+                battleEntities: newEntities,
+                activeSpellEffect: {
+                    id: generateId(), type: 'HEAL',
+                    startPos: [actor.position.x, 1, actor.position.y],
+                    endPos: [actor.position.x, 1, actor.position.y],
+                    color: '#22c55e', duration: 400, timestamp: Date.now()
+                }
+            });
+            
+            await new Promise(r => setTimeout(r, 400));
+            
+            const popups = [{ id: generateId(), amount: healAmount, isCrit: false, isHeal: true, position: [actor.position.x, 2, actor.position.y], timestamp: Date.now() }];
+            set({ 
+                battleEntities: newEntities,
+                damagePopups: [...state.damagePopups, ...popups],
+                isActionAnimating: false, activeSpellEffect: null, hasActed: true
+            });
+        }
+        
+        setTimeout(() => get().advanceTurn(), 800);
+    },
+    
+    useItemInBattle: async (item) => {
+        await get().executeItem(item);
+    },
+    
     handleTileHover: (x, z) => set({ selectedTile: { x, y: z } }),
     closeInspection: () => set({ inspectedEntityId: null }),
 

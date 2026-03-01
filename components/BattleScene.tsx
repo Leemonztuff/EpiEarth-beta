@@ -19,6 +19,8 @@ import { BattleActionBar } from './battle/BattleActionBar';
 import { LightingSystem, CelestialBody, ActionLight } from './battle/LightingSystem';
 import { ContextualMenu } from './battle/ContextualMenu';
 import { DecorationLayer, BattleParticles, BattleGlow, BattleMist } from './battle/DecorationLayer';
+import { BattleItemMenu } from './battle/BattleItemMenu';
+import { BattleSpellMenu } from './battle/BattleSpellMenu';
 
 const TurnAnnouncement = () => {
     const text = useGameStore(s => s.turnAnnouncement);
@@ -160,6 +162,8 @@ export const BattleScene = ({ entities, weather, terrainType, currentTurnEntityI
     const selectedAction = useGameStore(s => s.selectedAction);
     const activeSpellEffect = useGameStore(s => s.activeSpellEffect);
     const setInspectedEntity = useGameStore(s => s.setInspectedEntity);
+    const isItemMenuOpen = useGameStore(s => s.isItemMenuOpen);
+    const setItemMenuOpen = useGameStore(s => s.setItemMenuOpen);
     
     const [contextMenu, setContextMenu] = useState<{entity: any; x: number; y: number} | null>(null);
     
@@ -261,6 +265,10 @@ export const BattleScene = ({ entities, weather, terrainType, currentTurnEntityI
                     position={{ x: contextMenu.x, y: contextMenu.y }}
                     onClose={handleCloseContextMenu}
                 />
+            )}
+            
+            {isItemMenuOpen && (
+                <BattleItemMenu onClose={() => setItemMenuOpen(false)} />
             )}
         </div>
     );

@@ -22,6 +22,7 @@ export const BattleActionBar: React.FC = () => {
         if (action === 'MOVE') selectAction('MOVE');
         else if (action === 'ATTACK') selectAction('ATTACK');
         else if (action === 'SPELL') selectAction('SPELL');
+        else if (action === 'ITEM') selectAction('ITEM');
         else if (action === 'WAIT') executeWait();
         else if (action === 'END') endTurn();
     };
@@ -29,6 +30,7 @@ export const BattleActionBar: React.FC = () => {
     const moveDisabled = hasMoved;
     const attackDisabled = hasActed;
     const spellDisabled = hasActed;
+    const itemDisabled = hasActed;
 
     return (
         <div className="fixed bottom-0 left-0 right-0 z-[150] bg-gradient-to-t from-black/95 via-black/90 to-transparent pb-6 pt-12 px-4 pointer-events-auto">
@@ -58,6 +60,15 @@ export const BattleActionBar: React.FC = () => {
                     disabled={spellDisabled}
                     isSelected={selectedAction === 'SPELL'}
                     onClick={() => handleAction('SPELL')}
+                    isMobile={isMobile}
+                />
+                <ActionButton 
+                    icon="🎒" 
+                    label="ITEM" 
+                    color="cyan" 
+                    disabled={itemDisabled}
+                    isSelected={selectedAction === 'ITEM'}
+                    onClick={() => handleAction('ITEM')}
                     isMobile={isMobile}
                 />
                 <ActionButton 
@@ -116,6 +127,12 @@ const ActionButton: React.FC<{
             border: 'border-purple-400',
             hover: 'hover:bg-purple-500',
             selected: 'bg-purple-500 shadow-[0_0_20px_rgba(168,85,247,0.6)]'
+        },
+        cyan: {
+            bg: 'bg-cyan-600',
+            border: 'border-cyan-400',
+            hover: 'hover:bg-cyan-500',
+            selected: 'bg-cyan-500 shadow-[0_0_20px_rgba(6,182,212,0.6)]'
         },
         amber: {
             bg: 'bg-amber-600',
