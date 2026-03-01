@@ -12,13 +12,14 @@ const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 export const CinematicCamera = () => {
     const { camera, controls } = useThree();
     
-    const targetPos = useRef(new THREE.Vector3(8, 0, 8));
-    const currentFocus = useRef(new THREE.Vector3(8, 0, 8));
-    const basePosition = useRef(new THREE.Vector3(50, 50, 50));
+    const targetPos = useRef(new THREE.Vector3(BATTLE_MAP_SIZE / 2, 0, BATTLE_MAP_SIZE / 2));
+    const currentFocus = useRef(new THREE.Vector3(BATTLE_MAP_SIZE / 2, 0, BATTLE_MAP_SIZE / 2));
     const shakeOffset = useRef(new THREE.Vector3());
     const shakeDecay = useRef(0);
     const zoomTarget = useRef(65);
     const currentZoom = useRef(65);
+    const isPanning = useRef(false);
+    const lastMousePos = useRef({ x: 0, y: 0 });
     
     const isInitialized = useRef(false);
 
@@ -26,10 +27,60 @@ export const CinematicCamera = () => {
         if (camera && camera.isOrthographicCamera) {
             camera.zoom = 65;
             camera.updateProjectionMatrix();
-            basePosition.current.set(50, 50, 50);
             isInitialized.current = true;
         }
     }, [camera]);
+
+    useEffect(() => {
+        const handleWheel = (e: WheelEvent) => {
+            e.preventDefault();
+            const zoomDelta = e.deltaY > 0 ? 5 : -5;
+            zoomTarget.current = clamp(zoomTarget.current + zoomDelta, 35, 120);
+        };
+        
+        const handleMouseDown = (e: MouseEvent) => {
+            if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
+                isPanning.current = true;
+                lastMousePos.current = { x: e.clientX, y: e.clientY };
+            }
+        };
+        
+        const handleMouseMove = (e: MouseEvent) => {
+            if (isPanning.current && controls) {
+                const dx = (e.clientX - lastMousePos.current.x) * 0.03;
+                const dy = (e.clientY - lastMousePos.current.y) * 0.03;
+                targetPos.current.x -= dx;
+                targetPos.current.z -= dy;
+                lastMousePos.current = { x: e.clientX, y: e.clientY };
+            }
+        };
+        
+        const handleMouseUp = () => {
+            isPanning.current = false;
+        };
+        
+        const handleKeyDown = (e: KeyboardEvent) => {
+            const panSpeed = 1;
+            if (e.key === 'w' || e.key === 'W') targetPos.current.z -= panSpeed;
+            if (e.key === 's' || e.key === 'S') targetPos.current.z += panSpeed;
+            if (e.key === 'a' || e.key === 'A') targetPos.current.x -= panSpeed;
+            if (e.key === 'd' || e.key === 'D') targetPos.current.x += panSpeed;
+        };
+        
+        window.addEventListener('wheel', handleWheel, { passive: false });
+        window.addEventListener('mousedown', handleMouseDown);
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+        window.addEventListener('keydown', handleKeyDown);
+        
+        return () => {
+            window.removeEventListener('wheel', handleWheel);
+            window.removeEventListener('mousedown', handleMouseDown);
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+            window.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [controls]);
 
     useFrame((state, delta) => {
         if (!controls || !camera || !camera.isOrthographicCamera) return;
@@ -115,7 +166,7 @@ export const CinematicCamera = () => {
         }
 
         // Limitar zoom a valores seguros
-        zoomTarget.current = clamp(targetZoom, 40, 100);
+        zoomTarget.current = clamp(targetZoom, 35, 120);
         
         // Suavizado del zoom
         const zoomLerp = 1 - Math.exp(-4 * dt);

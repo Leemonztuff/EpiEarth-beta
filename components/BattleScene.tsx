@@ -22,6 +22,7 @@ import { DecorationLayer, BattleParticles, BattleGlow, BattleMist } from './batt
 import { BattleItemMenu } from './battle/BattleItemMenu';
 import { BattleSpellMenu } from './battle/BattleSpellMenu';
 import { AttackEffect } from './battle/AttackEffect';
+import { BattleControlsHelp } from './battle/BattleControlsHelp';
 
 const TurnAnnouncement = () => {
     const text = useGameStore(s => s.turnAnnouncement);
@@ -221,7 +222,7 @@ export const BattleScene = ({ entities, weather, terrainType, currentTurnEntityI
                     <CelestialBody dimension={dimension} />
                     <ActionLight />
                     
-                    <TerrainLayer mapData={battleMap} onTileClick={onTileClick} onTileHover={(x, z) => handleTileHover(x, z)} />
+                    <TerrainLayer mapData={battleMap} biome={terrainType} onTileClick={onTileClick} onTileHover={(x, z) => handleTileHover(x, z)} />
                     <DecorationLayer mapData={battleMap} dimension={dimension} terrain={terrainType} />
                     <BattleParticles dimension={dimension} terrain={terrainType} />
                     <BattleGlow terrain={terrainType} />
@@ -266,6 +267,7 @@ export const BattleScene = ({ entities, weather, terrainType, currentTurnEntityI
                 </div>
             </div>
 
+            <BattleControlsHelp />
             <BattleActionBar />
             
             {contextMenu && (
