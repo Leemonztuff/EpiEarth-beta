@@ -243,18 +243,21 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
 
     selectAction: (action) => {
         const { turnOrder, currentTurnIndex, battleEntities, battleMap } = get();
+        
+        if (!turnOrder || !battleEntities || turnOrder.length === 0) return;
+        
         const actor = battleEntities.find(e => e.id === turnOrder[currentTurnIndex]);
-        if (!actor) return;
+        if (!actor || !actor.position || !actor.stats) return;
 
         sfx.playUiClick();
         if (action === BattleAction.MOVE) {
-            const occupied = new Set(battleEntities.filter(e => e.stats.hp > 0).map(e => `${e.position.x},${e.position.y}`));
+            const occupied = new Set(battleEntities.filter(e => e.stats.hp > 0 && e.position).map(e => `${e.position.x},${e.position.y}`));
             const moves = getReachableTiles(actor.position, actor.stats.speed / 5, battleMap, occupied, actor.stats.class);
             set({ selectedAction: action, validMoves: moves, validTargets: [] });
         } else if (action === BattleAction.ATTACK) {
             const range = getAttackRange(actor);
             const targets = battleEntities
-                .filter(e => e.type !== actor.type && e.stats.hp > 0)
+                .filter(e => e.position && e.type !== actor.type && e.stats.hp > 0)
                 .filter(e => {
                     const d = Math.sqrt(Math.pow(e.position.x - actor.position.x, 2) + Math.pow(e.position.y - actor.position.y, 2));
                     return d <= range;
@@ -264,7 +267,7 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
         } else if (action === BattleAction.SPELL) {
             const range = 6;
             const targets = battleEntities
-                .filter(e => e.type !== actor.type && e.stats.hp > 0)
+                .filter(e => e.position && e.type !== actor.type && e.stats.hp > 0)
                 .filter(e => {
                     const d = Math.sqrt(Math.pow(e.position.x - actor.position.x, 2) + Math.pow(e.position.y - actor.position.y, 2));
                     return d <= range;
@@ -278,23 +281,31 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
 
     handleTileInteraction: (x, z) => {
         const { selectedAction, validMoves, validTargets, turnOrder, currentTurnIndex, battleEntities } = get();
+        
+        if (!turnOrder || !battleEntities || turnOrder.length === 0) return;
+        
         const actor = battleEntities.find(e => e.id === turnOrder[currentTurnIndex]);
         if (!actor || actor.type !== 'PLAYER') return;
 
         if (selectedAction === BattleAction.MOVE) {
-            if (validMoves.some(m => m.x === x && m.y === z)) get().executeMove(x, z);
+            if (validMoves && validMoves.some(m => m.x === x && m.y === z)) get().executeMove(x, z);
         } else if (selectedAction === BattleAction.ATTACK) {
-            const target = battleEntities.find(e => e.position.x === x && e.position.y === z && e.stats.hp > 0);
-            if (target && validTargets.some(t => t.x === x && t.y === z)) get().executeAction(actor, [target]);
+            const target = battleEntities.find(e => e.position && e.position.x === x && e.position.y === z && e.stats && e.stats.hp > 0);
+            if (target && validTargets && validTargets.some(t => t.x === x && t.y === z)) get().executeAction(actor, [target]);
         } else if (selectedAction === BattleAction.SPELL) {
-            const target = battleEntities.find(e => e.position.x === x && e.position.y === z && e.stats.hp > 0);
-            if (target && validTargets.some(t => t.x === x && t.y === z)) get().executeSpell(actor, [target]);
+            const target = battleEntities.find(e => e.position && e.position.x === x && e.position.y === z && e.stats && e.stats.hp > 0);
+            if (target && validTargets && validTargets.some(t => t.x === x && t.y === z)) get().executeSpell(actor, [target]);
         }
     },
 
     executeMove: async (x, z) => {
         const { turnOrder, currentTurnIndex, battleEntities } = get();
+        
+        if (!turnOrder || turnOrder.length === 0) return;
+        
         const actorId = turnOrder[currentTurnIndex];
+        if (!actorId) return;
+        
         set({ 
             battleEntities: battleEntities.map(e => e.id === actorId ? { ...e, position: { x, y: z } } : e),
             hasMoved: true,
@@ -305,6 +316,8 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
     },
 
     executeAction: async (actor, targets) => {
+        if (!actor?.position || !targets?.[0]?.position) return;
+        
         const state = get();
         set({ isActionAnimating: true, isUnitMenuOpen: false, validTargets: [] });
         const target = targets[0];
@@ -363,6 +376,8 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
     },
 
     executeSpell: async (actor, targets) => {
+        if (!actor?.position || !targets?.[0]?.position) return;
+        
         const state = get();
         set({ isActionAnimating: true, isUnitMenuOpen: false, validTargets: [] });
         const target = targets[0];
