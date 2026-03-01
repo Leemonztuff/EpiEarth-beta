@@ -65,7 +65,9 @@ export const BillboardUnit = React.memo(({
 }: any) => {
   const groupRef = useRef<THREE.Group>(null);
   const [shouldShake, setShouldShake] = useState(false);
+  const [attackPhase, setAttackPhase] = useState(0);
   const lastHp = useRef(hp);
+  const lastIsActing = useRef(isActing);
   
   const { isUnitMenuOpen, setUnitMenuOpen, selectAction, hasMoved, hasActed, executeWait } = useGameStore();
 
@@ -76,12 +78,38 @@ export const BillboardUnit = React.memo(({
     }
     lastHp.current = hp;
   }, [hp]);
+  
+  useEffect(() => {
+    if (isActing && !lastIsActing.current) {
+      setAttackPhase(1);
+      setTimeout(() => setAttackPhase(2), 150);
+      setTimeout(() => setAttackPhase(0), 400);
+    }
+    lastIsActing.current = isActing;
+  }, [isActing]);
 
   useFrame((state) => {
       if (groupRef.current) {
           const t = state.clock.elapsedTime;
           const bob = Math.sin(t * 3) * 0.04;
-          groupRef.current.position.set(position[0], position[1] + bob, position[2]);
+          
+          let offsetX = 0;
+          let offsetY = 0;
+          
+          if (attackPhase === 1) {
+            offsetX = -0.3;
+            offsetY = 0.1;
+          } else if (attackPhase === 2) {
+            offsetX = 0.5;
+            offsetY = -0.1;
+          }
+          
+          groupRef.current.position.set(
+            position[0] + offsetX, 
+            position[1] + bob + offsetY, 
+            position[2]
+          );
+          
           if (shouldShake) groupRef.current.position.x += (Math.random() - 0.5) * 0.15;
       }
   });
@@ -107,6 +135,16 @@ export const BillboardUnit = React.memo(({
                 <ringGeometry args={[0.55, 0.65, 32]} />
                 <meshBasicMaterial color="#fbbf24" transparent opacity={0.6} />
             </mesh>
+        )}
+        
+        {attackPhase > 0 && (
+            <pointLight
+                position={[0, 1, 0]}
+                color={entityType === 'PLAYER' ? '#3b82f6' : '#ef4444'}
+                intensity={attackPhase === 1 ? 3 : 5}
+                distance={5}
+                decay={2}
+            />
         )}
         
         <sprite scale={[2.0, 2.0, 1]} position={[0, 1.0, 0]}>

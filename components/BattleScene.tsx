@@ -21,6 +21,7 @@ import { ContextualMenu } from './battle/ContextualMenu';
 import { DecorationLayer, BattleParticles, BattleGlow, BattleMist } from './battle/DecorationLayer';
 import { BattleItemMenu } from './battle/BattleItemMenu';
 import { BattleSpellMenu } from './battle/BattleSpellMenu';
+import { AttackEffect } from './battle/AttackEffect';
 
 const TurnAnnouncement = () => {
     const text = useGameStore(s => s.turnAnnouncement);
@@ -242,6 +243,14 @@ export const BattleScene = ({ entities, weather, terrainType, currentTurnEntityI
                     ))}
                     
                     <SpellEffectsRenderer activeSpellEffect={activeSpellEffect} />
+                    {aliveEntities.map((ent: Entity) => (
+                        <AttackEffect 
+                            key={`attack-${ent.id}`}
+                            position={[ent.position?.x || 0, ent.position?.y || 0, 0]}
+                            isActive={isActionAnimating && ent.id === currentTurnEntityId && selectedAction === BattleAction.ATTACK}
+                            entityType={ent.type}
+                        />
+                    ))}
                     <TurnTransitionEffect />
                     <DamagePopupManager />
                     <Preload all />
