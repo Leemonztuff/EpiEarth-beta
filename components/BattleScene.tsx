@@ -1,6 +1,6 @@
 
 // @ts-nocheck
-import { Suspense, useMemo, useRef } from 'react';
+import { Suspense, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Html, Preload, OrthographicCamera } from '@react-three/drei';
 import * as THREE from 'three';
@@ -17,6 +17,7 @@ import { EntityRenderer } from './battle/EntityRenderer';
 import { SpellEffectsRenderer } from './battle/SpellEffectsRenderer';
 import { BattleActionBar } from './battle/BattleActionBar';
 import { LightingSystem, CelestialBody, ActionLight } from './battle/LightingSystem';
+import { ContextualMenu } from './battle/ContextualMenu';
 
 const TurnAnnouncement = () => {
     const text = useGameStore(s => s.turnAnnouncement);
@@ -157,6 +158,15 @@ export const BattleScene = ({ entities, weather, terrainType, currentTurnEntityI
     const isActionAnimating = useGameStore(s => s.isActionAnimating);
     const selectedAction = useGameStore(s => s.selectedAction);
     const activeSpellEffect = useGameStore(s => s.activeSpellEffect);
+    const setInspectedEntity = useGameStore(s => s.setInspectedEntity);
+    
+    const [contextMenu, setContextMenu] = useState<{entity: any; x: number; y: number} | null>(null);
+    
+    const handleContextMenu = (entity: any, event: React.MouseEvent) => {
+        setContextMenu({ entity, x: event.clientX, y: event.clientY });
+    };
+    
+    const handleCloseContextMenu = () => setContextMenu(null);
     
     const aliveEntities = useMemo(() => entities?.filter(e => e.stats.hp > 0) || [], [entities]);
     const isShadowRealm = dimension === Dimension.UPSIDE_DOWN;
@@ -164,7 +174,7 @@ export const BattleScene = ({ entities, weather, terrainType, currentTurnEntityI
     if (!battleMap || battleMap.length === 0) return null;
 
     return (
-        <div className="w-full h-full relative bg-slate-950 overflow-hidden">
+        <div className="w-full h-full relative bg-slate-950 overflow-hidden" onClick={handleCloseContextMenu}>
             <WeatherOverlay type={weather} dimension={dimension} />
             <TurnTimeline />
             <TurnAnnouncement />
@@ -215,6 +225,8 @@ export const BattleScene = ({ entities, weather, terrainType, currentTurnEntityI
                             mapData={battleMap}
                             isCurrentTurn={ent.id === currentTurnEntityId} 
                             onTileClick={onTileClick} 
+                            onInspect={setInspectedEntity}
+                            onContextMenu={handleContextMenu}
                             isActing={isActionAnimating && ent.id === currentTurnEntityId} 
                             actionType={selectedAction === BattleAction.ATTACK ? 'ATTACK' : 'IDLE'} 
                         />
@@ -237,6 +249,14 @@ export const BattleScene = ({ entities, weather, terrainType, currentTurnEntityI
             </div>
 
             <BattleActionBar />
+            
+            {contextMenu && (
+                <ContextualMenu 
+                    targetEntity={contextMenu.entity}
+                    position={{ x: contextMenu.x, y: contextMenu.y }}
+                    onClose={handleCloseContextMenu}
+                />
+            )}
         </div>
     );
 };

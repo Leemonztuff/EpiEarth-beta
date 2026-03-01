@@ -60,8 +60,8 @@ const SafeSprite = ({ url, isHit }: { url: string, isHit: boolean }) => {
 
 export const BillboardUnit = React.memo(({ 
     position, color, isCurrentTurn, hp, maxHp, 
-    onUnitClick, isActing, actionType, 
-    entityType, spriteUrl, entity
+    onUnitClick, onInspect, isActing, actionType, 
+    entityType, spriteUrl, entity, onContextMenu
 }: any) => {
   const groupRef = useRef<THREE.Group>(null);
   const [shouldShake, setShouldShake] = useState(false);
@@ -96,6 +96,10 @@ export const BillboardUnit = React.memo(({
             e.stopPropagation(); 
             if (isCurrentTurn && entityType === 'PLAYER') setUnitMenuOpen(!isUnitMenuOpen);
             else if (onUnitClick) onUnitClick(position[0], position[2]);
+        }}
+        onContextMenu={(e) => {
+            e.stopPropagation();
+            if (onContextMenu) onContextMenu(e);
         }}
     >
         {isCurrentTurn && (

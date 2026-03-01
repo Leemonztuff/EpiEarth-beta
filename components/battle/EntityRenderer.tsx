@@ -10,6 +10,7 @@ interface EntityRendererProps {
     isCurrentTurn: boolean;
     onTileClick: (x: number, z: number) => void;
     onInspect: (id: string) => void;
+    onContextMenu: (entity: Entity, event: React.MouseEvent) => void;
     isActing: boolean;
     actionType: 'ATTACK' | 'IDLE';
 }
@@ -20,6 +21,7 @@ export const EntityRenderer = React.memo(({
     isCurrentTurn, 
     onTileClick, 
     onInspect, 
+    onContextMenu,
     isActing, 
     actionType 
 }: EntityRendererProps) => {
@@ -47,6 +49,7 @@ export const EntityRenderer = React.memo(({
             maxHp={stats.maxHp}
             onUnitClick={onTileClick}
             onInspect={() => onInspect(entity.id)} 
+            onContextMenu={(e: any) => onContextMenu(entity, e)}
             isActing={isActing} 
             actionType={actionType} 
             entityType={entity.type}
