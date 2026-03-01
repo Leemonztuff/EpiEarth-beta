@@ -89,68 +89,111 @@ export const createCommonSlice: StateCreator<any, [], [], CommonSlice> = (set, g
     const leader = state.party[0];
     if (!leader) return;
 
-    const saveData = {
-        party: state.party,
-        inventory: state.inventory,
-        gold: state.gold,
-        playerPos: state.playerPos,
-        exploredTiles: Object.fromEntries(Object.entries(state.exploredTiles).map(([k, v]) => [k, Array.from(v as Set<string>)])),
-        visitedTowns: Array.from(state.visitedTowns),
-        dimension: state.dimension,
-        worldTime: state.worldTime,
-        supplies: state.supplies,
-        fatigue: state.fatigue,
-        quests: state.quests
-    };
+    try {
+        const saveData = {
+            version: '1.0.0',
+            timestamp: Date.now(),
+            party: state.party,
+            inventory: state.inventory,
+            gold: state.gold,
+            playerPos: state.playerPos,
+            exploredTiles: Object.fromEntries(Object.entries(state.exploredTiles || {}).map(([k, v]) => [k, Array.from(v as Set<string>)])),
+            visitedTowns: Array.from(state.visitedTowns || []),
+            dimension: state.dimension,
+            worldTime: state.worldTime,
+            supplies: state.supplies,
+            fatigue: state.fatigue,
+            quests: state.quests,
+            difficulty: state.difficulty,
+            currentRegionName: state.currentRegionName,
+            activeTownService: state.activeTownService,
+            battleEntities: [],
+            battleMap: []
+        };
 
-    const summary = {
-        charName: leader.name,
-        level: leader.stats.level,
-        class: leader.stats.class,
-        location: state.currentRegionName || "Wilds"
-    };
+        const summary = {
+            charName: leader.name,
+            level: leader.stats.level,
+            class: leader.stats.class,
+            location: state.currentRegionName || "Wilds"
+        };
 
-    const supabase = getSupabase();
-    if (supabase && state.userSession) {
-        await supabase.from('save_slots').upsert({
-            user_id: state.userSession.user.id,
-            slot_index: slotIndex,
-            data: saveData,
-            summary: summary,
-            updated_at: new Date().toISOString()
-        });
-    } else {
-        localStorage.setItem(`epic_earth_save_${slotIndex}`, JSON.stringify(saveData));
-        const slots = await get().getSaveSlots();
-        const newSlots = [...slots.filter(s => s.slotIndex !== slotIndex), { slotIndex, timestamp: Date.now(), summary }];
-        localStorage.setItem('epic_earth_slots', JSON.stringify(newSlots));
+        const supabase = getSupabase();
+        if (supabase && state.userSession) {
+            await supabase.from('save_slots').upsert({
+                user_id: state.userSession.user.id,
+                slot_index: slotIndex,
+                data: saveData,
+                summary: summary,
+                updated_at: new Date().toString()
+            });
+        } else {
+            localStorage.setItem(`epic_earth_save_${slotIndex}`, JSON.stringify(saveData));
+            const slots = await get().getSaveSlots();
+            const newSlots = [...slots.filter(s => s.slotIndex !== slotIndex), { slotIndex, timestamp: Date.now(), summary }];
+            localStorage.setItem('epic_earth_slots', JSON.stringify(newSlots));
+        }
+        
+        get().addLog("Progress recorded in the Shards of Time.", "info");
+        sfx.playMagic();
+    } catch (error) {
+        console.error('Save failed:', error);
+        get().addLog("Save failed! Progress may be lost.", "info");
     }
-    
-    get().addLog("Progress recorded in the Shards of Time.", "info");
-    sfx.playMagic();
   },
 
   loadGame: async (slotIndex) => {
       let data: any = null;
       const supabase = getSupabase();
       
-      if (supabase && get().userSession) {
-          const { data: res } = await supabase.from('save_slots').select('data').eq('slot_index', slotIndex).single();
-          if (res) data = res.data;
-      } else {
-          const local = localStorage.getItem(`epic_earth_save_${slotIndex}`);
-          if (local) data = JSON.parse(local);
-      }
+      try {
+          if (supabase && get().userSession) {
+              const { data: res } = await supabase.from('save_slots').select('data').eq('slot_index', slotIndex).single();
+              if (res) data = res.data;
+          } else {
+              const local = localStorage.getItem(`epic_earth_save_${slotIndex}`);
+              if (local) data = JSON.parse(local);
+          }
 
-      if (data) {
-          set({
-              ...data,
-              exploredTiles: Object.fromEntries(Object.entries(data.exploredTiles).map(([k, v]) => [k, new Set(v as string[])])),
-              visitedTowns: new Set(data.visitedTowns),
-              gameState: GameState.OVERWORLD
-          });
-          sfx.playVictory();
-          get().addLog("Dimension stabilized. Welcome back.", "narrative");
+          if (data) {
+              const restoredState: any = {
+                  party: data.party || [],
+                  inventory: data.inventory || [],
+                  gold: data.gold || 250,
+                  playerPos: data.playerPos || { x: 0, y: 0 },
+                  exploredTiles: Object.fromEntries(Object.entries(data.exploredTiles || {}).map(([k, v]) => [k, new Set(v as string[])])),
+                  visitedTowns: new Set(data.visitedTowns || []),
+                  dimension: data.dimension || 'MORTAL',
+                  worldTime: data.worldTime || 480,
+                  supplies: data.supplies || 10,
+                  fatigue: data.fatigue || 0,
+                  quests: data.quests || [],
+                  difficulty: data.difficulty || 'NORMAL',
+                  currentRegionName: data.currentRegionName || 'Unknown Region',
+                  activeTownService: 'NONE',
+                  gameState: GameState.OVERWORLD,
+                  battleEntities: [],
+                  battleMap: [],
+                  turnOrder: [],
+                  currentTurnIndex: 0,
+                  selectedAction: null,
+                  validMoves: [],
+                  validTargets: [],
+                  hasMoved: false,
+                  hasActed: false,
+                  isActionAnimating: false,
+                  isUnitMenuOpen: false,
+                  isItemMenuOpen: false
+              };
+              
+              set(restoredState);
+              sfx.playVictory();
+              get().addLog("Dimension stabilized. Welcome back.", "narrative");
+          }
+      } catch (error) {
+          console.error('Load failed:', error);
+          get().addLog("Save file corrupted. Starting new game.", "info");
+          sfx.playUiError();
       }
   }
 });
