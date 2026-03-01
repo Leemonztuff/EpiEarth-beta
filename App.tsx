@@ -4,7 +4,7 @@ import { GameState, BattleAction } from './types';
 import { UIOverlay } from './components/UIOverlay';
 import { AssetLoaderOverlay } from './components/AssetLoaderOverlay';
 import { OverworldUI } from './components/OverworldUI';
-import { SimpleOverworldMap } from './components/SimpleOverworldMap';
+import { DebugOverworldMap } from './components/DebugOverworldMap';
 import { getSupabase } from './services/supabaseClient';
 import { useGameStore } from './store/gameStore';
 import { useContentStore } from './store/contentStore';
@@ -103,7 +103,7 @@ const App = () => {
               gameState === GameState.DUNGEON || 
               gameState === GameState.DIALOGUE) && (
               <>
-                <SimpleOverworldMap />
+                <DebugOverworldMap />
                 <OverworldUI />
               </>
             )}
