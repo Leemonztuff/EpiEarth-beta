@@ -354,14 +354,14 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
             return e;
         });
 
+        const aliveEnemies = newEntities.filter(e => e.type === 'ENEMY' && e.stats.hp > 0);
+        const alivePlayers = newEntities.filter(e => e.type === 'PLAYER' && e.stats.hp > 0);
+
         set({ 
             battleEntities: newEntities, 
             damagePopups: [...state.damagePopups, ...res.popups.map(p => ({ ...p, id: generateId(), position: [target.position.x, 2, target.position.y], timestamp: Date.now() }))],
             isActionAnimating: false, activeSpellEffect: null, hasActed: true 
         });
-
-        const aliveEnemies = newEntities.filter(e => e.type === 'ENEMY' && e.stats.hp > 0);
-        const alivePlayers = newEntities.filter(e => e.type === 'PLAYER' && e.stats.hp > 0);
 
         if (aliveEnemies.length === 0) {
             const enemies = state.battleEntities.filter(e => e.type === 'ENEMY');
@@ -417,6 +417,9 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
             return e;
         });
 
+        const aliveEnemies = newEntities.filter(e => e.type === 'ENEMY' && e.stats.hp > 0);
+        const alivePlayers = newEntities.filter(e => e.type === 'PLAYER' && e.stats.hp > 0);
+
         const popups = [{ id: generateId(), amount: spellDamage, isCrit: false, isHeal: false, position: [target.position.x, 2, target.position.y], timestamp: Date.now() }];
 
         set({ 
@@ -424,9 +427,6 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
             damagePopups: [...state.damagePopups, ...popups],
             isActionAnimating: false, activeSpellEffect: null, hasActed: true 
         });
-
-        const aliveEnemies = newEntities.filter(e => e.type === 'ENEMY' && e.stats.hp > 0);
-        const alivePlayers = newEntities.filter(e => e.type === 'PLAYER' && e.stats.hp > 0);
 
         if (aliveEnemies.length === 0) {
             const enemies = state.battleEntities.filter(e => e.type === 'ENEMY');
