@@ -58,7 +58,7 @@ export const OverworldMap = ({ playerPos, onMove, dimension = 'MORTAL' }: any) =
     
     const safeDimension = dimension || 'MORTAL';
     
-    const isLocal = gameState === GameState.TOWN_EXPLORATION || gameState === GameState.DUNGEON;
+    const isLocal = (gameState || '') === GameState.TOWN_EXPLORATION || (gameState || '') === GameState.DUNGEON;
     const hours = Math.floor((worldTime || 480) / 60);
     const isNight = hours < 6 || hours >= 22;
 
@@ -108,12 +108,15 @@ export const OverworldMap = ({ playerPos, onMove, dimension = 'MORTAL' }: any) =
         }
     }, [isLocal, townMapData, exploredTiles, safeDimension, isAssetsLoaded]);
 
-    const drawWesnothHex = (ctx, cx, cy, tile) => {
-        const s = HEX_SIZE;
-        const terrainPath = ASSETS.TERRAIN[tile.terrain];
-        const img = AssetManager.getAsset(terrainPath);
+    const drawWesnothHex = (ctx: any, cx: number, cy: number, tile: any) => {
+        if (!tile || !tile.terrain) return;
+        
+        try {
+            const s = HEX_SIZE;
+            const terrainPath = ASSETS.TERRAIN[tile.terrain];
+            const img = AssetManager.getAsset(terrainPath);
 
-        ctx.save();
+            ctx.save();
         ctx.beginPath();
         for (let i = 0; i < 6; i++) {
             const angle = 2 * Math.PI / 6 * i;
@@ -173,6 +176,7 @@ export const OverworldMap = ({ playerPos, onMove, dimension = 'MORTAL' }: any) =
         ctx.strokeStyle = 'rgba(255,255,255,0.05)';
         ctx.lineWidth = 1;
         ctx.stroke();
+        } catch (e) {}
     };
 
     const render = useCallback(() => {
@@ -214,14 +218,14 @@ export const OverworldMap = ({ playerPos, onMove, dimension = 'MORTAL' }: any) =
         const visionPx = visionRange * HEX_SIZE * 1.5;
 
         // MÁSCARA DE OSCURIDAD (Noche o Vacío)
-        const needsDarkness = isNight || dimension === Dimension.UPSIDE_DOWN;
+        const needsDarkness = isNight || safeDimension === Dimension.UPSIDE_DOWN;
         if (needsDarkness) {
             ctx.save();
             ctx.beginPath();
             ctx.rect(-offsetX, -offsetY, canvas.width / zoom, canvas.height / zoom);
             ctx.arc(px, py, visionPx, 0, Math.PI * 2, true);
             ctx.clip();
-            ctx.fillStyle = dimension === Dimension.UPSIDE_DOWN ? 'rgba(10, 5, 25, 0.92)' : 'rgba(0, 5, 15, 0.85)';
+            ctx.fillStyle = safeDimension === Dimension.UPSIDE_DOWN ? 'rgba(10, 5, 25, 0.92)' : 'rgba(0, 5, 15, 0.85)';
             ctx.fillRect(-offsetX, -offsetY, canvas.width / zoom, canvas.height / zoom);
             ctx.restore();
 
@@ -249,7 +253,7 @@ export const OverworldMap = ({ playerPos, onMove, dimension = 'MORTAL' }: any) =
 
         ctx.restore();
 
-    }, [playerPos, party, exploredTiles, dimension, worldTime, isLocal, townMapData, isAssetsLoaded]);
+    }, [playerPos, party, exploredTiles, safeDimension, worldTime, isLocal, townMapData, isAssetsLoaded]);
 
     useEffect(() => {
         let frameId = requestAnimationFrame(function loop() {
