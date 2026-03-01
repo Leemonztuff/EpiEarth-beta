@@ -38,7 +38,7 @@ export const CinematicCamera = () => {
         const { 
             battleEntities, turnOrder, currentTurnIndex, 
             isUnitMenuOpen, isActionAnimating, isScreenShaking,
-            selectedTile, activeSpellEffect
+            selectedTile, activeSpellEffect, selectedAction, validMoves
         } = store;
 
         const dt = Math.min(delta, 0.1);
@@ -58,6 +58,18 @@ export const CinematicCamera = () => {
         } else if (isActionAnimating && actor?.position) {
             // Enfocar entidad actuando
             desiredFocus.set(actor.position.x, 0.5, actor.position.y);
+        } else if (selectedAction === 'MOVE' && actor?.position) {
+            // Calcular centro de los movimientos válidos
+            if (validMoves && validMoves.length > 0) {
+                const avgX = validMoves.reduce((sum, m) => sum + m.x, 0) / validMoves.length;
+                const avgY = validMoves.reduce((sum, m) => sum + m.y, 0) / validMoves.length;
+                desiredFocus.set(avgX, 0.3, avgY);
+            } else {
+                desiredFocus.set(actor.position.x, 0.3, actor.position.y);
+            }
+        } else if (selectedAction === 'ATTACK' && actor?.position) {
+            // Enfocar en el actor durante selección de objetivo
+            desiredFocus.set(actor.position.x, 0.3, actor.position.y);
         } else if (isUnitMenuOpen && actor?.position) {
             // Menú abierto - mantener enfoque en actor
             desiredFocus.set(actor.position.x, 0.5, actor.position.y);
@@ -82,13 +94,20 @@ export const CinematicCamera = () => {
         targetPos.current.copy(currentFocus.current);
         controls.target.lerp(targetPos.current, lerpFactor);
 
-        // === 3. ZOOM DINÁMICO ===
+        // === 3. ZOOM DINÁMICO SEGÚN ESTADO ===
         let targetZoom = 65;
         
-        if (activeSpellEffect) {
+        // Durante selección de movimiento: zoom out para ver rango
+        if (selectedAction === 'MOVE' && validMoves && validMoves.length > 0) {
+            targetZoom = 80; // Zoom out para ver todo el rango de movimiento
+        } else if (selectedAction === 'ATTACK') {
+            targetZoom = 70; // Zoom out moderado para ver objetivos
+        } else if (activeSpellEffect) {
             targetZoom = 50; // Zoom in para ver el efecto
-        } else if (isActionAnimating || isUnitMenuOpen) {
+        } else if (isActionAnimating) {
             targetZoom = 55; // Zoom moderado cuando hay acción
+        } else if (isUnitMenuOpen) {
+            targetZoom = 60; // Zoom un poco más cerca cuando hay menú
         } else if (battleEntities && battleEntities.length > 8) {
             targetZoom = 75; // Zoom out si hay muchas entidades
         } else {
