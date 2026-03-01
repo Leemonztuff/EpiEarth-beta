@@ -44,7 +44,7 @@ export const WeatherOverlay = ({ type, dimension }: { type: WeatherType, dimensi
     );
 };
 
-export const OverworldMap = ({ playerPos, onMove, dimension }: any) => {
+export const OverworldMap = ({ playerPos, onMove, dimension = 'MORTAL' }: any) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const terrainCacheRef = useRef<HTMLCanvasElement>(null);
@@ -55,7 +55,9 @@ export const OverworldMap = ({ playerPos, onMove, dimension }: any) => {
     const gameState = useGameStore(s => s.gameState);
     const townMapData = useGameStore(s => s.townMapData);
     const isAssetsLoaded = useGameStore(s => s.isAssetsLoaded);
-
+    
+    const safeDimension = dimension || 'MORTAL';
+    
     const isLocal = gameState === GameState.TOWN_EXPLORATION || gameState === GameState.DUNGEON;
     const hours = Math.floor((worldTime || 480) / 60);
     const isNight = hours < 6 || hours >= 22;
@@ -95,16 +97,16 @@ export const OverworldMap = ({ playerPos, onMove, dimension }: any) => {
         if (isLocal && townMapData && Array.isArray(townMapData)) {
             drawLoop(townMapData);
         } else {
-            const currentExplored = exploredTiles?.[dimension] || new Set();
+            const currentExplored = exploredTiles?.[safeDimension] || new Set();
             if (!currentExplored || currentExplored.size === 0) return;
             
             const tilesToDraw = Array.from(currentExplored).map(key => {
                 const [q, r] = key.split(',').map(Number);
-                return WorldGenerator.getTile(q, r, dimension);
+                return WorldGenerator.getTile(q, r, safeDimension);
             }).filter(Boolean);
             drawLoop(tilesToDraw);
         }
-    }, [isLocal, townMapData, exploredTiles, dimension, isAssetsLoaded]);
+    }, [isLocal, townMapData, exploredTiles, safeDimension, isAssetsLoaded]);
 
     const drawWesnothHex = (ctx, cx, cy, tile) => {
         const s = HEX_SIZE;
@@ -208,7 +210,7 @@ export const OverworldMap = ({ playerPos, onMove, dimension }: any) => {
         }
 
         const leader = party[0];
-        const visionRange = calculateVisionRange(leader.stats.attributes.WIS, leader.stats.corruption || 0, worldTime, dimension);
+        const visionRange = calculateVisionRange(leader.stats.attributes.WIS, leader.stats.corruption || 0, worldTime || 480, safeDimension);
         const visionPx = visionRange * HEX_SIZE * 1.5;
 
         // MÁSCARA DE OSCURIDAD (Noche o Vacío)
@@ -259,7 +261,7 @@ export const OverworldMap = ({ playerPos, onMove, dimension }: any) => {
 
     return (
         <div ref={containerRef} className="fixed inset-0 w-full h-full bg-[#0a0d14] overflow-hidden">
-            {!isLocal && playerPos && <WeatherOverlay type={WorldGenerator.getTile(playerPos.x, playerPos.y, dimension)?.weather || 'NONE'} dimension={dimension} />}
+            {!isLocal && playerPos && <WeatherOverlay type={WorldGenerator.getTile(playerPos.x, playerPos.y, safeDimension)?.weather || 'NONE'} dimension={safeDimension} />}
             <div className="absolute inset-0 pointer-events-none z-10 shadow-[inset_0_0_200px_rgba(0,0,0,0.9)]" />
             <canvas 
                 ref={canvasRef} 
