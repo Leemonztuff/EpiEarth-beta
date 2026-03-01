@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState, Suspense, lazy } from 'react';
 import { GameState, BattleAction } from './types';
 import { UIOverlay } from './components/UIOverlay';
 import { AssetLoaderOverlay } from './components/AssetLoaderOverlay';
+import { OverworldUI } from './components/OverworldUI';
 import { getSupabase } from './services/supabaseClient';
 import { useGameStore } from './store/gameStore';
 import { useContentStore } from './store/contentStore';
@@ -100,7 +101,10 @@ const App = () => {
               gameState === GameState.TOWN_EXPLORATION || 
               gameState === GameState.DUNGEON || 
               gameState === GameState.DIALOGUE) && (
-              <OverworldMap playerPos={playerPos} onMove={movePlayerOverworld} dimension={dimension} />
+              <>
+                <OverworldMap playerPos={playerPos} onMove={movePlayerOverworld} dimension={dimension} />
+                <OverworldUI />
+              </>
             )}
 
             {/* BATALLA */}
