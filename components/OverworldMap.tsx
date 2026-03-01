@@ -243,14 +243,14 @@ export const OverworldMap = ({ playerPos, onMove, dimension }: any) => {
 
     return (
         <div ref={containerRef} className="fixed inset-0 w-full h-full bg-[#0a0d14] overflow-hidden">
-            {!isLocal && <WeatherOverlay type={WorldGenerator.getTile(playerPos.x, playerPos.y, dimension).weather} dimension={dimension} />}
+            {!isLocal && playerPos && <WeatherOverlay type={WorldGenerator.getTile(playerPos.x, playerPos.y, dimension)?.weather || 'NONE'} dimension={dimension} />}
             <div className="absolute inset-0 pointer-events-none z-10 shadow-[inset_0_0_200px_rgba(0,0,0,0.9)]" />
             <canvas 
                 ref={canvasRef} 
                 className="w-full h-full cursor-crosshair touch-none" 
                 onClick={(e) => {
                     const canvas = canvasRef.current;
-                    if (!canvas) return;
+                    if (!canvas || !playerPos) return;
                     const rect = canvas.getBoundingClientRect();
                     const dpr = window.devicePixelRatio || 1;
                     const zoom = isLocal ? 2.5 : 1.8;

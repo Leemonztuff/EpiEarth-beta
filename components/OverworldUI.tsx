@@ -212,7 +212,7 @@ export const OverworldUI: React.FC = () => {
     const currentRegionName = useGameStore(s => s.currentRegionName);
     const gameState = useGameStore(s => s.gameState);
     
-    if (gameState !== 'OVERWORLD' && gameState !== 'TOWN_EXPLORATION' && gameState !== 'DUNGEON') {
+    if (!gameState || (gameState !== 'OVERWORLD' && gameState !== 'TOWN_EXPLORATION' && gameState !== 'DUNGEON')) {
         return null;
     }
     
@@ -222,8 +222,8 @@ export const OverworldUI: React.FC = () => {
             <Compass playerPos={playerPos} dimension={dimension} />
             <DayNightIndicator worldTime={worldTime} />
             <MiniMap playerPos={playerPos} dimension={dimension} exploredTiles={exploredTiles} />
-            <ResourceDisplay gold={gold} supplies={supplies} fatigue={fatigue} />
-            <QuestPointer playerPos={playerPos} dimension={dimension} quests={quests} />
+            <ResourceDisplay gold={gold || 0} supplies={supplies || 10} fatigue={fatigue || 0} />
+            <QuestPointer playerPos={playerPos} dimension={dimension} quests={quests || []} />
             <LocationName currentRegionName={currentRegionName} />
         </div>
     );
