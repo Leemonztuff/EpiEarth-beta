@@ -4,11 +4,11 @@ import { StateCreator } from 'zustand';
 import { 
     GameState, TerrainType, WeatherType, BattleCell, BattleAction, Entity, 
     DamagePopup, SpellEffectData, SpellType, AIBehavior, LootDrop, ItemRarity, 
-    Dimension, DamageType, EffectType, StatusEffectType, MovementType, PositionComponent
+    Dimension, DamageType, EffectType, StatusEffectType, MovementType, PositionComponent, EquipmentSlot
 } from '../../types';
 import { findBattlePath, getReachableTiles } from '../../services/pathfinding';
 // Fixed: Removed non-existent calculateHitChance and unused calculateDamage, calculateFinalDamage from import
-import { rollDice, calculateEnemyStats, calculateAttackRoll, getAttackRange } from '../../services/dndRules';
+import { rollDice, calculateEnemyStats, calculateAttackRoll, getAttackRange, getModifier } from '../../services/dndRules';
 import { sfx } from '../../services/SoundSystem';
 import { ActionResolver } from '../../services/ActionResolver';
 import { WorldGenerator } from '../../services/WorldGenerator';
@@ -118,7 +118,7 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
 
         const allEntities = [...battleParty, ...enemies];
         const turnOrder = allEntities
-            .map(e => ({ id: e.id, roll: rollDice(20, 1) + (e.stats.initiativeBonus || 0) }))
+            .map(e => ({ id: e.id, roll: rollDice(20, 1) + (e.stats.initiativeBonus || getModifier(e.stats.attributes.DEX)) }))
             .sort((a, b) => b.roll - a.roll)
             .map(e => e.id);
 
@@ -341,8 +341,16 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
         await new Promise(r => setTimeout(r, 350));
 
         // Resolución con lógica de altura incluida
-        const res = ActionResolver.resolve(actor, target, [{ type: EffectType.DAMAGE, diceCount: 1, diceSides: 8 }], state.dimension, state.battleEntities, state.battleMap);
-        get().damageVoxel(target.position.x, target.position.y, rollDice(8, 1) + 2);
+        const weapon = actor.equipment?.[EquipmentSlot.MAIN_HAND];
+        const effects = weapon?.equipmentStats ? [{
+            type: EffectType.DAMAGE,
+            diceCount: weapon.equipmentStats.diceCount || 1,
+            diceSides: weapon.equipmentStats.diceSides || 8,
+            damageType: weapon.equipmentStats.damageType || DamageType.BLUDGEONING
+        }] : [{ type: EffectType.DAMAGE, diceCount: 1, diceSides: 8, damageType: DamageType.BLUDGEONING }];
+        
+        const res = ActionResolver.resolve(actor, target, effects, state.dimension, state.battleEntities, state.battleMap);
+        get().damageVoxel(target.position.x, target.position.y, rollDice(weapon?.equipmentStats?.diceSides || 8, weapon?.equipmentStats?.diceCount || 1) + 2);
 
         if (res.didHit) {
             get().triggerScreenShake(res.popups[0]?.isCrit ? 600 : 300);
@@ -391,6 +399,12 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
         if (!actor?.position || !targets?.[0]?.position) return;
         
         const state = get();
+        
+        if (actor.type === 'PLAYER' && actor.stats.spellSlots && actor.stats.spellSlots.current <= 0) {
+            set({ isActionAnimating: false, isUnitMenuOpen: false });
+            return;
+        }
+        
         set({ isActionAnimating: true, isUnitMenuOpen: false, validTargets: [] });
         const target = targets[0];
 
@@ -403,7 +417,12 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
 
         await new Promise(r => setTimeout(r, 500));
 
-        const spellDamage = rollDice(6, 2) + 3;
+        const spellMod = Math.max(
+            getModifier(actor.stats.attributes.INT),
+            getModifier(actor.stats.attributes.WIS)
+        );
+        const spellLevelBonus = Math.floor(actor.stats.level / 3);
+        const spellDamage = rollDice(6, 2) + spellMod + spellLevelBonus;
         get().damageVoxel(target.position.x, target.position.y, spellDamage);
 
         get().triggerScreenShake(400);
@@ -413,6 +432,9 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
             if (e.id === target.id) {
                 const hpChange = -spellDamage;
                 return { ...e, stats: { ...e.stats, hp: Math.max(0, e.stats.hp + hpChange) } };
+            }
+            if (e.id === actor.id && actor.type === 'PLAYER' && e.stats.spellSlots) {
+                return { ...e, stats: { ...e.stats, spellSlots: { ...e.stats.spellSlots, current: Math.max(0, e.stats.spellSlots.current - 1) } } };
             }
             return e;
         });

@@ -34,12 +34,23 @@ const LoadingFallback = () => (
   </div>
 );
 
+// Global error handler
+window.onerror = (msg, url, line, col, error) => {
+  console.error('[GLOBAL ERROR]', msg, 'at line', line);
+  return false;
+};
+window.onunhandledrejection = (e) => {
+  console.error('[UNHANDLED REJECTION]', e.reason);
+};
+
 const App = () => {
   const isAdmin = useGameStore(s => s.isAdmin);
   const setAdminMode = useGameStore(s => s.setAdminMode);
   const [activeTownService, setActiveTownService] = useState<'NONE' | 'SHOP' | 'INN'>('NONE');
   
   const gameState = useGameStore(s => s.gameState);
+  console.log('[App] gameState:', gameState, '| rendering:', gameState === GameState.TITLE ? 'TitleScreen' : gameState === GameState.OVERWORLD ? 'OverworldMap' : 'Other');
+  
   const playerPos = useGameStore(s => s.playerPos);
   const battleEntities = useGameStore(s => s.battleEntities || []);
   const turnOrder = useGameStore(s => s.turnOrder || []);
@@ -81,6 +92,10 @@ const App = () => {
 
   return (
     <main className={`relative w-screen h-screen overflow-hidden bg-black text-white transition-transform duration-75 ${isScreenShaking ? 'animate-shake' : ''}`}>
+      {/* DEBUG BANNER */}
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, backgroundColor: '#ef4444', color: 'white', padding: '8px', zIndex: 9999, textAlign: 'center', fontWeight: 'bold' }}>
+        DEBUG: gameState = {gameState} | isAssetsLoaded = {String(isAssetsLoaded)}
+      </div>
       <div className={`fixed inset-0 z-[999] bg-white pointer-events-none transition-opacity duration-150 ${isScreenFlashing ? 'opacity-40' : 'opacity-0'}`} />
 
       {!isAssetsLoaded && !isAdmin && <AssetLoaderOverlay />}
@@ -104,7 +119,7 @@ const App = () => {
               gameState === GameState.DIALOGUE) && (
               <>
                 <DebugOverworldMap />
-                <OverworldUI />
+                {/* <OverworldUI /> */}
               </>
             )}
 

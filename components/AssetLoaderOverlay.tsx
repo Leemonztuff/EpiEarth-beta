@@ -43,10 +43,14 @@ export const AssetLoaderOverlay: React.FC = () => {
             <div className="relative z-10 mb-12">
                 <div className="w-32 h-32 bg-amber-500/10 rounded-full blur-3xl absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 animate-pulse" />
                 <img 
-                    src="https://iukchvkoumfwaxlgfhso.supabase.co/storage/v1/object/public/game-assets/items/gem-large-blue.png" 
+                    src={AssetManager.getSafeSprite('items/gem-large-blue.png')} 
                     className="w-24 h-24 mx-auto drop-shadow-[0_0_20px_rgba(245,158,11,0.4)] animate-bounce mb-4" 
                     style={{ animationDuration: '3s' }}
                     alt="Loading..."
+                    onError={(e) => {
+                        // Fallback to data URI if loading fails
+                        e.currentTarget.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3E%3Ccircle cx="50" cy="50" r="40" fill="%23f59e0b"/%3E%3C/svg%3E';
+                    }}
                 />
                 <h1 className="text-4xl md:text-6xl font-serif font-black text-white tracking-tighter">EPIC EARTH</h1>
                 <div className="h-1 w-24 bg-amber-500 mx-auto mt-2" />

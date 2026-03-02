@@ -129,12 +129,13 @@ export const calculateDerivedStats = (attributes: Attributes, cls: CharacterClas
     const con = attributes.CON;
     const int = attributes.INT;
     const wis = attributes.WIS;
+    const cha = attributes.CHA;
 
-    const atk = str + (equipment?.main_hand?.equipmentStats?.diceCount ? (equipment.main_hand.equipmentStats.diceCount * equipment.main_hand.equipmentStats.diceSides / 2) : 0);
+    const atk = getModifier(str);
     const def = con + (equipment?.body?.equipmentStats?.ac || 0);
-    const mag = Math.max(int, wis) * 1.5;
-    const spd = dex;
-    const crit = dex + (level * 0.5);
+    const mag = Math.max(getModifier(int), getModifier(wis)) + Math.floor(level / 2);
+    const spd = getModifier(dex) + Math.floor(dex / 2);
+    const crit = 5 + getModifier(dex);
     
     const mpFactor = (cls === CharacterClass.WIZARD || cls === CharacterClass.SORCERER || cls === CharacterClass.CLERIC) ? 5 : 2;
     const maxMp = Math.floor(Math.max(int, wis) * mpFactor);
@@ -203,8 +204,31 @@ export const calculateEnemyStats = (def: EnemyDefinition, playerLevel: number, d
     const diffMod = DIFFICULTY_SETTINGS[difficulty].enemyStatMod;
     const levelMod = 1 + (playerLevel - 1) * 0.15;
     const finalHp = Math.floor(def.hp * levelMod * diffMod);
-    const attributes: Attributes = { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 };
+    
+    const baseClass = CharacterClass.FIGHTER;
+    let attributes: Attributes;
+    
+    switch(def.type) {
+        case CreatureType.BEAST:
+            attributes = { STR: 12, DEX: 14, CON: 12, INT: 2, WIS: 12, CHA: 4 };
+            break;
+        case CreatureType.DRAGON:
+            attributes = { STR: 16, DEX: 10, CON: 16, INT: 12, WIS: 12, CHA: 14 };
+            break;
+        case CreatureType.UNDEAD:
+            attributes = { STR: 12, DEX: 10, CON: 12, INT: 10, WIS: 14, CHA: 8 };
+            break;
+        case CreatureType.DEMON:
+            attributes = { STR: 14, DEX: 12, CON: 14, INT: 10, WIS: 12, CHA: 14 };
+            break;
+        case CreatureType.CONSTRUCT:
+            attributes = { STR: 14, DEX: 8, CON: 14, INT: 8, WIS: 10, CHA: 6 };
+            break;
+        default:
+            attributes = { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 };
+    }
+    
     return {
-        level: playerLevel, class: CharacterClass.FIGHTER, xp: 0, xpToNextLevel: 1000, hp: finalHp, maxHp: finalHp, stamina: 50, maxStamina: 50, ac: def.ac, initiativeBonus: def.initiativeBonus, speed: 30, movementType: MovementType.WALK, attributes, baseAttributes: attributes, spellSlots: { current: 0, max: 0 }, activeCooldowns: {}, activeStatusEffects: [], resistances: def.resistances || [], vulnerabilities: def.vulnerabilities || [], immunities: def.immunities || [], xpReward: def.xpReward, creatureType: def.type, derived: calculateDerivedStats(attributes, CharacterClass.FIGHTER, playerLevel)
+        level: playerLevel, class: baseClass, xp: 0, xpToNextLevel: 1000, hp: finalHp, maxHp: finalHp, stamina: 50, maxStamina: 50, ac: def.ac, initiativeBonus: getModifier(attributes.DEX), speed: 30, movementType: MovementType.WALK, attributes, baseAttributes: attributes, spellSlots: { current: 0, max: 0 }, activeCooldowns: {}, activeStatusEffects: [], resistances: def.resistances || [], vulnerabilities: def.vulnerabilities || [], immunities: def.immunities || [], xpReward: def.xpReward, creatureType: def.type, derived: calculateDerivedStats(attributes, baseClass, playerLevel)
     };
 };

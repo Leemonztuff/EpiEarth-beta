@@ -2,11 +2,28 @@
 import React, { useMemo, useRef, useEffect, useCallback, useState } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { WorldGenerator } from '../services/WorldGenerator';
+import { GameState, Dimension } from '../types';
 
 const HEX_SIZE = 30;
 
+class ErrorBoundary extends React.Component<{children:React.ReactNode}, {hasError:boolean}> {
+    constructor(props: {children:React.ReactNode}) {
+        super(props);
+        this.state = { hasError: false };
+    }
+    static getDerivedStateFromError() { return { hasError: true }; }
+    componentDidCatch(e: Error, info: React.ErrorInfo) {
+        console.error('[DebugOverworldMap Error]', e, info);
+    }
+    render() {
+        if (this.state.hasError) return <div className="text-red-500 p-8">Error in OverworldMap</div>;
+        return this.props.children;
+    }
+}
+
 export const DebugOverworldMap = () => {
     const [debug, setDebug] = useState('Initializing...');
+    const [renderCount, setRenderCount] = useState(0);
     
     const playerPos = useGameStore(s => s.playerPos);
     const party = useGameStore(s => s.party);
@@ -19,7 +36,9 @@ export const DebugOverworldMap = () => {
     const canvasRef = useRef(null);
     
     useEffect(() => {
-        let msg = `gameState: ${gameState}, playerPos: ${JSON.stringify(playerPos)}, dimension: ${dimension}, party: ${party?.length}, explored: ${exploredTiles ? Object.keys(exploredTiles).length : 0}`;
+        setRenderCount(c => c + 1);
+        console.log('[DebugOverworldMap] Render:', { gameState, playerPos, dimension, partyLength: party?.length });
+        let msg = `Render #${renderCount + 1} | gameState: ${gameState} | pos: ${JSON.stringify(playerPos)} | dim: ${dimension} | party: ${party?.length}`;
         setDebug(msg);
     }, [gameState, playerPos, dimension, party, exploredTiles]);
     
@@ -52,7 +71,7 @@ export const DebugOverworldMap = () => {
         ctx.textAlign = 'center';
         ctx.fillText(`@ (${playerPos.x}, ${playerPos.y})`, centerX, centerY - 20);
         
-        const dimKey = dimension === 'UPSIDE_DOWN' ? 'UPSIDE_DOWN' : 'NORMAL';
+        const dimKey = dimension === Dimension.UPSIDE_DOWN ? Dimension.UPSIDE_DOWN : Dimension.NORMAL;
         const explored = exploredTiles?.[dimKey];
         
         if (explored && explored.size > 0) {
@@ -78,6 +97,15 @@ export const DebugOverworldMap = () => {
         }
         
     }, [playerPos, dimension, exploredTiles]);
+    
+    useEffect(() => {
+        console.log('[DebugOverworldMap] State:', { 
+            playerPos, 
+            dimension, 
+            exploredTiles: exploredTiles ? Object.keys(exploredTiles) : null,
+            party: party?.length 
+        });
+    }, [playerPos, dimension, exploredTiles, party]);
     
     const handleClick = useCallback((e) => {
         if (!playerPos || !movePlayerOverworld) return;
@@ -105,16 +133,30 @@ export const DebugOverworldMap = () => {
         }
     }, [playerPos, movePlayerOverworld]);
     
-    if (gameState !== 'OVERWORLD' && gameState !== 'TOWN_EXPLORATION' && gameState !== 'DUNGEON') {
-        return (
-            <div className="fixed inset-0 bg-black flex items-center justify-center">
-                <div className="text-white">Game State: {gameState}</div>
-            </div>
-        );
-    }
+    // DEBUG: Always render for now to test
+    // if (gameState !== GameState.OVERWORLD && gameState !== GameState.TOWN_EXPLORATION && gameState !== GameState.DUNGEON) {
+    //     return (
+    //         <ErrorBoundary>
+    //             <div className="fixed inset-0 bg-black flex items-center justify-center">
+    //                 <div className="text-white">Game State: {gameState}</div>
+    //             </div>
+    //         </ErrorBoundary>
+    //     );
+    // }
     
     return (
-        <div className="fixed inset-0 bg-black overflow-hidden">
+        <ErrorBoundary>
+            <div style={{ position: 'fixed', inset: 0, backgroundColor: '#1a1a2e', overflow: 'hidden', zIndex: 200 }}>
+                <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', color: '#fbbf24', fontSize: 24, fontWeight: 'bold', border: '4px solid #fbbf24', padding: 20 }}>
+                    DEBUG OVERWORLD MAP RENDERED
+                    <br/>
+                    <span style={{fontSize: 14}}>gameState: {gameState}</span>
+                </div>
+                <canvas
+                    ref={canvasRef}
+                    className="w-full h-full cursor-crosshair"
+                    onClick={handleClick}
+                />
             <canvas
                 ref={canvasRef}
                 className="w-full h-full cursor-crosshair"
@@ -131,7 +173,7 @@ export const DebugOverworldMap = () => {
             <div className="absolute top-4 right-4 bg-black/80 p-3 rounded-lg border border-white/20">
                 <div className="text-white font-mono text-sm">
                     <div className="text-amber-400">🗺️ EpiEarth</div>
-                    <div className="text-white/60">{dimension === 'UPSIDE_DOWN' ? 'Void Realm' : 'Mortal Realm'}</div>
+                    <div className="text-white/60">{dimension === Dimension.UPSIDE_DOWN ? 'Void Realm' : 'Mortal Realm'}</div>
                 </div>
             </div>
             
@@ -139,5 +181,6 @@ export const DebugOverworldMap = () => {
                 <div className="text-white/60 text-sm">Click to move (range: 3)</div>
             </div>
         </div>
+        </ErrorBoundary>
     );
 };

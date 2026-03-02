@@ -41,6 +41,18 @@ const getCasterSlots = (cls: CharacterClass, level: number) => {
         const slots = level < 5 ? level + 1 : Math.floor(level * 1.5);
         return { current: slots, max: slots }; 
     }
+    if (cls === CharacterClass.PALADIN) {
+        const slots = Math.floor((level + 1) / 2);
+        return { current: slots, max: slots };
+    }
+    if (cls === CharacterClass.WARLOCK) {
+        const slots = Math.ceil(level / 2) + 1;
+        return { current: slots, max: slots };
+    }
+    if (cls === CharacterClass.RANGER) {
+        const slots = Math.floor((level + 1) / 2);
+        return { current: slots, max: slots };
+    }
     return { current: 0, max: 0 };
 }
 
@@ -92,43 +104,48 @@ export const createPlayerSlice: StateCreator<any, [], [], PlayerSlice> = (set, g
   },
 
   createCharacter: (name, race, cls, stats, difficulty) => {
-    sfx.playVictory();
-    const hitDie = getHitDie(cls);
-    const maxHp = calculateHp(1, stats.CON, hitDie, race);
-    const { skills, spells, traits, maxActions } = getUnlockedFeatures(cls, 1);
-    const equipment: any = {};
-    if (cls === CharacterClass.RANGER) equipment[EquipmentSlot.MAIN_HAND] = ITEMS.shortbow;
-    else if (cls === CharacterClass.FIGHTER) equipment[EquipmentSlot.MAIN_HAND] = ITEMS.longsword;
+    console.log('[createCharacter] Starting character creation:', { name, race, cls, difficulty });
+    try {
+      try { sfx.playVictory(); } catch(e) { console.error('[createCharacter] sfx error:', e); }
+      const hitDie = getHitDie(cls);
+      const maxHp = calculateHp(1, stats.CON, hitDie, race);
+      const { skills, spells, traits, maxActions } = getUnlockedFeatures(cls, 1);
+      const equipment: any = {};
+      if (cls === CharacterClass.RANGER) equipment[EquipmentSlot.MAIN_HAND] = ITEMS.shortbow;
+      else if (cls === CharacterClass.FIGHTER) equipment[EquipmentSlot.MAIN_HAND] = ITEMS.longsword;
 
-    const leader = { 
-        id: 'player_leader', name, type: 'PLAYER', equipment, 
-        stats: { 
-            level: 1, class: cls, race, creatureType: CreatureType.HUMANOID, 
-            xp: 0, xpToNextLevel: XP_TABLE[1] || 300, hp: maxHp, maxHp, stamina: 20, maxStamina: 20, ac: 10, initiativeBonus: getModifier(stats.DEX), speed: 30, movementType: MovementType.WALK, attributes: stats, baseAttributes: { ...stats }, spellSlots: getCasterSlots(cls, 1), corruption: 0, activeCooldowns: {}, activeStatusEffects: [], resistances: [], vulnerabilities: [], immunities: [], knownSkills: skills, knownSpells: spells, traits, maxActions, derived: calculateDerivedStats(stats, cls, 1, equipment)
-        }, 
-        visual: { color: '#3b82f6', modelType: 'billboard', spriteUrl: getSprite(race, cls) } 
-    };
+      const leader = { 
+          id: 'player_leader', name, type: 'PLAYER', equipment, 
+          stats: { 
+              level: 1, class: cls, race, creatureType: CreatureType.HUMANOID, 
+              xp: 0, xpToNextLevel: XP_TABLE[1] || 300, hp: maxHp, maxHp, stamina: 20, maxStamina: 20, ac: 10, initiativeBonus: getModifier(stats.DEX), speed: 30, movementType: MovementType.WALK, attributes: stats, baseAttributes: { ...stats }, spellSlots: getCasterSlots(cls, 1), corruption: 0, activeCooldowns: {}, activeStatusEffects: [], resistances: [], vulnerabilities: [], immunities: [], knownSkills: skills, knownSpells: spells, traits, maxActions, derived: calculateDerivedStats(stats, cls, 1, equipment)
+          }, 
+          visual: { color: '#3b82f6', modelType: 'billboard', spriteUrl: getSprite(race, cls) } 
+      };
 
-    const c1 = createCompanion("Valerius", CharacterRace.HUMAN, CharacterClass.FIGHTER);
-    const c2 = createCompanion("Elara", CharacterRace.ELF, CharacterClass.RANGER);
-    
-    const startTile = WorldGenerator.getTile(0, 0, Dimension.NORMAL);
-    get().addItem(ITEMS.ration, 5);
+      const c1 = createCompanion("Valerius", CharacterRace.HUMAN, CharacterClass.FIGHTER);
+      const c2 = createCompanion("Elara", CharacterRace.ELF, CharacterClass.RANGER);
+      
+      const startTile = WorldGenerator.getTile(0, 0, Dimension.NORMAL);
+      get().addItem(ITEMS.ration, 5);
 
-    set({ 
-        party: [leader, c1, c2], 
-        difficulty, 
-        playerPos: { x: 0, y: 0 }, 
-        exploredTiles: { [Dimension.NORMAL]: new Set(['0,0', '1,1', '0,1', '1,0']), [Dimension.UPSIDE_DOWN]: new Set() },
-        gameState: GameState.OVERWORLD,
-        currentRegionName: startTile.regionName,
-        // TRIGGER INMEDIATO DE CIUDAD INICIAL
-        standingOnSettlement: startTile.poiType === 'CITY' || startTile.poiType === 'VILLAGE',
-        standingOnTemple: startTile.poiType === 'TEMPLE',
-        standingOnPortal: !!startTile.hasPortal
-    });
+      set({ 
+          party: [leader, c1, c2], 
+          difficulty, 
+          playerPos: { x: 0, y: 0 }, 
+          exploredTiles: { [Dimension.NORMAL]: new Set(['0,0', '1,1', '0,1', '1,0']), [Dimension.UPSIDE_DOWN]: new Set() },
+          gameState: GameState.OVERWORLD,
+          currentRegionName: startTile.regionName,
+          standingOnSettlement: startTile.poiType === 'CITY' || startTile.poiType === 'VILLAGE',
+          standingOnTemple: startTile.poiType === 'TEMPLE',
+          standingOnPortal: !!startTile.hasPortal
+      });
 
-    get().addLog(`The tether to Eternum is weak. You have arrived in ${startTile.regionName}.`, "narrative");
+      console.log('[createCharacter] State set, gameState should be OVERWORLD');
+      get().addLog(`The tether to Eternum is weak. You have arrived in ${startTile.regionName}.`, "narrative");
+    } catch (e) {
+      console.error('[createCharacter] Error:', e);
+    }
   },
 
   recalculateStats: (entity) => {

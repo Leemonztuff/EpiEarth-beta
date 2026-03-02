@@ -11,6 +11,15 @@ export const WESNOTH_BASE_URL = `${SUPABASE_PROJECT_URL}/storage/v1/object/publi
 export const WESNOTH_CDN_URL = "https://cdn.jsdelivr.net/gh/wesnoth/wesnoth@master/data/core/images";
 export const MINECRAFT_ASSETS_URL = "https://cdn.jsdelivr.net/gh/InventivetalentDev/minecraft-assets@1.19.3/assets/minecraft/textures/block";
 
+// Fallback texture URLs in case CDN fails
+export const FALLBACK_ASSET_URLS = {
+    stone: `${MINECRAFT_ASSETS_URL}/stone.png`,
+    grass: `${MINECRAFT_ASSETS_URL}/grass_block_top.png`,
+    water: `${MINECRAFT_ASSETS_URL}/water_still.png`,
+    sand: `${MINECRAFT_ASSETS_URL}/sand.png`,
+    cobblestone: `${MINECRAFT_ASSETS_URL}/cobblestone.png`
+};
+
 export const NOISE_TEXTURE_URL = "https://www.transparenttextures.com/patterns/asfalt-dark.png";
 
 export const HEX_SIZE = 36; 
@@ -157,7 +166,7 @@ export const DAMAGE_ICONS: Record<DamageType, string> = {
     [DamageType.SLASHING]: `attacks/sword-human.png`, 
     [DamageType.PIERCING]: `attacks/spear.png`, 
     [DamageType.BLUDGEONING]: `attacks/mace.png`, 
-    [TerrainType.FIRE]: `attacks/fireball.png`, 
+    [DamageType.FIRE]: `attacks/fireball.png`, 
     [DamageType.COLD]: `attacks/iceball.png`, 
     [DamageType.LIGHTNING]: `attacks/lightning.png`, 
     [DamageType.POISON]: `attacks/fang.png`, 
