@@ -7,6 +7,8 @@ import { useGameStore } from '../store/gameStore';
 import { WorldGenerator } from '../services/WorldGenerator';
 import { calculateVisionRange } from '../services/dndRules';
 import { AssetManager } from '../services/AssetManager';
+import { wesnothAtlas } from '../services/WesnothAtlas';
+import { hexTileRenderer } from '../services/HexTileRenderer';
 
 const HEX_HEIGHT = Math.sqrt(3) * HEX_SIZE;
 const HORIZ_DIST = HEX_SIZE * 1.5;
@@ -63,7 +65,18 @@ export const OverworldMap = ({ playerPos, onMove, dimension = 'MORTAL' }: any) =
     const isNight = hours < 6 || hours >= 22;
 
     useEffect(() => {
+        wesnothAtlas.load().then(() => {
+            console.log('[OverworldMap] Wesnoth Atlas loaded');
+        }).catch(err => {
+            console.error('[OverworldMap] Failed to load Wesnoth Atlas:', err);
+        });
+    }, []);
+
+    useEffect(() => {
         if (!isAssetsLoaded) return;
+        
+        hexTileRenderer.clear();
+        
         if (!terrainCacheRef.current) {
             try {
                 terrainCacheRef.current = document.createElement('canvas');
@@ -82,7 +95,34 @@ export const OverworldMap = ({ playerPos, onMove, dimension = 'MORTAL' }: any) =
         ctx.imageSmoothingEnabled = false;
         ctx.clearRect(0,0,8000,8000);
 
-        const drawLoop = (tiles) => {
+        let tilesArray: any[] = [];
+        
+        const collectTiles = (tiles: any[]) => {
+            if (!tiles || !Array.isArray(tiles)) return;
+            tiles.forEach(tile => {
+                if (!tile) return;
+                hexTileRenderer.setTerrain(tile.q, tile.r, tile.terrain);
+                tilesArray.push(tile);
+            });
+        };
+
+        if (isLocal && townMapData && Array.isArray(townMapData)) {
+            collectTiles(townMapData);
+        } else {
+            const currentExplored = exploredTiles?.[safeDimension] || new Set();
+            if (!currentExplored || currentExplored.size === 0) return;
+            
+            tilesArray = Array.from(currentExplored).map(key => {
+                const [q, r] = key.split(',').map(Number);
+                return WorldGenerator.getTile(q, r, safeDimension);
+            }).filter(Boolean);
+            
+            tilesArray.forEach(tile => {
+                hexTileRenderer.setTerrain(tile.q, tile.r, tile.terrain);
+            });
+        }
+
+        const drawLoop = (tiles: any[]) => {
             if (!tiles || !Array.isArray(tiles)) return;
             tiles.forEach(tile => {
                 if (!tile) return;
@@ -95,18 +135,7 @@ export const OverworldMap = ({ playerPos, onMove, dimension = 'MORTAL' }: any) =
             });
         };
 
-        if (isLocal && townMapData && Array.isArray(townMapData)) {
-            drawLoop(townMapData);
-        } else {
-            const currentExplored = exploredTiles?.[safeDimension] || new Set();
-            if (!currentExplored || currentExplored.size === 0) return;
-            
-            const tilesToDraw = Array.from(currentExplored).map(key => {
-                const [q, r] = key.split(',').map(Number);
-                return WorldGenerator.getTile(q, r, safeDimension);
-            }).filter(Boolean);
-            drawLoop(tilesToDraw);
-        }
+        drawLoop(tilesArray);
     }, [isLocal, townMapData, exploredTiles, safeDimension, isAssetsLoaded]);
 
     const getNeighborTerrain = useCallback((q: number, r: number, dimension: string) => {
@@ -157,11 +186,11 @@ export const OverworldMap = ({ playerPos, onMove, dimension = 'MORTAL' }: any) =
         
         try {
             const s = HEX_SIZE;
-            const terrainPath = ASSETS.TERRAIN[tile.terrain];
-            const img = AssetManager.getAsset(terrainPath);
-            const currentCategory = TERRAIN_CATEGORIES[tile.terrain] || 'grass';
-            const baseColor = CATEGORY_COLORS[currentCategory] || '#444';
-
+            
+            hexTileRenderer.setTerrain(tile.q, tile.r, tile.terrain);
+            
+            const sprites = hexTileRenderer.getTileSprites(tile.q, tile.r);
+            
             ctx.save();
             ctx.beginPath();
             for (let i = 0; i < 6; i++) {
@@ -170,32 +199,25 @@ export const OverworldMap = ({ playerPos, onMove, dimension = 'MORTAL' }: any) =
             }
             ctx.closePath();
             ctx.clip();
-
-            if (img) {
-                const imgSize = s * 2; 
-                ctx.drawImage(img, cx - imgSize/2, cy - imgSize/2, imgSize, imgSize);
+            
+            const scale = s / 36 * 2;
+            
+            if (sprites.length > 0) {
+                for (const sprite of sprites) {
+                    wesnothAtlas.drawSprite(ctx, sprite.spriteName, cx, cy, scale);
+                }
             } else {
-                ctx.fillStyle = TERRAIN_COLORS[tile.terrain] || '#444';
-                ctx.fill();
+                const terrainPath = ASSETS.TERRAIN[tile.terrain];
+                const img = AssetManager.getAsset(terrainPath);
+                if (img) {
+                    const imgSize = s * 2; 
+                    ctx.drawImage(img, cx - imgSize/2, cy - imgSize/2, imgSize, imgSize);
+                } else {
+                    ctx.fillStyle = TERRAIN_COLORS[tile.terrain] || '#444';
+                    ctx.fill();
+                }
             }
             ctx.restore();
-
-            const neighborCategories = new Map<number, TerrainCategory>();
-            HEX_DIRECTIONS.forEach((dir, idx) => {
-                const nq = tile.q + dir.q;
-                const nr = tile.r + dir.r;
-                const neighborTerrain = getNeighborTerrain(nq, nr, safeDimension);
-                if (neighborTerrain) {
-                    neighborCategories.set(idx, TERRAIN_CATEGORIES[neighborTerrain] || 'grass');
-                }
-            });
-
-            neighborCategories.forEach((nCategory, edgeIdx) => {
-                if (nCategory !== currentCategory) {
-                    const nColor = CATEGORY_COLORS[nCategory] || '#444';
-                    drawTransitionEdge(ctx, cx, cy, s, edgeIdx, baseColor, nColor);
-                }
-            });
 
             const grad = ctx.createRadialGradient(cx, cy, s * 0.7, cx, cy, s);
             grad.addColorStop(0, 'rgba(0,0,0,0)');
