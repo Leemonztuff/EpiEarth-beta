@@ -190,7 +190,7 @@ export const BattleScene = ({ entities, weather, terrainType, currentTurnEntityI
                 shadows 
                 gl={{ antialias: false, logarithmicDepthBuffer: true, powerPreference: 'high-performance' }} 
                 orthographic
-                camera={{ position: [50, 50, 50], zoom: 65, near: -200, far: 2000 }}
+                camera={{ position: [40, 50, 40], zoom: 65, near: -200, far: 2000 }}
             >
                 <color attach="background" args={[isShadowRealm ? "#1a1525" : "#1a2530"]} />
                 <Suspense fallback={null}>
@@ -199,16 +199,18 @@ export const BattleScene = ({ entities, weather, terrainType, currentTurnEntityI
                     
                     <OrbitControls 
                         enablePan={false}
-                        minPolarAngle={Math.PI / 5} 
-                        maxPolarAngle={Math.PI / 2.2}
+                        minPolarAngle={Math.PI / 4} 
+                        maxPolarAngle={Math.PI / 2.8}
+                        minAzimuthAngle={-Math.PI / 8}
+                        maxAzimuthAngle={Math.PI / 8}
                         target={[8, 0, 8]}
                         enableDamping={true}
                         dampingFactor={0.08}
-                        rotateSpeed={0.5}
-                        zoomSpeed={0.8}
+                        rotateSpeed={0.3}
+                        zoomSpeed={0.5}
                         panSpeed={0}
-                        minZoom={40}
-                        maxZoom={100}
+                        minZoom={50}
+                        maxZoom={80}
                         makeDefault
                         touches={{ ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_ROTATE }}
                     />

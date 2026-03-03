@@ -34,8 +34,8 @@ export const CinematicCamera = () => {
     useEffect(() => {
         const handleWheel = (e: WheelEvent) => {
             e.preventDefault();
-            const zoomDelta = e.deltaY > 0 ? 5 : -5;
-            zoomTarget.current = clamp(zoomTarget.current + zoomDelta, 35, 120);
+            const zoomDelta = e.deltaY > 0 ? 3 : -3;
+            zoomTarget.current = clamp(zoomTarget.current + zoomDelta, 50, 80);
         };
         
         const handleMouseDown = (e: MouseEvent) => {
@@ -148,25 +148,25 @@ export const CinematicCamera = () => {
         // === 3. ZOOM DINÁMICO SEGÚN ESTADO ===
         let targetZoom = 65;
         
-        // Durante selección de movimiento: zoom out para ver rango
+        // Durante selección de movimiento: zoom OUT para ver rango completo
         if (selectedAction === 'MOVE' && validMoves && validMoves.length > 0) {
-            targetZoom = 80; // Zoom out para ver todo el rango de movimiento
+            targetZoom = 50; // Zoom out para ver todo el rango de movimiento
         } else if (selectedAction === 'ATTACK') {
-            targetZoom = 70; // Zoom out moderado para ver objetivos
+            targetZoom = 70; // Zoom in moderado para ver objetivos
         } else if (activeSpellEffect) {
-            targetZoom = 50; // Zoom in para ver el efecto
+            targetZoom = 65; // Zoom default durante efecto
         } else if (isActionAnimating) {
-            targetZoom = 55; // Zoom moderado cuando hay acción
+            targetZoom = 55; // Zoom más cerca durante acción
         } else if (isUnitMenuOpen) {
             targetZoom = 60; // Zoom un poco más cerca cuando hay menú
         } else if (battleEntities && battleEntities.length > 8) {
-            targetZoom = 75; // Zoom out si hay muchas entidades
+            targetZoom = 50; // Zoom out si hay muchas entidades
         } else {
             targetZoom = 65; // Default
         }
 
-        // Limitar zoom a valores seguros
-        zoomTarget.current = clamp(targetZoom, 35, 120);
+        // Limitar zoom a valores seguros (50-80 para mantener encuadre correcto)
+        zoomTarget.current = clamp(targetZoom, 50, 80);
         
         // Suavizado del zoom
         const zoomLerp = 1 - Math.exp(-4 * dt);
