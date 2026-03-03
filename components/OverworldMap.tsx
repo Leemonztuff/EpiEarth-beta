@@ -79,6 +79,7 @@ export const OverworldMap = ({ playerPos, onMove, dimension = 'MORTAL' }: any) =
         const ctx = canvas.getContext('2d', { alpha: true });
         if (!ctx) return;
 
+        ctx.imageSmoothingEnabled = false;
         ctx.clearRect(0,0,8000,8000);
 
         const drawLoop = (tiles) => {
@@ -126,7 +127,7 @@ export const OverworldMap = ({ playerPos, onMove, dimension = 'MORTAL' }: any) =
         ctx.clip();
 
         if (img) {
-            const imgSize = s * 2.3; 
+            const imgSize = s * 2; 
             ctx.drawImage(img, cx - imgSize/2, cy - imgSize/2, imgSize, imgSize);
         } else {
             ctx.fillStyle = TERRAIN_COLORS[tile.terrain] || '#444';
@@ -152,7 +153,7 @@ export const OverworldMap = ({ playerPos, onMove, dimension = 'MORTAL' }: any) =
         if (poiType && ASSETS.STRUCTURES[poiType]) {
             const structImg = AssetManager.getAsset(ASSETS.STRUCTURES[poiType]);
             if (structImg) {
-                const ss = s * 1.8;
+                const ss = s * 2;
                 if (tile.hasPortal) {
                      ctx.shadowBlur = 15;
                      ctx.shadowColor = '#a855f7';
@@ -190,6 +191,8 @@ export const OverworldMap = ({ playerPos, onMove, dimension = 'MORTAL' }: any) =
         
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
+
+        ctx.imageSmoothingEnabled = false;
 
         const dpr = window.devicePixelRatio || 1;
         canvas.width = container.clientWidth * dpr;
@@ -243,7 +246,7 @@ export const OverworldMap = ({ playerPos, onMove, dimension = 'MORTAL' }: any) =
         const playerImg = AssetManager.getAsset(leader.visual.spriteUrl);
         if (playerImg) {
             ctx.save();
-            const s = HEX_SIZE * 1.5;
+            const s = HEX_SIZE * 2;
             const bounce = Math.sin(Date.now() / 250) * 3;
             ctx.shadowBlur = 12;
             ctx.shadowColor = 'rgba(0,0,0,0.6)';
