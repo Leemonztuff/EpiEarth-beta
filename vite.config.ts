@@ -17,11 +17,13 @@ export default defineConfig(({ mode }) => {
       // in production builds we want to strip out any leftover console/debugger
       // statements so there is no accidental logging or performance hit.
       build: {
-        minify: 'terser',
-        terserOptions: {
-          compress: {
-            drop_console: true,
-            drop_debugger: true,
+        minify: 'esbuild',
+        rollupOptions: {
+          output: {
+            manualChunks: {
+              'three': ['three', '@react-three/fiber', '@react-three/drei'],
+              'vendor': ['react', 'react-dom', 'zustand'],
+            },
           },
         },
       },

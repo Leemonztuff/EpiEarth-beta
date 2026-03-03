@@ -158,11 +158,6 @@ export const DebugOverworldMap = () => {
                     <br/>
                     <span style={{fontSize: 14}}>gameState: {gameState}</span>
                 </div>
-                <canvas
-                    ref={canvasRef}
-                    className="w-full h-full cursor-crosshair"
-                    onClick={handleClick}
-                />
             <canvas
                 ref={canvasRef}
                 className="w-full h-full cursor-crosshair"
