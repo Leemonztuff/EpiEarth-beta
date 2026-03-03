@@ -39,6 +39,58 @@ export const TERRAIN_COLORS: Record<TerrainType, string> = {
     [TerrainType.SAVANNAH]: '#d97706', [TerrainType.WASTELAND]: '#7f1d1d', [TerrainType.BADLANDS]: '#c2410c'
 };
 
+export type TerrainCategory = 'grass' | 'water' | 'mountain' | 'desert' | 'snow' | 'cave' | 'road' | 'castle' | 'volcanic' | 'void';
+
+export const TERRAIN_CATEGORIES: Record<TerrainType, TerrainCategory> = {
+    [TerrainType.GRASS]: 'grass',
+    [TerrainType.PLAINS]: 'grass',
+    [TerrainType.FOREST]: 'grass',
+    [TerrainType.JUNGLE]: 'grass',
+    [TerrainType.TAIGA]: 'grass',
+    [TerrainType.SAVANNAH]: 'grass',
+    [TerrainType.WASTELAND]: 'grass',
+    [TerrainType.BADLANDS]: 'grass',
+    [TerrainType.DESERT]: 'desert',
+    [TerrainType.SWAMP]: 'grass',
+    [TerrainType.TUNDRA]: 'snow',
+    [TerrainType.WATER]: 'water',
+    [TerrainType.OCEAN]: 'water',
+    [TerrainType.MOUNTAIN]: 'mountain',
+    [TerrainType.CASTLE]: 'castle',
+    [TerrainType.VILLAGE]: 'grass',
+    [TerrainType.RUINS]: 'castle',
+    [TerrainType.ANCIENT_MONUMENT]: 'mountain',
+    [TerrainType.COBBLESTONE]: 'road',
+    [TerrainType.DIRT_ROAD]: 'road',
+    [TerrainType.STONE_FLOOR]: 'road',
+    [TerrainType.CAVE_FLOOR]: 'cave',
+    [TerrainType.DUNGEON_FLOOR]: 'cave',
+    [TerrainType.FUNGUS]: 'cave',
+    [TerrainType.LAVA]: 'volcanic',
+    [TerrainType.CHASM]: 'cave',
+    [TerrainType.VOID]: 'void'
+};
+
+export const CATEGORY_COLORS: Record<TerrainCategory, string> = {
+    grass: '#4ade80',
+    water: '#3b82f6',
+    mountain: '#57534e',
+    desert: '#fde047',
+    snow: '#e5e7eb',
+    cave: '#292524',
+    road: '#6b7280',
+    castle: '#9ca3af',
+    volcanic: '#ef4444',
+    void: '#000000'
+};
+
+export const HEX_DIRECTIONS = [
+    { q: 1, r: 0 },   { q: 1, r: -1 },  { q: 0, r: -1 },
+    { q: -1, r: 0 },  { q: -1, r: 1 },  { q: 0, r: 1 }
+] as const;
+
+export type HexDirection = typeof HEX_DIRECTIONS[number];
+
 // Texturas estilo Minecraft para la batalla 3D
 export const BATTLE_TEXTURES: Record<TerrainType, string> = {
     [TerrainType.GRASS]: `${MINECRAFT_ASSETS_URL}/grass_block_top.png`,

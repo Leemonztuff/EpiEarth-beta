@@ -2,7 +2,7 @@
 // @ts-nocheck
 import React, { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import { HexCell, TerrainType, WeatherType, Dimension, GameState, MovementType } from '../types';
-import { HEX_SIZE, TERRAIN_COLORS, ASSETS, TERRAIN_MOVEMENT_COST } from '../constants';
+import { HEX_SIZE, TERRAIN_COLORS, ASSETS, TERRAIN_MOVEMENT_COST, TERRAIN_CATEGORIES, CATEGORY_COLORS, HEX_DIRECTIONS, TerrainCategory } from '../constants';
 import { useGameStore } from '../store/gameStore';
 import { WorldGenerator } from '../services/WorldGenerator';
 import { calculateVisionRange } from '../services/dndRules';
@@ -109,76 +109,135 @@ export const OverworldMap = ({ playerPos, onMove, dimension = 'MORTAL' }: any) =
         }
     }, [isLocal, townMapData, exploredTiles, safeDimension, isAssetsLoaded]);
 
-    const drawWesnothHex = (ctx: any, cx: number, cy: number, tile: any) => {
+    const getNeighborTerrain = useCallback((q: number, r: number, dimension: string) => {
+        const key = `${q},${r}`;
+        const currentExplored = exploredTiles?.[dimension];
+        if (!currentExplored || !currentExplored.has(key)) return null;
+        const tile = WorldGenerator.getTile(q, r, dimension);
+        return tile?.terrain || null;
+    }, [exploredTiles]);
+
+    const drawTransitionEdge = useCallback((ctx: any, cx: number, cy: number, s: number, edgeIndex: number, fromColor: string, toColor: string) => {
+        const angle1 = 2 * Math.PI / 6 * edgeIndex;
+        const angle2 = 2 * Math.PI / 6 * ((edgeIndex + 1) % 6);
+        
+        const innerRadius = s * 0.85;
+        const outerRadius = s * 1.1;
+        
+        const x1Inner = cx + innerRadius * Math.cos(angle1);
+        const y1Inner = cy + innerRadius * Math.sin(angle1);
+        const x2Inner = cx + innerRadius * Math.cos(angle2);
+        const y2Inner = cy + innerRadius * Math.sin(angle2);
+        
+        const x1Outer = cx + outerRadius * Math.cos(angle1);
+        const y1Outer = cy + outerRadius * Math.sin(angle1);
+        const x2Outer = cx + outerRadius * Math.cos(angle2);
+        const y2Outer = cy + outerRadius * Math.sin(angle2);
+        
+        const grad = ctx.createLinearGradient(x1Inner, y1Inner, x1Outer, y1Outer);
+        grad.addColorStop(0, 'rgba(0,0,0,0)');
+        grad.addColorStop(0.5, fromColor);
+        grad.addColorStop(1, 'rgba(0,0,0,0)');
+        
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(x1Inner, y1Inner);
+        ctx.lineTo(x1Outer, y1Outer);
+        ctx.lineTo(x2Outer, y2Outer);
+        ctx.lineTo(x2Inner, y2Inner);
+        ctx.closePath();
+        ctx.fillStyle = grad;
+        ctx.globalAlpha = 0.6;
+        ctx.fill();
+        ctx.restore();
+    }, []);
+
+    const drawWesnothHex = useCallback((ctx: any, cx: number, cy: number, tile: any) => {
         if (!tile || !tile.terrain) return;
         
         try {
             const s = HEX_SIZE;
             const terrainPath = ASSETS.TERRAIN[tile.terrain];
             const img = AssetManager.getAsset(terrainPath);
+            const currentCategory = TERRAIN_CATEGORIES[tile.terrain] || 'grass';
+            const baseColor = CATEGORY_COLORS[currentCategory] || '#444';
 
             ctx.save();
-        ctx.beginPath();
-        for (let i = 0; i < 6; i++) {
-            const angle = 2 * Math.PI / 6 * i;
-            ctx.lineTo(cx + s * 1.05 * Math.cos(angle), cy + s * 1.05 * Math.sin(angle));
-        }
-        ctx.closePath();
-        ctx.clip();
-
-        if (img) {
-            const imgSize = s * 2; 
-            ctx.drawImage(img, cx - imgSize/2, cy - imgSize/2, imgSize, imgSize);
-        } else {
-            ctx.fillStyle = TERRAIN_COLORS[tile.terrain] || '#444';
-            ctx.fill();
-        }
-        ctx.restore();
-
-        // Profundidad
-        const grad = ctx.createRadialGradient(cx, cy, s * 0.7, cx, cy, s);
-        grad.addColorStop(0, 'rgba(0,0,0,0)');
-        grad.addColorStop(1, 'rgba(0,0,0,0.25)');
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        for (let i = 0; i < 6; i++) {
-            const angle = 2 * Math.PI / 6 * i;
-            ctx.lineTo(cx + s * Math.cos(angle), cy + s * Math.sin(angle));
-        }
-        ctx.closePath();
-        ctx.fill();
-
-        // Estructuras y Portales
-        const poiType = tile.poiType || (tile.hasPortal ? 'PORTAL' : null);
-        if (poiType && ASSETS.STRUCTURES[poiType]) {
-            const structImg = AssetManager.getAsset(ASSETS.STRUCTURES[poiType]);
-            if (structImg) {
-                const ss = s * 2;
-                if (tile.hasPortal) {
-                     ctx.shadowBlur = 15;
-                     ctx.shadowColor = '#a855f7';
-                }
-                ctx.drawImage(structImg, cx - ss/2, cy - ss/1.2, ss, ss);
-                ctx.shadowBlur = 0;
-            }
-        }
-
-        // ENCUENTROS VISIBLES: Humo de batalla o icono
-        if (tile.hasEncounter && !isLocal) {
-            ctx.fillStyle = 'rgba(239, 68, 68, 0.4)';
             ctx.beginPath();
-            ctx.arc(cx, cy, s * 0.5, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.font = '16px serif';
-            ctx.textAlign = 'center';
-            ctx.fillText('💀', cx, cy + 5);
-        }
+            for (let i = 0; i < 6; i++) {
+                const angle = 2 * Math.PI / 6 * i;
+                ctx.lineTo(cx + s * 1.05 * Math.cos(angle), cy + s * 1.05 * Math.sin(angle));
+            }
+            ctx.closePath();
+            ctx.clip();
 
-        ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-        ctx.lineWidth = 1;
-        ctx.stroke();
+            if (img) {
+                const imgSize = s * 2; 
+                ctx.drawImage(img, cx - imgSize/2, cy - imgSize/2, imgSize, imgSize);
+            } else {
+                ctx.fillStyle = TERRAIN_COLORS[tile.terrain] || '#444';
+                ctx.fill();
+            }
+            ctx.restore();
+
+            const neighborCategories = new Map<number, TerrainCategory>();
+            HEX_DIRECTIONS.forEach((dir, idx) => {
+                const nq = tile.q + dir.q;
+                const nr = tile.r + dir.r;
+                const neighborTerrain = getNeighborTerrain(nq, nr, safeDimension);
+                if (neighborTerrain) {
+                    neighborCategories.set(idx, TERRAIN_CATEGORIES[neighborTerrain] || 'grass');
+                }
+            });
+
+            neighborCategories.forEach((nCategory, edgeIdx) => {
+                if (nCategory !== currentCategory) {
+                    const nColor = CATEGORY_COLORS[nCategory] || '#444';
+                    drawTransitionEdge(ctx, cx, cy, s, edgeIdx, baseColor, nColor);
+                }
+            });
+
+            const grad = ctx.createRadialGradient(cx, cy, s * 0.7, cx, cy, s);
+            grad.addColorStop(0, 'rgba(0,0,0,0)');
+            grad.addColorStop(1, 'rgba(0,0,0,0.25)');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            for (let i = 0; i < 6; i++) {
+                const angle = 2 * Math.PI / 6 * i;
+                ctx.lineTo(cx + s * Math.cos(angle), cy + s * Math.sin(angle));
+            }
+            ctx.closePath();
+            ctx.fill();
+
+            const poiType = tile.poiType || (tile.hasPortal ? 'PORTAL' : null);
+            if (poiType && ASSETS.STRUCTURES[poiType]) {
+                const structImg = AssetManager.getAsset(ASSETS.STRUCTURES[poiType]);
+                if (structImg) {
+                    const ss = s * 2;
+                    if (tile.hasPortal) {
+                         ctx.shadowBlur = 15;
+                         ctx.shadowColor = '#a855f7';
+                    }
+                    ctx.drawImage(structImg, cx - ss/2, cy - ss/1.2, ss, ss);
+                    ctx.shadowBlur = 0;
+                }
+            }
+
+            if (tile.hasEncounter && !isLocal) {
+                ctx.fillStyle = 'rgba(239, 68, 68, 0.4)';
+                ctx.beginPath();
+                ctx.arc(cx, cy, s * 0.5, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.font = '16px serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('💀', cx, cy + 5);
+            }
+
+            ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
         } catch (e) {}
-    };
+    }, [isLocal, safeDimension, getNeighborTerrain, drawTransitionEdge]);
 
     const render = useCallback(() => {
         const canvas = canvasRef.current;
