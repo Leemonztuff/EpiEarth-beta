@@ -120,7 +120,11 @@ const App = () => {
               gameState === GameState.DUNGEON || 
               gameState === GameState.DIALOGUE) && (
               <>
-                <DebugOverworldMap />
+                <OverworldMap 
+                  playerPos={playerPos} 
+                  onMove={movePlayerOverworld} 
+                  dimension={dimension} 
+                />
                 {/* <OverworldUI /> */}
               </>
             )}
