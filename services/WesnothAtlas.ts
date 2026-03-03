@@ -98,7 +98,7 @@ export class WesnothAtlas {
             return null;
         }
 
-        const atlasIndex = 0;
+        const atlasIndex = frame.frame.x > 2000 ? 1 : 0;
         const image = this.atlases.get(atlasIndex);
         if (!image) {
             return null;

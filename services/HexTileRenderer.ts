@@ -4,47 +4,33 @@ import { TerrainType } from '../types';
 import { TERRAIN_CATEGORIES, TerrainCategory, HEX_DIRECTIONS } from '../constants';
 import { wesnothAtlas, LoadedSprite } from './WesnothAtlas';
 
-export interface HexTile {
-    q: number;
-    r: number;
-    terrain: TerrainType;
-    overlay?: string;
-    hasPortal?: boolean;
-    hasEncounter?: boolean;
-}
-
-export interface TerrainTransition {
-    spriteName: string;
-    layer: number;
-}
-
 const TERRAIN_TO_WESNOTH: Record<TerrainType, string> = {
-    [TerrainType.GRASS]: 'grass',
-    [TerrainType.PLAINS]: 'grass',
-    [TerrainType.FOREST]: 'forest',
-    [TerrainType.JUNGLE]: 'forest_tropical',
-    [TerrainType.MOUNTAIN]: 'mountain',
-    [TerrainType.WATER]: 'water',
-    [TerrainType.OCEAN]: 'water',
-    [TerrainType.CASTLE]: 'castle',
-    [TerrainType.VILLAGE]: 'village',
-    [TerrainType.DESERT]: 'desert',
-    [TerrainType.SWAMP]: 'swamp',
-    [TerrainType.ANCIENT_MONUMENT]: 'mountain',
-    [TerrainType.TUNDRA]: 'frozen',
-    [TerrainType.TAIGA]: 'forest',
-    [TerrainType.COBBLESTONE]: 'flat',
-    [TerrainType.DIRT_ROAD]: 'flat',
-    [TerrainType.STONE_FLOOR]: 'flat',
-    [TerrainType.CAVE_FLOOR]: 'chasm',
-    [TerrainType.DUNGEON_FLOOR]: 'chasm',
-    [TerrainType.FUNGUS]: 'cave',
-    [TerrainType.LAVA]: 'chasm',
-    [TerrainType.CHASM]: 'chasm',
-    [TerrainType.VOID]: 'chasm',
-    [TerrainType.SAVANNAH]: 'grass',
-    [TerrainType.WASTELAND]: 'grass',
-    [TerrainType.BADLANDS]: 'desert'
+    [TerrainType.GRASS]: 'grass/green',
+    [TerrainType.PLAINS]: 'grass/semi-dry',
+    [TerrainType.FOREST]: 'forest/deciduous-summer',
+    [TerrainType.JUNGLE]: 'forest/tropical/jungle',
+    [TerrainType.MOUNTAIN]: 'mountain/regular',
+    [TerrainType.WATER]: 'water/coast-tropical',
+    [TerrainType.OCEAN]: 'water/ocean',
+    [TerrainType.CASTLE]: 'castle/castle-tile',
+    [TerrainType.VILLAGE]: 'village/human-cottage',
+    [TerrainType.DESERT]: 'desert/desert',
+    [TerrainType.SWAMP]: 'swamp/water',
+    [TerrainType.ANCIENT_MONUMENT]: 'mountain/regular',
+    [TerrainType.TUNDRA]: 'frozen/snow',
+    [TerrainType.TAIGA]: 'forest/pine',
+    [TerrainType.COBBLESTONE]: 'flat/stone',
+    [TerrainType.DIRT_ROAD]: 'flat/dirt',
+    [TerrainType.STONE_FLOOR]: 'flat/stone',
+    [TerrainType.CAVE_FLOOR]: 'chasm/regular',
+    [TerrainType.DUNGEON_FLOOR]: 'chasm/regular',
+    [TerrainType.FUNGUS]: 'forest/mushrooms',
+    [TerrainType.LAVA]: 'chasm/lava',
+    [TerrainType.CHASM]: 'chasm/regular',
+    [TerrainType.VOID]: 'chasm/abyss',
+    [TerrainType.SAVANNAH]: 'grass/dry',
+    [TerrainType.WASTELAND]: 'grass/dry',
+    [TerrainType.BADLANDS]: 'desert/desert'
 };
 
 const DIRECTION_NAMES = ['ne', 'se', 's', 'sw', 'nw', 'n'];
@@ -114,6 +100,10 @@ export class HexTileRenderer {
 
     drawTile(ctx: CanvasRenderingContext2D, q: number, r: number, cx: number, cy: number, hexSize: number): void {
         const sprites = this.getTileSprites(q, r);
+        
+        if (sprites.length === 0) {
+            return;
+        }
         
         for (const sprite of sprites) {
             const loaded = wesnothAtlas.getSprite(sprite.spriteName);

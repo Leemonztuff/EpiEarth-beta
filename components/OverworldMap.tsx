@@ -66,7 +66,9 @@ export const OverworldMap = ({ playerPos, onMove, dimension = 'MORTAL' }: any) =
 
     useEffect(() => {
         wesnothAtlas.load().then(() => {
-            console.log('[OverworldMap] Wesnoth Atlas loaded');
+            console.log('[OverworldMap] Wesnoth Atlas loaded, sprites:', wesnothAtlas.getAllSprites().length);
+            const grassSprites = wesnothAtlas.getSpritesByCategory('grass');
+            console.log('[OverworldMap] Grass sprites:', grassSprites.slice(0, 10));
         }).catch(err => {
             console.error('[OverworldMap] Failed to load Wesnoth Atlas:', err);
         });
@@ -187,10 +189,6 @@ export const OverworldMap = ({ playerPos, onMove, dimension = 'MORTAL' }: any) =
         try {
             const s = HEX_SIZE;
             
-            hexTileRenderer.setTerrain(tile.q, tile.r, tile.terrain);
-            
-            const sprites = hexTileRenderer.getTileSprites(tile.q, tile.r);
-            
             ctx.save();
             ctx.beginPath();
             for (let i = 0; i < 6; i++) {
@@ -202,11 +200,18 @@ export const OverworldMap = ({ playerPos, onMove, dimension = 'MORTAL' }: any) =
             
             const scale = s / 36 * 2;
             
+            hexTileRenderer.setTerrain(tile.q, tile.r, tile.terrain);
+            const sprites = hexTileRenderer.getTileSprites(tile.q, tile.r);
+            
+            let drewSprite = false;
             if (sprites.length > 0) {
                 for (const sprite of sprites) {
-                    wesnothAtlas.drawSprite(ctx, sprite.spriteName, cx, cy, scale);
+                    const success = wesnothAtlas.drawSprite(ctx, sprite.spriteName, cx, cy, scale);
+                    if (success) drewSprite = true;
                 }
-            } else {
+            }
+            
+            if (!drewSprite) {
                 const terrainPath = ASSETS.TERRAIN[tile.terrain];
                 const img = AssetManager.getAsset(terrainPath);
                 if (img) {
