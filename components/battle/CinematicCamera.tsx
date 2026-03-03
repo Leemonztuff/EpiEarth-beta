@@ -1,4 +1,3 @@
-
 // @ts-nocheck
 import React, { useRef, useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
@@ -9,201 +8,192 @@ import { BATTLE_MAP_SIZE } from '../../constants';
 const lerp = (a, b, t) => a + (b - a) * t;
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
+enum CameraMode {
+    IDLE = 'IDLE',
+    FOLLOW_ACTOR = 'FOLLOW_ACTOR',
+    SELECT_MOVE = 'SELECT_MOVE',
+    SELECT_TARGET = 'SELECT_TARGET',
+    ACTION = 'ACTION',
+    SPELL_EFFECT = 'SPELL_EFFECT',
+    INSPECT = 'INSPECT'
+}
+
+interface CameraState {
+    mode: CameraMode;
+    targetFocus: THREE.Vector3;
+    targetZoom: number;
+    transitionSpeed: number;
+}
+
 export const CinematicCamera = () => {
     const { camera, controls } = useThree();
     
-    const targetPos = useRef(new THREE.Vector3(BATTLE_MAP_SIZE / 2, 0, BATTLE_MAP_SIZE / 2));
-    const currentFocus = useRef(new THREE.Vector3(BATTLE_MAP_SIZE / 2, 0, BATTLE_MAP_SIZE / 2));
-    const shakeOffset = useRef(new THREE.Vector3());
-    const shakeDecay = useRef(0);
-    const zoomTarget = useRef(65);
-    const currentZoom = useRef(65);
-    const isPanning = useRef(false);
-    const lastMousePos = useRef({ x: 0, y: 0 });
+    const cameraState = useRef<CameraState>({
+        mode: CameraMode.IDLE,
+        targetFocus: new THREE.Vector3(BATTLE_MAP_SIZE / 2, 0, BATTLE_MAP_SIZE / 2),
+        targetZoom: 65,
+        transitionSpeed: 3
+    });
     
-    const isInitialized = useRef(false);
-
+    const currentFocus = useRef(new THREE.Vector3(BATTLE_MAP_SIZE / 2, 0, BATTLE_MAP_SIZE / 2));
+    const currentZoom = useRef(65);
+    const shakeOffset = useRef(new THREE.Vector3());
+    const shakeIntensity = useRef(0);
+    
+    const ZOOM_DEFAULT = 65;
+    const ZOOM_FAR = 50;
+    const ZOOM_NEAR = 75;
+    const ZOOM_ACTION = 60;
+    
     useEffect(() => {
         if (camera && camera.isOrthographicCamera) {
-            camera.zoom = 65;
+            camera.zoom = ZOOM_DEFAULT;
             camera.updateProjectionMatrix();
-            isInitialized.current = true;
         }
     }, [camera]);
 
     useEffect(() => {
         const handleWheel = (e: WheelEvent) => {
             e.preventDefault();
-            const zoomDelta = e.deltaY > 0 ? 3 : -3;
-            zoomTarget.current = clamp(zoomTarget.current + zoomDelta, 50, 80);
-        };
-        
-        const handleMouseDown = (e: MouseEvent) => {
-            if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
-                isPanning.current = true;
-                lastMousePos.current = { x: e.clientX, y: e.clientY };
-            }
-        };
-        
-        const handleMouseMove = (e: MouseEvent) => {
-            if (isPanning.current && controls) {
-                const dx = (e.clientX - lastMousePos.current.x) * 0.03;
-                const dy = (e.clientY - lastMousePos.current.y) * 0.03;
-                targetPos.current.x -= dx;
-                targetPos.current.z -= dy;
-                lastMousePos.current = { x: e.clientX, y: e.clientY };
-            }
-        };
-        
-        const handleMouseUp = () => {
-            isPanning.current = false;
-        };
-        
-        const handleKeyDown = (e: KeyboardEvent) => {
-            const panSpeed = 1;
-            if (e.key === 'w' || e.key === 'W') targetPos.current.z -= panSpeed;
-            if (e.key === 's' || e.key === 'S') targetPos.current.z += panSpeed;
-            if (e.key === 'a' || e.key === 'A') targetPos.current.x -= panSpeed;
-            if (e.key === 'd' || e.key === 'D') targetPos.current.x += panSpeed;
+            const delta = e.deltaY > 0 ? 2 : -2;
+            cameraState.current.targetZoom = clamp(
+                cameraState.current.targetZoom + delta, 
+                ZOOM_FAR, 
+                ZOOM_NEAR
+            );
         };
         
         window.addEventListener('wheel', handleWheel, { passive: false });
-        window.addEventListener('mousedown', handleMouseDown);
-        window.addEventListener('mousemove', handleMouseMove);
-        window.addEventListener('mouseup', handleMouseUp);
-        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('wheel', handleWheel);
+    }, []);
+
+    const determineFocusPoint = (store: any) => {
+        const { 
+            battleEntities, turnOrder, currentTurnIndex,
+            isUnitMenuOpen, isActionAnimating, selectedTile, 
+            activeSpellEffect, selectedAction, validMoves, validTargets,
+            inspectedEntity
+        } = store;
         
-        return () => {
-            window.removeEventListener('wheel', handleWheel);
-            window.removeEventListener('mousedown', handleMouseDown);
-            window.removeEventListener('mousemove', handleMouseMove);
-            window.removeEventListener('mouseup', handleMouseUp);
-            window.removeEventListener('keydown', handleKeyDown);
-        };
-    }, [controls]);
+        const actorId = turnOrder?.[currentTurnIndex];
+        const actor = battleEntities?.find(e => e.id === actorId);
+        
+        let focusPoint = new THREE.Vector3(BATTLE_MAP_SIZE / 2, 0, BATTLE_MAP_SIZE / 2);
+        let zoom = ZOOM_DEFAULT;
+        let mode = CameraMode.IDLE;
+        let transitionSpeed = 3;
+        
+        if (inspectedEntity?.position) {
+            focusPoint.set(inspectedEntity.position.x, 0.5, inspectedEntity.position.y);
+            zoom = ZOOM_NEAR;
+            mode = CameraMode.INSPECT;
+            transitionSpeed = 4;
+        }
+        else if (activeSpellEffect) {
+            const start = new THREE.Vector3(activeSpellEffect.startPos[0], 0, activeSpellEffect.startPos[2]);
+            const end = new THREE.Vector3(activeSpellEffect.endPos[0], 0, activeSpellEffect.endPos[2]);
+            focusPoint.lerpVectors(start, end, 0.5);
+            focusPoint.y = 0.5;
+            zoom = ZOOM_DEFAULT;
+            mode = CameraMode.SPELL_EFFECT;
+            transitionSpeed = 6;
+        }
+        else if (isActionAnimating && actor?.position) {
+            focusPoint.set(actor.position.x, 0.5, actor.position.y);
+            zoom = ZOOM_ACTION;
+            mode = CameraMode.ACTION;
+            transitionSpeed = 8;
+        }
+        else if (selectedAction === 'MOVE' && validMoves && validMoves.length > 0) {
+            const avgX = validMoves.reduce((sum, m) => sum + m.x, 0) / validMoves.length;
+            const avgY = validMoves.reduce((sum, m) => sum + m.y, 0) / validMoves.length;
+            focusPoint.set(avgX, 0.3, avgY);
+            zoom = ZOOM_FAR;
+            mode = CameraMode.SELECT_MOVE;
+            transitionSpeed = 4;
+        }
+        else if (selectedAction === 'ATTACK' && validTargets && validTargets.length > 0) {
+            const avgX = validTargets.reduce((sum, t) => sum + t.x, 0) / validTargets.length;
+            const avgY = validTargets.reduce((sum, t) => sum + t.y, 0) / validTargets.length;
+            focusPoint.set(avgX, 0.3, avgY);
+            if (actor?.position) {
+                focusPoint.lerpVectors(
+                    new THREE.Vector3(actor.position.x, 0, actor.position.y),
+                    focusPoint,
+                    0.3
+                );
+            }
+            zoom = ZOOM_ACTION;
+            mode = CameraMode.SELECT_TARGET;
+            transitionSpeed = 4;
+        }
+        else if (selectedTile) {
+            focusPoint.set(selectedTile.x, 0.3, selectedTile.y);
+            zoom = ZOOM_DEFAULT;
+            transitionSpeed = 5;
+        }
+        else if (actor?.position) {
+            focusPoint.set(actor.position.x, 0.3, actor.position.y);
+            zoom = ZOOM_DEFAULT;
+            mode = CameraMode.FOLLOW_ACTOR;
+            transitionSpeed = 3;
+        }
+        
+        return { focusPoint, zoom, mode, transitionSpeed, actor };
+    };
 
     useFrame((state, delta) => {
         if (!controls || !camera || !camera.isOrthographicCamera) return;
 
         const store = useGameStore.getState();
-        const { 
-            battleEntities, turnOrder, currentTurnIndex, 
-            isUnitMenuOpen, isActionAnimating, isScreenShaking,
-            selectedTile, activeSpellEffect, selectedAction, validMoves
-        } = store;
-
+        const { isScreenShaking } = store;
+        
         const dt = Math.min(delta, 0.1);
-
-        // === 1. DETERMINAR PUNTO DE FOCO ===
-        let desiredFocus = new THREE.Vector3(BATTLE_MAP_SIZE / 2, 0, BATTLE_MAP_SIZE / 2);
         
-        const actorId = turnOrder[currentTurnIndex];
-        const actor = battleEntities?.find(e => e.id === actorId);
-
-        if (activeSpellEffect) {
-            // Enfoque entre start y end del efecto
-            const start = new THREE.Vector3(activeSpellEffect.startPos[0], 0, activeSpellEffect.startPos[2]);
-            const end = new THREE.Vector3(activeSpellEffect.endPos[0], 0, activeSpellEffect.endPos[2]);
-            desiredFocus.lerpVectors(start, end, 0.5);
-            desiredFocus.y = 0.5;
-        } else if (isActionAnimating && actor?.position) {
-            // Enfocar entidad actuando
-            desiredFocus.set(actor.position.x, 0.5, actor.position.y);
-        } else if (selectedAction === 'MOVE' && actor?.position) {
-            // Calcular centro de los movimientos válidos
-            if (validMoves && validMoves.length > 0) {
-                const avgX = validMoves.reduce((sum, m) => sum + m.x, 0) / validMoves.length;
-                const avgY = validMoves.reduce((sum, m) => sum + m.y, 0) / validMoves.length;
-                desiredFocus.set(avgX, 0.3, avgY);
-            } else {
-                desiredFocus.set(actor.position.x, 0.3, actor.position.y);
-            }
-        } else if (selectedAction === 'ATTACK' && actor?.position) {
-            // Enfocar en el actor durante selección de objetivo
-            desiredFocus.set(actor.position.x, 0.3, actor.position.y);
-        } else if (isUnitMenuOpen && actor?.position) {
-            // Menú abierto - mantener enfoque en actor
-            desiredFocus.set(actor.position.x, 0.5, actor.position.y);
-        } else if (selectedTile) {
-            // Tile seleccionado
-            desiredFocus.set(selectedTile.x, 0.3, selectedTile.y);
-        } else if (actor?.position) {
-            // Turno actual - seguir actor
-            desiredFocus.set(actor.position.x, 0.3, actor.position.y);
-        }
-
-        // === 2. SUAVIZADO DEL FOCO (LERP) ===
-        // Velocidad depends del estado: rápido durante acciones, lento en exploración
-        const focusSpeed = activeSpellEffect ? 8 : (isActionAnimating ? 6 : 3);
-        const lerpFactor = 1 - Math.exp(-focusSpeed * dt);
+        const { focusPoint, zoom, mode, transitionSpeed, actor } = determineFocusPoint(store);
         
-        currentFocus.current.x = lerp(currentFocus.current.x, desiredFocus.x, lerpFactor);
-        currentFocus.current.y = lerp(currentFocus.current.y, desiredFocus.y, lerpFactor);
-        currentFocus.current.z = lerp(currentFocus.current.z, desiredFocus.z, lerpFactor);
-
-        // Actualizar target de OrbitControls
-        targetPos.current.copy(currentFocus.current);
-        controls.target.lerp(targetPos.current, lerpFactor);
-
-        // === 3. ZOOM DINÁMICO SEGÚN ESTADO ===
-        let targetZoom = 65;
+        cameraState.current.mode = mode;
+        cameraState.current.targetFocus.copy(focusPoint);
+        cameraState.current.targetZoom = zoom;
+        cameraState.current.transitionSpeed = transitionSpeed;
         
-        // Durante selección de movimiento: zoom OUT para ver rango completo
-        if (selectedAction === 'MOVE' && validMoves && validMoves.length > 0) {
-            targetZoom = 50; // Zoom out para ver todo el rango de movimiento
-        } else if (selectedAction === 'ATTACK') {
-            targetZoom = 70; // Zoom in moderado para ver objetivos
-        } else if (activeSpellEffect) {
-            targetZoom = 65; // Zoom default durante efecto
-        } else if (isActionAnimating) {
-            targetZoom = 55; // Zoom más cerca durante acción
-        } else if (isUnitMenuOpen) {
-            targetZoom = 60; // Zoom un poco más cerca cuando hay menú
-        } else if (battleEntities && battleEntities.length > 8) {
-            targetZoom = 50; // Zoom out si hay muchas entidades
-        } else {
-            targetZoom = 65; // Default
-        }
-
-        // Limitar zoom a valores seguros (50-80 para mantener encuadre correcto)
-        zoomTarget.current = clamp(targetZoom, 50, 80);
+        const focusLerpFactor = 1 - Math.exp(-transitionSpeed * dt);
         
-        // Suavizado del zoom
-        const zoomLerp = 1 - Math.exp(-4 * dt);
-        currentZoom.current = lerp(currentZoom.current, zoomTarget.current, zoomLerp);
+        currentFocus.current.x = lerp(currentFocus.current.x, focusPoint.x, focusLerpFactor);
+        currentFocus.current.y = lerp(currentFocus.current.y, focusPoint.y, focusLerpFactor);
+        currentFocus.current.z = lerp(currentFocus.current.z, focusPoint.z, focusLerpFactor);
+        
+        const zoomLerpFactor = 1 - Math.exp(-4 * dt);
+        currentZoom.current = lerp(currentZoom.current, zoom, zoomLerpFactor);
         
         if (Math.abs(camera.zoom - currentZoom.current) > 0.1) {
             camera.zoom = currentZoom.current;
             camera.updateProjectionMatrix();
         }
-
-        // === 4. SCREEN SHAKE ===
-        if (isScreenShaking && shakeDecay.current <= 0) {
-            shakeDecay.current = 0.3; // Duración del shake
+        
+        if (isScreenShaking && shakeIntensity.current <= 0) {
+            shakeIntensity.current = 0.3;
         }
-
-        if (shakeDecay.current > 0) {
-            const intensity = 0.3 * (shakeDecay.current / 0.3);
+        
+        if (shakeIntensity.current > 0) {
             shakeOffset.current.set(
-                (Math.random() - 0.5) * intensity,
-                (Math.random() - 0.5) * intensity,
-                (Math.random() - 0.5) * intensity * 0.5
+                (Math.random() - 0.5) * shakeIntensity.current,
+                (Math.random() - 0.5) * shakeIntensity.current,
+                (Math.random() - 0.5) * shakeIntensity.current * 0.3
             );
-            shakeDecay.current -= dt;
+            shakeIntensity.current -= dt * 2;
         } else {
             shakeOffset.current.set(0, 0, 0);
         }
-
-        // Aplicar shake a la posición de la cámara (no deriva)
-        const finalTarget = controls.target.clone().add(shakeOffset.current);
-        controls.target.copy(finalTarget);
-
-        // === 5. LIMITES DE CÁMARA ===
-        // Mantener cámara dentro del mapa
-        const mapHalf = BATTLE_MAP_SIZE / 2 + 2;
-        controls.target.x = clamp(controls.target.x, -2, BATTLE_MAP_SIZE + 2);
-        controls.target.z = clamp(controls.target.z, -2, BATTLE_MAP_SIZE + 2);
-
+        
+        const finalTarget = currentFocus.current.clone().add(shakeOffset.current);
+        
+        controls.target.lerp(finalTarget, focusLerpFactor);
+        
+        const boundPadding = 1;
+        controls.target.x = clamp(controls.target.x, -boundPadding, BATTLE_MAP_SIZE + boundPadding);
+        controls.target.z = clamp(controls.target.z, -boundPadding, BATTLE_MAP_SIZE + boundPadding);
+        
         controls.update();
     });
 
