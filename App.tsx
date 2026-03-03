@@ -93,10 +93,6 @@ const App = () => {
 
   return (
     <main className={`relative w-screen h-screen overflow-hidden bg-black text-white transition-transform duration-75 ${isScreenShaking ? 'animate-shake' : ''}`}>
-      {/* DEBUG BANNER */}
-      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, backgroundColor: '#ef4444', color: 'white', padding: '8px', zIndex: 9999, textAlign: 'center', fontWeight: 'bold' }}>
-        DEBUG: gameState = {gameState} | isAssetsLoaded = {String(isAssetsLoaded)}
-      </div>
       <div className={`fixed inset-0 z-[999] bg-white pointer-events-none transition-opacity duration-150 ${isScreenFlashing ? 'opacity-40' : 'opacity-0'}`} />
 
       {!isAssetsLoaded && !isAdmin && <AssetLoaderOverlay />}
