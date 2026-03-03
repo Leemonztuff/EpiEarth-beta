@@ -18,16 +18,15 @@ npm run preview      # Preview production build
 ```
 
 ### Testing
-**No test framework is currently configured.** To add testing, consider installing Vitest:
 ```bash
-npm install -D vitest @testing-library/react @testing-library/jest-dom
+npm test              # Run all tests once
+npm run test:watch    # Run tests in watch mode
+npm run test:coverage # Run tests with coverage
 ```
 
-To run a single test file with Vitest:
+To run a single test file:
 ```bash
 npx vitest run src/path/to/test.file.ts
-# or watch mode:
-npx vitest src/path/to/test.file.ts
 ```
 
 ### Type Checking

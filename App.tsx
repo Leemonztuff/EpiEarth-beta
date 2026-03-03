@@ -8,6 +8,8 @@ import { DebugOverworldMap } from './components/DebugOverworldMap';
 import { getSupabase } from './services/supabaseClient';
 import { useGameStore } from './store/gameStore';
 import { useContentStore } from './store/contentStore';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { logger } from './services/logger';
 
 // Code Splitting - Lazy Loading de componentes pesados
 const OverworldMap = lazy(() => import('./components/OverworldMap').then(m => ({ default: m.OverworldMap })));
@@ -36,11 +38,11 @@ const LoadingFallback = () => (
 
 // Global error handler
 window.onerror = (msg, url, line, col, error) => {
-  console.error('[GLOBAL ERROR]', msg, 'at line', line);
+  logger.general.error(`[GLOBAL ERROR] ${msg} at line ${line}`);
   return false;
 };
 window.onunhandledrejection = (e) => {
-  console.error('[UNHANDLED REJECTION]', e.reason);
+  logger.general.error(`[UNHANDLED REJECTION] ${e.reason}`);
 };
 
 const App = () => {
@@ -49,7 +51,6 @@ const App = () => {
   const [activeTownService, setActiveTownService] = useState<'NONE' | 'SHOP' | 'INN'>('NONE');
   
   const gameState = useGameStore(s => s.gameState);
-  console.log('[App] gameState:', gameState, '| rendering:', gameState === GameState.TITLE ? 'TitleScreen' : gameState === GameState.OVERWORLD ? 'OverworldMap' : 'Other');
   
   const playerPos = useGameStore(s => s.playerPos);
   const battleEntities = useGameStore(s => s.battleEntities || []);
@@ -100,6 +101,7 @@ const App = () => {
 
       {!isAssetsLoaded && !isAdmin && <AssetLoaderOverlay />}
 
+      <ErrorBoundary>
       {isAdmin ? (
         <Suspense fallback={<LoadingFallback />}>
           <AdminDashboard />
@@ -153,6 +155,7 @@ const App = () => {
           <UIOverlay activeService={activeTownService} onOpenTownService={setActiveTownService} />
         </div>
       )}
+      </ErrorBoundary>
     </main>
   );
 };

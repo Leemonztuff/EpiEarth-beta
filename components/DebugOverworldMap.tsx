@@ -3,6 +3,7 @@ import React, { useMemo, useRef, useEffect, useCallback, useState } from 'react'
 import { useGameStore } from '../store/gameStore';
 import { WorldGenerator } from '../services/WorldGenerator';
 import { GameState, Dimension } from '../types';
+import { logger } from '../services/logger';
 
 const HEX_SIZE = 30;
 
@@ -13,7 +14,7 @@ class ErrorBoundary extends React.Component<{children:React.ReactNode}, {hasErro
     }
     static getDerivedStateFromError() { return { hasError: true }; }
     componentDidCatch(e: Error, info: React.ErrorInfo) {
-        console.error('[DebugOverworldMap Error]', e, info);
+        logger.ui.error('[DebugOverworldMap Error]', e, info);
     }
     render() {
         if (this.state.hasError) return <div className="text-red-500 p-8">Error in OverworldMap</div>;
@@ -37,7 +38,7 @@ export const DebugOverworldMap = () => {
     
     useEffect(() => {
         setRenderCount(c => c + 1);
-        console.log('[DebugOverworldMap] Render:', { gameState, playerPos, dimension, partyLength: party?.length });
+        logger.game.debug('Render:', { gameState, playerPos, dimension, partyLength: party?.length });
         let msg = `Render #${renderCount + 1} | gameState: ${gameState} | pos: ${JSON.stringify(playerPos)} | dim: ${dimension} | party: ${party?.length}`;
         setDebug(msg);
     }, [gameState, playerPos, dimension, party, exploredTiles]);
@@ -99,12 +100,17 @@ export const DebugOverworldMap = () => {
     }, [playerPos, dimension, exploredTiles]);
     
     useEffect(() => {
-        console.log('[DebugOverworldMap] State:', { 
-            playerPos, 
-            dimension, 
-            exploredTiles: exploredTiles ? Object.keys(exploredTiles) : null,
-            party: party?.length 
-        });
+        // Only log state when running in development. In production the
+        // build process strips out this effect entirely and we don't want
+        // any stray console output.
+        if (process.env.NODE_ENV !== 'production') {
+            console.log('[DebugOverworldMap] State:', { 
+                playerPos, 
+                dimension, 
+                exploredTiles: exploredTiles ? Object.keys(exploredTiles) : null,
+                party: party?.length 
+            });
+        }
     }, [playerPos, dimension, exploredTiles, party]);
     
     const handleClick = useCallback((e) => {

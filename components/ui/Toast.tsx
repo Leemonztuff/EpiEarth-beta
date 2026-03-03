@@ -1,6 +1,7 @@
 
 // @ts-nocheck
 import React, { useEffect, useRef } from 'react';
+import { logger } from '../../services/logger';
 
 interface ToastProps {
     message: string;
@@ -76,7 +77,7 @@ export const useToast = () => {
     // Este hook se usaría con el store
     return {
         addToast: (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info') => {
-            console.log(`[TOAST ${type.toUpperCase()}]: ${message}`);
+            logger.ui.info(`[TOAST ${type.toUpperCase()}]: ${message}`);
         }
     };
 };

@@ -8,6 +8,7 @@ import { sfx } from '../../services/SoundSystem';
 import { useContentStore } from '../contentStore';
 import { SummoningService } from '../../services/SummoningService';
 import { WorldGenerator } from '../../services/WorldGenerator';
+import { logger } from '../../services/logger';
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
@@ -104,9 +105,9 @@ export const createPlayerSlice: StateCreator<any, [], [], PlayerSlice> = (set, g
   },
 
   createCharacter: (name, race, cls, stats, difficulty) => {
-    console.log('[createCharacter] Starting character creation:', { name, race, cls, difficulty });
+    logger.game.info('Starting character creation:', { name, race, cls, difficulty });
     try {
-      try { sfx.playVictory(); } catch(e) { console.error('[createCharacter] sfx error:', e); }
+      try { sfx.playVictory(); } catch(e) { logger.game.error('sfx error:', e); }
       const hitDie = getHitDie(cls);
       const maxHp = calculateHp(1, stats.CON, hitDie, race);
       const { skills, spells, traits, maxActions } = getUnlockedFeatures(cls, 1);
@@ -141,10 +142,10 @@ export const createPlayerSlice: StateCreator<any, [], [], PlayerSlice> = (set, g
           standingOnPortal: !!startTile.hasPortal
       });
 
-      console.log('[createCharacter] State set, gameState should be OVERWORLD');
+      logger.game.info('State set, gameState should be OVERWORLD');
       get().addLog(`The tether to Eternum is weak. You have arrived in ${startTile.regionName}.`, "narrative");
     } catch (e) {
-      console.error('[createCharacter] Error:', e);
+      logger.game.error('Error:', e);
     }
   },
 
