@@ -7,13 +7,13 @@ import {
     Dimension, DamageType, EffectType, StatusEffectType, MovementType, PositionComponent, EquipmentSlot
 } from '../../types';
 import { findBattlePath, getReachableTiles } from '../../services/pathfinding';
-// Fixed: Removed non-existent calculateHitChance and unused calculateDamage, calculateFinalDamage from import
 import { rollDice, calculateEnemyStats, calculateAttackRoll, getAttackRange, getModifier } from '../../services/dndRules';
 import { sfx } from '../../services/SoundSystem';
 import { ActionResolver } from '../../services/ActionResolver';
 import { WorldGenerator } from '../../services/WorldGenerator';
 import { GeminiService } from '../../services/GeminiService';
 import { SummoningService } from '../../services/SummoningService';
+import { EnemyAI, AIState, EnemyType, createEnemyAI } from '../../services/EnemyAI';
 import { useContentStore } from '../contentStore';
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
@@ -39,6 +39,8 @@ export interface BattleSlice {
     battleWeather: WeatherType;
     battleRewards: { xp: number, gold: number, items: any[], shards?: number, lootDrops?: any[] } | null;
     turnAnnouncement: string | null;
+    comboCount: number;
+    lastAttackerId: string | null;
 
     startBattle: (biome: TerrainType, weather: WeatherType) => Promise<void>;
     confirmBattle: () => void;
@@ -84,6 +86,8 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
     battleWeather: WeatherType.NONE,
     battleRewards: null,
     turnAnnouncement: null,
+    comboCount: 0,
+    lastAttackerId: null,
 
     startBattle: async (biome, weather) => {
         const { party, dimension, difficulty } = get();
@@ -97,7 +101,9 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
             ? Object.values(content.enemies) 
             : [{ id: 'goblin', name: 'Goblin', hp: 15, ac: 12, sprite: 'units/goblins/spearman.png', xpReward: 50 }];
         
-        const count = 2 + Math.floor(Math.random() * 3);
+        const partyLevels = party.map(p => p.stats.level);
+        const count = Math.min(party.length + 1, 2 + Math.floor(Math.random() * 3));
+        
         for(let i=0; i<count; i++) {
             const def = possibleEnemies[Math.floor(Math.random() * possibleEnemies.length)];
             enemies.push({
@@ -105,7 +111,7 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
                 name: def.name,
                 type: 'ENEMY',
                 equipment: {},
-                stats: calculateEnemyStats(def, party[0].stats.level, difficulty),
+                stats: calculateEnemyStats(def, partyLevels, difficulty),
                 visual: { color: '#ef4444', modelType: 'billboard', spriteUrl: def.sprite },
                 position: { x: 10 + Math.floor(Math.random() * 4), y: 4 + Math.floor(Math.random() * 8) }
             });
@@ -201,7 +207,9 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
             hasMoved: false, 
             hasActed: false, 
             selectedAction: null,
-            turnAnnouncement: isPlayer ? "TU TURNO" : "TURNO ENEMIGO"
+            turnAnnouncement: isPlayer ? "TU TURNO" : "TURNO ENEMIGO",
+            comboCount: 0,
+            lastAttackerId: null
         });
 
         setTimeout(() => set({ turnAnnouncement: null }), 1200);
@@ -212,39 +220,65 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
     },
 
     performEnemyTurn: async (enemy: Entity) => {
-        const { battleEntities, battleMap } = get();
+        const { battleEntities, battleMap, dimension } = get();
         const players = battleEntities.filter(e => e.type === 'PLAYER' && e.stats.hp > 0);
         if (players.length === 0) return;
 
-        // IA: Buscar al jugador más cercano
-        let target = players[0];
-        let minDist = 999;
-        players.forEach(p => {
-            const d = Math.abs(p.position.x - enemy.position.x) + Math.abs(p.position.y - enemy.position.y);
-            if (d < minDist) { minDist = d; target = p; }
-        });
+        const allies = battleEntities.filter(e => e.type === 'ENEMY' && e.stats.hp > 0 && e.id !== enemy.id);
+        
+        const ai = createEnemyAI(enemy, allies, battleEntities, battleMap, dimension);
+        const analysis = ai.analyze();
+        
+        const recommendedAction = analysis.recommendedAction;
+        const target = analysis.bestTarget;
+        const movePos = analysis.bestMovePosition;
 
-        // TÁCTICA: Si no está en rango, moverse
-        const range = getAttackRange(enemy);
-        const dist = Math.sqrt(Math.pow(target.position.x - enemy.position.x, 2) + Math.pow(target.position.y - enemy.position.y, 2));
+        if (recommendedAction === AIState.RETREAT && movePos) {
+            set({ battleEntities: get().battleEntities.map(e => e.id === enemy.id ? { ...e, position: { x: movePos.x, y: movePos.y } } : e) });
+            sfx.playStep();
+            await new Promise(r => setTimeout(r, 600));
+            get().advanceTurn();
+            return;
+        }
 
-        if (dist > range) {
-            const path = findBattlePath(enemy.position, target.position, battleMap);
-            if (path && path.length > 1) {
-                // El enemigo intenta buscar el bloque más alto en su rango de movimiento si es posible
-                const moveDist = Math.min(path.length - 2, Math.floor(enemy.stats.speed / 5));
-                const moveTile = path[moveDist];
-                
-                set({ battleEntities: get().battleEntities.map(e => e.id === enemy.id ? { ...e, position: { x: moveTile.x, y: moveTile.z } } : e) });
-                sfx.playStep();
-                await new Promise(r => setTimeout(r, 600));
+        if (recommendedAction === AIState.HEAL) {
+            const woundedAlly = allies.find(a => a.stats.hp < a.stats.maxHp * 0.6);
+            if (woundedAlly) {
+                const healAmount = rollDice(6, 2) + getModifier(enemy.stats.attributes.WIS);
+                set({ 
+                    battleEntities: get().battleEntities.map(e => e.id === woundedAlly.id ? { 
+                        ...e, stats: { ...e.stats, hp: Math.min(e.stats.maxHp, e.stats.hp + healAmount) } 
+                    } : e),
+                    damagePopups: [...get().damagePopups, { 
+                        id: generateId(), amount: healAmount, isCrit: false, isHeal: true, 
+                        position: [woundedAlly.position.x, 2, woundedAlly.position.y], timestamp: Date.now() 
+                    }]
+                });
+                sfx.playHeal();
+                await new Promise(r => setTimeout(r, 500));
+                get().advanceTurn();
+                return;
             }
         }
 
-        // Atacar tras mover (o si ya estaba en rango)
-        const finalDist = Math.sqrt(Math.pow(target.position.x - enemy.position.x, 2) + Math.pow(target.position.y - enemy.position.y, 2));
-        if (finalDist <= range) {
-            await get().executeAction(enemy, [target]);
+        if (movePos && target && (recommendedAction === AIState.APPROACH || recommendedAction === AIState.FLANK)) {
+            set({ battleEntities: get().battleEntities.map(e => e.id === enemy.id ? { ...e, position: { x: movePos.x, y: movePos.y } } : e) });
+            sfx.playStep();
+            await new Promise(r => setTimeout(r, 600));
+        }
+
+        const range = getAttackRange(enemy);
+        const dist = target ? Math.sqrt(Math.pow(target.position.x - enemy.position.x, 2) + Math.pow(target.position.y - enemy.position.y, 2)) : 999;
+
+        if (target && dist <= range) {
+            const enemyType = ai.getEnemyType();
+            if (enemyType === EnemyType.CASTER) {
+                await get().executeSpell(enemy, [target]);
+            } else {
+                await get().executeAction(enemy, [target]);
+            }
+        } else if (recommendedAction === AIState.CAST_SPELL && target) {
+            await get().executeSpell(enemy, [target]);
         } else {
             get().advanceTurn();
         }
@@ -308,20 +342,51 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
     },
 
     executeMove: async (x, z) => {
-        const { turnOrder, currentTurnIndex, battleEntities } = get();
+        const { turnOrder, currentTurnIndex, battleEntities, dimension } = get();
         
         if (!turnOrder || turnOrder.length === 0) return;
         
         const actorId = turnOrder[currentTurnIndex];
         if (!actorId) return;
         
+        const actor = battleEntities.find(e => e.id === actorId);
+        if (!actor) return;
+
+        const oldPos = actor.position;
+        const newPos = { x, y: z };
+        
         set({ 
-            battleEntities: battleEntities.map(e => e.id === actorId ? { ...e, position: { x, y: z } } : e),
+            battleEntities: battleEntities.map(e => e.id === actorId ? { ...e, position: newPos } : e),
             hasMoved: true,
             selectedAction: null,
             validMoves: []
         });
         sfx.playStep();
+
+        if (actor.type === 'PLAYER') {
+            const enemies = battleEntities.filter(e => e.type === 'ENEMY' && e.stats.hp > 0 && e.position);
+            for (const enemy of enemies) {
+                const distBefore = oldPos ? Math.sqrt(Math.pow(enemy.position.x - oldPos.x, 2) + Math.pow(enemy.position.y - oldPos.y, 2)) : 999;
+                const distAfter = Math.sqrt(Math.pow(enemy.position.x - newPos.x, 2) + Math.pow(enemy.position.y - newPos.y, 2));
+                
+                if (distBefore > 1.5 && distAfter <= 1.5) {
+                    const attack = rollDice(20, 1) + getModifier(enemy.stats.attributes.DEX);
+                    if (attack >= actor.stats.ac) {
+                        const aooDamage = rollDice(6, 1) + getModifier(enemy.stats.attributes.STR);
+                        set({ 
+                            battleEntities: get().battleEntities.map(e => e.id === actorId ? { 
+                                ...e, stats: { ...e.stats, hp: Math.max(0, e.stats.hp - aooDamage) } 
+                            } : e),
+                            damagePopups: [...get().damagePopups, { 
+                                id: generateId(), amount: aooDamage, isCrit: false, 
+                                position: [actor.position.x, 2, actor.position.y], timestamp: Date.now() 
+                            }]
+                        });
+                        sfx.playAttack();
+                    }
+                }
+            }
+        }
     },
 
     executeAction: async (actor, targets) => {
@@ -330,6 +395,9 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
         const state = get();
         set({ isActionAnimating: true, isUnitMenuOpen: false, validTargets: [] });
         const target = targets[0];
+
+        const isCombo = state.lastAttackerId === actor.id && state.comboCount > 0;
+        const comboBonus = isCombo ? Math.min(state.comboCount * 2, 10) : 0;
 
         set({ activeSpellEffect: { 
             id: generateId(), type: 'BURST', 
@@ -340,7 +408,6 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
 
         await new Promise(r => setTimeout(r, 350));
 
-        // Resolución con lógica de altura incluida
         const weapon = actor.equipment?.[EquipmentSlot.MAIN_HAND];
         const effects = weapon?.equipmentStats ? [{
             type: EffectType.DAMAGE,
@@ -350,7 +417,11 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
         }] : [{ type: EffectType.DAMAGE, diceCount: 1, diceSides: 8, damageType: DamageType.BLUDGEONING }];
         
         const res = ActionResolver.resolve(actor, target, effects, state.dimension, state.battleEntities, state.battleMap);
-        get().damageVoxel(target.position.x, target.position.y, rollDice(weapon?.equipmentStats?.diceSides || 8, weapon?.equipmentStats?.diceCount || 1) + 2);
+        
+        let finalDamage = rollDice(weapon?.equipmentStats?.diceSides || 8, weapon?.equipmentStats?.diceCount || 1) + 2;
+        if (comboBonus > 0) finalDamage += comboBonus;
+        
+        get().damageVoxel(target.position.x, target.position.y, finalDamage);
 
         if (res.didHit) {
             get().triggerScreenShake(res.popups[0]?.isCrit ? 600 : 300);
@@ -358,17 +429,25 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
         }
 
         const newEntities = state.battleEntities.map(e => {
-            if (e.id === target.id) return { ...e, stats: { ...e.stats, hp: Math.max(0, e.stats.hp + res.hpChange) } };
+            if (e.id === target.id) {
+                const hpChange = res.hpChange - comboBonus;
+                return { ...e, stats: { ...e.stats, hp: Math.max(0, e.stats.hp + hpChange) } };
+            }
             return e;
         });
 
         const aliveEnemies = newEntities.filter(e => e.type === 'ENEMY' && e.stats.hp > 0);
         const alivePlayers = newEntities.filter(e => e.type === 'PLAYER' && e.stats.hp > 0);
 
+        const newComboCount = (actor.id === state.lastAttackerId) ? state.comboCount + 1 : 1;
+        const comboLabel = comboBonus > 0 ? { label: `COMBO x${newComboCount}!` } : {};
+
         set({ 
             battleEntities: newEntities, 
-            damagePopups: [...state.damagePopups, ...res.popups.map(p => ({ ...p, id: generateId(), position: [target.position.x, 2, target.position.y], timestamp: Date.now() }))],
-            isActionAnimating: false, activeSpellEffect: null, hasActed: true 
+            damagePopups: [...state.damagePopups, ...res.popups.map(p => ({ ...p, ...comboLabel, id: generateId(), position: [target.position.x, 2, target.position.y], timestamp: Date.now() }))],
+            isActionAnimating: false, activeSpellEffect: null, hasActed: true,
+            comboCount: newComboCount,
+            lastAttackerId: actor.id
         });
 
         if (aliveEnemies.length === 0) {

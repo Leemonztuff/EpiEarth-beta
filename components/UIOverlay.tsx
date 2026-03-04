@@ -1,6 +1,6 @@
 
 // @ts-nocheck
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { GameState, Dimension } from '../types';
 import { useGameStore } from '../store/gameStore';
 import { InventoryScreen } from './InventoryScreen';
@@ -9,57 +9,44 @@ import { WorldGenerator } from '../services/WorldGenerator';
 import { AssetManager } from '../services/AssetManager';
 import { HapticFeedback, isTouchDevice } from '../services/TouchFeedback';
 
-const SolarClock = ({ time }: { time: number }) => {
-    const hours = Math.floor(time / 60);
-    const minutes = time % 60;
-    const rotation = (time / 1440) * 360 - 90;
+// Top bar now handles time + resources in a thin line
+const TopBar: React.FC<{
+    dimension: string;
+    gold: number;
+    supplies: number;
+    fatigue: number;
+    worldTime: number;
+    children?: React.ReactNode;
+}> = ({ dimension, gold, supplies, fatigue, worldTime, children }) => {
+    const realmName = dimension === Dimension.NORMAL ? 'Normal Realm' : 'Upside‑Down Realm';
+    const hours = Math.floor(worldTime / 60);
+    const minutes = worldTime % 60;
     const isNight = hours < 6 || hours >= 22;
+    const icon = isNight ? '🌙' : '☀️';
 
     return (
-        <div className="relative w-20 h-20 md:w-16 md:h-16 rounded-full bg-gradient-to-br from-slate-800 to-slate-900 border-2 border-white/10 shadow-2xl flex items-center justify-center overflow-hidden shrink-0">
-            <div className={`absolute inset-0 transition-colors duration-1000 ${isNight ? 'bg-gradient-to-br from-indigo-950 to-purple-950' : 'bg-gradient-to-br from-sky-500/80 to-blue-600/80'}`} />
-            <div className="absolute w-full h-0.5 bg-white/30" style={{ transform: `rotate(${rotation}deg)` }}>
-                <div className="absolute -right-1.5 -top-1.5 w-3 h-3 rounded-full bg-yellow-400 shadow-[0_0_15px_rgba(250,204,21,0.8)]" />
-            </div>
-            <div className="relative z-10 font-mono text-xs md:text-[9px] font-black text-white drop-shadow-md">
-                {hours.toString().padStart(2, '0')}:{minutes.toString().padStart(2, '0')}
+        <div className="fixed top-0 left-0 right-0 h-8 flex items-center justify-center pointer-events-auto
+                        bg-black/20 backdrop-blur-sm text-xs font-bold uppercase text-white">
+            <span>{realmName}</span>
+            <div className="absolute right-4 flex items-center gap-3">
+                <span className="flex items-center gap-1">
+                    {icon} {hours.toString().padStart(2, '0')}:{minutes.toString().padStart(2, '0')}
+                </span>
+                <span>💰{gold}</span>
+                <span>📦{supplies}</span>
+                <span>💨{(Math.round(fatigue * 10) / 10).toFixed(1)}%</span>
+                {children && <div className="ml-4 flex items-center gap-2">{children}</div>}
             </div>
         </div>
     );
 };
 
-const ExpeditionStats = ({ fatigue, supplies, shards }: any) => (
-    <div className="flex flex-col gap-2 bg-slate-950/90 backdrop-blur-md p-4 rounded-2xl border border-white/10 shadow-xl min-w-[160px] md:min-w-[130px] md:p-3">
-        <div className="flex items-center gap-2">
-            <span className="text-sm md:text-[10px]">⛺</span>
-            <span className="text-xs text-slate-400 font-bold uppercase">Fatiga</span>
-            <div className="flex-1 h-2.5 md:h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                <div 
-                    className={`h-full transition-all duration-500 ${fatigue > 75 ? 'bg-red-500 animate-pulse' : fatigue > 50 ? 'bg-orange-500' : 'bg-emerald-500'}`} 
-                    style={{ width: `${fatigue}%` }} 
-                />
-            </div>
-            <span className={`text-xs font-mono font-black ${fatigue > 75 ? 'text-red-400' : 'text-white'}`}>{fatigue}%</span>
-        </div>
-        <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
-                <span className="text-sm md:text-[10px]">🍞</span>
-                <span className={`text-sm font-mono font-black ${supplies < 5 ? 'text-red-400 animate-pulse' : 'text-emerald-400'}`}>{supplies}</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-                <span className="text-sm md:text-[10px]">🔮</span>
-                <span className="text-sm font-mono text-purple-400 font-black">{shards}</span>
-            </div>
-        </div>
-    </div>
-);
-
-const PartyMember: React.FC<{ member: any }> = ({ member }) => {
+const PartyMember: React.FC<{ member: any; onClick?: () => void; isSelected?: boolean }> = ({ member, onClick, isSelected }) => {
     const hpPercent = (member.stats.hp / member.stats.maxHp) * 100;
     const isLow = hpPercent <= 30;
     
     return (
-        <div className="relative group cursor-pointer">
+        <div onClick={onClick} className={`relative group cursor-pointer ${isSelected ? 'scale-105' : ''}`}>
             <div className={`
                 w-16 h-16 md:w-14 md:h-14 rounded-full overflow-hidden shadow-2xl relative
                 ring-2 transition-all duration-200
@@ -77,7 +64,7 @@ const PartyMember: React.FC<{ member: any }> = ({ member }) => {
                     />
                 </div>
             </div>
-            <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 bg-black/95 px-4 py-3 rounded-2xl text-xs font-black text-white whitespace-nowrap opacity-0 group-hover:opacity-100 group-active:opacity-100 transition-opacity border border-white/10 shadow-2xl pointer-events-none z-50">
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-black/95 px-4 py-3 rounded-2xl text-xs font-black text-white whitespace-nowrap opacity-0 group-hover:opacity-100 group-active:opacity-100 transition-opacity border border-white/10 shadow-2xl pointer-events-none z-50">
                 <div className="text-amber-400 uppercase tracking-wider">{member.name}</div>
                 <div className="text-slate-400 mt-1">
                     HP: <span className={isLow ? 'text-red-400' : 'text-white'}>{member.stats.hp}/{member.stats.maxHp}</span>
@@ -116,39 +103,35 @@ export const UIOverlay: React.FC<{ onOpenTownService: any, activeService?: strin
         callback();
     };
 
+    const gold = useGameStore(s => s.gold);
+
+    const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
+
     if (gameState === GameState.TITLE || activeService !== 'NONE') return null;
 
     return (
         <div className="fixed inset-0 pointer-events-none z-[100] flex flex-col">
-            {/* Top Bar */}
+            {/* Top Bar (thin, non‑intrusive) */}
             {isExploring && (
-                <div className="p-4 flex justify-between items-start pointer-events-auto">
-                    <div className="flex gap-3 items-center">
-                        <SolarClock time={worldTime} />
-                        <div className="flex flex-col gap-2">
-                            <span className={`
-                                text-xs font-black uppercase tracking-widest px-3 py-1.5 rounded-xl border
-                                ${isTown 
-                                    ? 'bg-gradient-to-r from-emerald-600/80 to-emerald-800/80 text-emerald-300 border-emerald-500/50' 
-                                    : 'bg-black/60 text-slate-400 border-white/5'
-                                }
-                            `}>
-                                {isTown ? currentSettlementName : isDungeon ? 'Cripta Ancestral' : `${dimension} Realm`}
-                            </span>
-                            <ExpeditionStats fatigue={fatigue} supplies={supplies} shards={eternumShards} />
-                        </div>
-                    </div>
+                <TopBar
+                    dimension={dimension}
+                    gold={gold}
+                    supplies={supplies}
+                    fatigue={fatigue}
+                    worldTime={worldTime}
+                >
+                    {/* action buttons moved inside top bar */}
                     <div className="flex gap-2">
                         <button 
                             onClick={() => handleButtonPress(toggleInventory)} 
-                            className="bg-gradient-to-br from-slate-800 to-slate-900 border border-white/10 to-white/20 text-white w-14 h-14 md:w-12 md:h-12 rounded-2xl shadow-xl flex items-center justify-center text-2xl active:scale-90 hover:from-slate-700 transition-all"
+                            className="text-white text-sm px-2 py-1 rounded bg-white/10 hover:bg-white/20 active:scale-95 transition-all"
                         >
                             🎒
                         </button>
                         {!isTown && !isDungeon && (
                             <button 
                                 onClick={() => handleButtonPress(toggleMap)} 
-                                className="bg-gradient-to-br from-slate-800 to-slate-900 border border-white/10 text-white w-14 h-14 md:w-12 md:h-12 rounded-2xl shadow-xl flex items-center justify-center text-2xl active:scale-90 hover:from-slate-700 transition-all"
+                                className="text-white text-sm px-2 py-1 rounded bg-white/10 hover:bg-white/20 active:scale-95 transition-all"
                             >
                                 🗺️
                             </button>
@@ -156,20 +139,25 @@ export const UIOverlay: React.FC<{ onOpenTownService: any, activeService?: strin
                         {(isTown || isDungeon) && (
                             <button 
                                 onClick={() => handleButtonPress(exitSettlement)} 
-                                className="bg-gradient-to-br from-red-900/80 to-slate-900 border border-red-500/30 text-white w-14 h-14 md:w-12 md:h-12 rounded-2xl shadow-xl flex items-center justify-center text-2xl active:scale-90 hover:from-red-800 transition-all"
+                                className="text-white text-sm px-2 py-1 rounded bg-red-700/40 hover:bg-red-700/60 active:scale-95 transition-all"
                             >
                                 🚪
                             </button>
                         )}
                     </div>
-                </div>
+                </TopBar>
             )}
 
-            {/* Party - Left Side */}
+            {/* Party - Bottom Center */}
             {(isExploring || isBattle) && party && (
-                <div className="absolute left-2 md:left-4 top-1/2 -translate-y-1/2 flex flex-col gap-3 md:gap-4 pointer-events-auto">
+                <div className="fixed bottom-2 left-1/2 -translate-x-1/2 flex gap-3 md:gap-4 pointer-events-auto">
                     {party.map((member) => (
-                        <PartyMember key={member.id} member={member} />
+                        <PartyMember 
+                            key={member.id} 
+                            member={member} 
+                            onClick={() => setSelectedMemberId(member.id)}
+                            isSelected={selectedMemberId === member.id}
+                        />
                     ))}
                 </div>
             )}

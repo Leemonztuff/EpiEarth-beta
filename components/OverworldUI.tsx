@@ -146,7 +146,7 @@ const ResourceDisplay: React.FC<{ gold: number, supplies: number, fatigue: numbe
             </div>
             <div className="bg-black/60 backdrop-blur-xl rounded-lg px-3 py-2 border border-red-500/30">
                 <span className={`text-sm font-bold ${fatigue > 80 ? 'text-red-400' : 'text-red-300'}`}>
-                    💨 {fatigue}%
+                    💨 {(Math.round(fatigue * 10) / 10).toFixed(1)}%
                 </span>
             </div>
         </div>

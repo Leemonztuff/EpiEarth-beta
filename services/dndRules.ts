@@ -200,10 +200,22 @@ export const calculateVisionRange = (wis: number, corruption: number = 0, worldT
   return Math.max(1, baseVision + mod - corruptionPenalty - nightPenalty);
 };
 
-export const calculateEnemyStats = (def: EnemyDefinition, playerLevel: number, difficulty: Difficulty): CombatStatsComponent => {
+export const calculateEnemyStats = (def: EnemyDefinition, partyLevel: number | number[], difficulty: Difficulty): CombatStatsComponent => {
     const diffMod = DIFFICULTY_SETTINGS[difficulty].enemyStatMod;
-    const levelMod = 1 + (playerLevel - 1) * 0.15;
-    const finalHp = Math.floor(def.hp * levelMod * diffMod);
+    
+    const avgLevel = Array.isArray(partyLevel) 
+        ? partyLevel.reduce((a, b) => a + b, 0) / partyLevel.length 
+        : partyLevel;
+    
+    const partySize = Array.isArray(partyLevel) ? partyLevel.length : 1;
+    const scalingFactor = 1 + (avgLevel - 1) * 0.15;
+    
+    let finalHp = Math.floor(def.hp * scalingFactor * diffMod);
+    
+    if (partySize > 1) {
+        const partyBonus = 1 + (partySize - 1) * 0.2;
+        finalHp = Math.floor(finalHp * partyBonus);
+    }
     
     const baseClass = CharacterClass.FIGHTER;
     let attributes: Attributes;
@@ -228,7 +240,17 @@ export const calculateEnemyStats = (def: EnemyDefinition, playerLevel: number, d
             attributes = { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 };
     }
     
+    attributes = {
+        STR: Math.floor(attributes.STR + (avgLevel - 1) * 0.5),
+        DEX: Math.floor(attributes.DEX + (avgLevel - 1) * 0.5),
+        CON: Math.floor(attributes.CON + (avgLevel - 1) * 0.5),
+        INT: attributes.INT,
+        WIS: attributes.WIS,
+        CHA: attributes.CHA
+    };
+    
+    const finalLevel = Math.floor(avgLevel);
     return {
-        level: playerLevel, class: baseClass, xp: 0, xpToNextLevel: 1000, hp: finalHp, maxHp: finalHp, stamina: 50, maxStamina: 50, ac: def.ac, initiativeBonus: getModifier(attributes.DEX), speed: 30, movementType: MovementType.WALK, attributes, baseAttributes: attributes, spellSlots: { current: 0, max: 0 }, activeCooldowns: {}, activeStatusEffects: [], resistances: def.resistances || [], vulnerabilities: def.vulnerabilities || [], immunities: def.immunities || [], xpReward: def.xpReward, creatureType: def.type, derived: calculateDerivedStats(attributes, baseClass, playerLevel)
+        level: finalLevel, class: baseClass, xp: 0, xpToNextLevel: 1000, hp: finalHp, maxHp: finalHp, stamina: 50, maxStamina: 50, ac: Math.floor(def.ac * (1 + (avgLevel - 1) * 0.05)), initiativeBonus: getModifier(attributes.DEX), speed: 30, movementType: MovementType.WALK, attributes, baseAttributes: attributes, spellSlots: { current: 0, max: 0 }, activeCooldowns: {}, activeStatusEffects: [], resistances: def.resistances || [], vulnerabilities: def.vulnerabilities || [], immunities: def.immunities || [], xpReward: Math.floor((def.xpReward || 50) * scalingFactor), creatureType: def.type, derived: calculateDerivedStats(attributes, baseClass, finalLevel)
     };
 };

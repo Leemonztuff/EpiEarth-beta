@@ -181,6 +181,29 @@ export const TERRAIN_MOVEMENT_COST: Record<MovementType, Partial<Record<TerrainT
     [MovementType.FLY]: { [TerrainType.MOUNTAIN]: 1, [TerrainType.WATER]: 1, [TerrainType.OCEAN]: 1, [TerrainType.GRASS]: 1 }
 };
 
+export interface TerrainCombatEffect {
+    defenseBonus: number;
+    attackBonus: number;
+    damageBonus: number;
+    movementPenalty: number;
+    description: string;
+}
+
+export const TERRAIN_COMBAT_EFFECTS: Partial<Record<TerrainType, TerrainCombatEffect>> = {
+    [TerrainType.FOREST]: { defenseBonus: 2, attackBonus: 0, damageBonus: 0, movementPenalty: 0.5, description: '+2 DEF, Movimiento reducido' },
+    [TerrainType.JUNGLE]: { defenseBonus: 3, attackBonus: -1, damageBonus: 0, movementPenalty: 1, description: '+3 DEF, -1 ATA, Movimiento difícil' },
+    [TerrainType.MOUNTAIN]: { defenseBonus: 0, attackBonus: 2, damageBonus: 1, movementPenalty: 2, description: '+2 ATA, +1 DMG, Movimiento costoso' },
+    [TerrainType.SWAMP]: { defenseBonus: 0, attackBonus: -2, damageBonus: -1, movementPenalty: 1, description: '-2 ATA, -1 DMG, Movimiento difícil' },
+    [TerrainType.RUINS]: { defenseBonus: 1, attackBonus: 1, damageBonus: 0, movementPenalty: 0, description: '+1 DEF, +1 ATA' },
+    [TerrainType.LAVA]: { defenseBonus: 0, attackBonus: 3, damageBonus: 2, movementPenalty: 3, description: '+3 ATA, +2 DMG, Daño por terreno' },
+    [TerrainType.WATER]: { defenseBonus: 0, attackBonus: -2, damageBonus: 0, movementPenalty: 99, description: 'No traversable' },
+    [TerrainType.CASTLE]: { defenseBonus: 3, attackBonus: 0, damageBonus: 0, movementPenalty: 0, description: '+3 DEF, Posición defensiva' },
+    [TerrainType.CAVE_FLOOR]: { defenseBonus: 1, attackBonus: 0, damageBonus: 0, movementPenalty: 0, description: '+1 DEF' },
+    [TerrainType.DUNGEON_FLOOR]: { defenseBonus: 2, attackBonus: 0, damageBonus: 0, movementPenalty: 0, description: '+2 DEF' },
+    [TerrainType.ANCIENT_MONUMENT]: { defenseBonus: 2, attackBonus: 2, damageBonus: 1, movementPenalty: 0, description: '+2 DEF, +2 ATA, +1 DMG' },
+    [TerrainType.RUINS]: { defenseBonus: 1, attackBonus: 1, damageBonus: 0, movementPenalty: 0, description: '+1 DEF, +1 ATA' }
+};
+
 export const RARITY_COLORS: Record<ItemRarity, string> = { [ItemRarity.COMMON]: '#94a3b8', [ItemRarity.UNCOMMON]: '#22c55e', [ItemRarity.RARE]: '#3b82f6', [ItemRarity.VERY_RARE]: '#a855f7', [ItemRarity.LEGENDARY]: '#f59e0b' };
 export const SCHOOL_COLORS: Record<MagicSchool, string> = { [MagicSchool.ABJURATION]: '#60a5fa', [MagicSchool.CONJURATION]: '#f59e0b', [MagicSchool.DIVINATION]: '#a855f7', [MagicSchool.ENCHANTMENT]: '#ec4899', [MagicSchool.EVOCATION]: '#ef4444', [MagicSchool.ILLUSION]: '#8b5cf6', [MagicSchool.NECROMANCY]: '#4b5563', [MagicSchool.TRANSMUTATION]: '#10b981' };
 
