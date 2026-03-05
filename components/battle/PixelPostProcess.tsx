@@ -38,8 +38,8 @@ float bayer4x4(vec2 p) {
 }
 
 vec3 quantizeColor(vec3 color, float levels, float dither, vec2 pixel) {
-    float d = bayer4x4(pixel) * dither;
-    return floor((color + d) * levels + 0.5) / levels;
+    float d = bayer4x4(pixel) * dither * 0.1;
+    return floor(color * levels) / levels;
 }
 
 vec3 applyPalette(vec3 color) {
@@ -68,13 +68,23 @@ vec3 applyPalette(vec3 color) {
 }
 
 void main() {
-    vec2 pixel = floor(gl_FragCoord.xy / pixelSize) * pixelSize;
-    vec2 pixelCoord = pixel / pixelSize;
+    // Calcular el centro del píxel
+    vec2 pixelCenter = floor(gl_FragCoord.xy / pixelSize + 0.5) * pixelSize;
+    vec2 uv = pixelCenter / resolution;
     
-    vec2 uv = pixel / resolution;
+    // Samplear desde el centro del píxel
     vec3 color = texture2D(tDiffuse, uv).rgb;
     
-    color = quantizeColor(color, colorDepth, ditherIntensity, pixelCoord);
+    // Cuantizar el color basado en la profundidad
+    float levels = colorDepth;
+    color = floor(color * levels) / levels;
+    
+    // Aplicar dithering si está habilitado
+    if(ditherIntensity > 0.01) {
+        vec2 pixelCoord = pixelCenter / pixelSize;
+        float dither = bayer4x4(pixelCoord) * ditherIntensity * 0.05;
+        color = color + dither;
+    }
     
     if(enablePalette > 0.5) {
         color = applyPalette(color);
@@ -86,16 +96,24 @@ void main() {
 
 export const PixelPostProcess = ({ 
     enabled = true,
-    pixelSize = 3, 
-    colorDepth = 16, 
-    ditherIntensity = 0.4,
-    enablePalette = false 
+    pixelSize = 6, 
+    colorDepth = 8, 
+    ditherIntensity = 0.6,
+    enablePalette = false,
+    outlineThickness = 1.2,
+    outlineColor = '#1a1a2e',
+    enableOutline = true,
+    enableDither = true
 }: { 
     enabled?: boolean;
     pixelSize?: number;
     colorDepth?: number;
     ditherIntensity?: number;
     enablePalette?: boolean;
+    outlineThickness?: number;
+    outlineColor?: string;
+    enableOutline?: boolean;
+    enableDither?: boolean;
 }) => {
     const { gl, size, scene, camera } = useThree();
     const composerRef = useRef<any>(null);
@@ -124,14 +142,15 @@ export const PixelPostProcess = ({
                 resolution: { value: new THREE.Vector2(size.width, size.height) },
                 pixelSize: { value: pixelSize },
                 colorDepth: { value: colorDepth },
-                ditherIntensity: { value: ditherIntensity },
+                ditherIntensity: { value: enableDither ? ditherIntensity : 0 },
                 enablePalette: { value: enablePalette ? 1.0 : 0.0 },
                 time: { value: 0 }
             },
             vertexShader,
-            fragmentShader
+            fragmentShader,
+            side: THREE.DoubleSide
         });
-    }, []);
+    }, [size.width, size.height, pixelSize, colorDepth, ditherIntensity, enablePalette, enableDither]);
     
     const quad = useMemo(() => {
         const geometry = new THREE.PlaneGeometry(2, 2);
@@ -151,7 +170,7 @@ export const PixelPostProcess = ({
     useEffect(() => {
         material.uniforms.pixelSize.value = pixelSize;
         material.uniforms.colorDepth.value = colorDepth;
-        material.uniforms.ditherIntensity.value = ditherIntensity;
+        material.uniforms.ditherIntensity.value = enableDither ? ditherIntensity : 0;
         material.uniforms.enablePalette.value = enablePalette ? 1.0 : 0.0;
         material.uniforms.resolution.value.set(size.width, size.height);
         
@@ -159,7 +178,7 @@ export const PixelPostProcess = ({
             Math.floor(size.width / pixelSize),
             Math.floor(size.height / pixelSize)
         );
-    }, [pixelSize, colorDepth, ditherIntensity, enablePalette, size, material, renderTarget]);
+    }, [pixelSize, colorDepth, ditherIntensity, enablePalette, enableDither, size, material, renderTarget]);
     
     useFrame((state) => {
         if (!enabled) return;

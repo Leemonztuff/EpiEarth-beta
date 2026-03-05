@@ -259,9 +259,9 @@ export const BattleScene = ({ entities, weather, terrainType, currentTurnEntityI
                     <DamagePopupManager />
                     <Preload all />
                     <PixelPostProcess 
-                        pixelSize={3}
-                        colorDepth={24}
-                        ditherIntensity={0.4}
+                        pixelSize={6}
+                        colorDepth={8}
+                        ditherIntensity={0.6}
                         outlineThickness={1.2}
                         outlineColor="#1a1a2e"
                         enableOutline={true}
