@@ -1,6 +1,6 @@
 
 // @ts-nocheck
-import { TerrainType, CharacterClass, Attributes, CharacterRace, ItemRarity, MovementType, MagicSchool, DamageType, Difficulty, EquipmentSlot, EffectType } from './types';
+import { TerrainType, CharacterClass, Attributes, CharacterRace, ItemRarity, MovementType, MagicSchool, DamageType, Difficulty, EquipmentSlot, EffectType, ClassBranch, EvolutionStage } from './types';
 
 // Supabase Configuration
 export const SUPABASE_PROJECT_URL = "https://iukchvkoumfwaxlgfhso.supabase.co";
@@ -185,20 +185,22 @@ export const RARITY_COLORS: Record<ItemRarity, string> = { [ItemRarity.COMMON]: 
 export const SCHOOL_COLORS: Record<MagicSchool, string> = { [MagicSchool.ABJURATION]: '#60a5fa', [MagicSchool.CONJURATION]: '#f59e0b', [MagicSchool.DIVINATION]: '#a855f7', [MagicSchool.ENCHANTMENT]: '#ec4899', [MagicSchool.EVOCATION]: '#ef4444', [MagicSchool.ILLUSION]: '#8b5cf6', [MagicSchool.NECROMANCY]: '#4b5563', [MagicSchool.TRANSMUTATION]: '#10b981' };
 
 export const CLASS_CONFIG: Record<CharacterClass, any> = {
-    [CharacterClass.FIGHTER]: { icon: `/sprites/characters/fighter_01.png`, archetype: 'Guerrero' },
-    [CharacterClass.RANGER]: { icon: `/sprites/characters/ranger_01.png`, archetype: 'Explorador' },
-    [CharacterClass.WIZARD]: { icon: `/sprites/characters/wizard_01.png`, archetype: 'Mago Arcano' },
-    [CharacterClass.CLERIC]: { icon: `/sprites/characters/cleric_01.png`, archetype: 'Clérigo' },
-    [CharacterClass.ROGUE]: { icon: `/sprites/characters/rogue_01.png`, archetype: 'Pícaro' },
-    [CharacterClass.BARBARIAN]: { icon: `/sprites/characters/barbarian_01.png`, archetype: 'Bárbaro' },
-    [CharacterClass.PALADIN]: { icon: `/sprites/characters/paladin_01.png`, archetype: 'Paladín' },
-    [CharacterClass.SORCERER]: { icon: `/sprites/characters/sorcerer_01.png`, archetype: 'Hechicero' },
-    [CharacterClass.WARLOCK]: { icon: `/sprites/characters/warlock_01.png`, archetype: 'Brujo' },
-    [CharacterClass.DRUID]: { icon: `/sprites/characters/druid_01.png`, archetype: 'Druida' },
-    [CharacterClass.BARD]: { icon: `/sprites/characters/bard_01.png`, archetype: 'Bardo' }
+    [CharacterClass.NOVICE]: { icon: `/sprites/characters/novice_01.png`, archetype: 'Aprendiz', branch: null },
+    [CharacterClass.FIGHTER]: { icon: `/sprites/characters/fighter_01.png`, archetype: 'Guerrero', branch: ClassBranch.WARRIOR },
+    [CharacterClass.RANGER]: { icon: `/sprites/characters/ranger_01.png`, archetype: 'Explorador', branch: ClassBranch.ROGUE },
+    [CharacterClass.WIZARD]: { icon: `/sprites/characters/wizard_01.png`, archetype: 'Mago Arcano', branch: ClassBranch.MAGE },
+    [CharacterClass.CLERIC]: { icon: `/sprites/characters/cleric_01.png`, archetype: 'Clérigo', branch: ClassBranch.CLERIC },
+    [CharacterClass.ROGUE]: { icon: `/sprites/characters/rogue_01.png`, archetype: 'Pícaro', branch: ClassBranch.ROGUE },
+    [CharacterClass.BARBARIAN]: { icon: `/sprites/characters/barbarian_01.png`, archetype: 'Bárbaro', branch: ClassBranch.WARRIOR },
+    [CharacterClass.PALADIN]: { icon: `/sprites/characters/paladin_01.png`, archetype: 'Paladín', branch: ClassBranch.WARRIOR },
+    [CharacterClass.SORCERER]: { icon: `/sprites/characters/sorcerer_01.png`, archetype: 'Hechicero', branch: ClassBranch.MAGE },
+    [CharacterClass.WARLOCK]: { icon: `/sprites/characters/warlock_01.png`, archetype: 'Brujo', branch: ClassBranch.MAGE },
+    [CharacterClass.DRUID]: { icon: `/sprites/characters/druid_01.png`, archetype: 'Druida', branch: ClassBranch.CLERIC },
+    [CharacterClass.BARD]: { icon: `/sprites/characters/bard_01.png`, archetype: 'Bardo', branch: ClassBranch.ROGUE }
 };
 
 export const CLASS_SPRITES: Record<CharacterClass, string> = {
+    [CharacterClass.NOVICE]: `/sprites/characters/novice_01.png`,
     [CharacterClass.FIGHTER]: `/sprites/characters/fighter_01.png`,
     [CharacterClass.RANGER]: `/sprites/characters/ranger_01.png`,
     [CharacterClass.WIZARD]: `/sprites/characters/wizard_01.png`,
@@ -227,7 +229,14 @@ export const getSprite = (race: CharacterRace, cls: CharacterClass): string => {
     return CLASS_SPRITES[cls] || RACE_ICONS[race] || `units/human-loyalists/lieutenant.png`;
 };
 
-export const XP_TABLE: Record<number, number> = { 1: 300, 2: 900, 3: 2700, 4: 6500, 5: 14000, 6: 23000, 7: 34000, 8: 48000, 9: 64000, 10: 85000 };
+export const XP_TABLE: Record<number, number> = { 
+    1: 0, 2: 300, 3: 900, 4: 2700, 5: 6500, 
+    6: 14000, 7: 23000, 8: 34000, 9: 48000, 10: 64000,
+    11: 85000, 12: 100000, 13: 120000, 14: 140000, 15: 165000,
+    16: 195000, 17: 225000, 18: 265000, 19: 305000, 20: 355000,
+    21: 405000, 22: 465000, 23: 525000, 24: 595000, 25: 665000,
+    26: 745000, 27: 835000, 28: 935000, 29: 1050000, 30: 1200000
+};
 export const DAMAGE_ICONS: Record<DamageType, string> = { 
     [DamageType.SLASHING]: `attacks/sword-human.png`, 
     [DamageType.PIERCING]: `attacks/spear.png`, 
@@ -244,7 +253,20 @@ export const DAMAGE_ICONS: Record<DamageType, string> = {
     [DamageType.PSYCHIC]: `attacks/dark-missile.png`, 
     [DamageType.MAGIC]: `attacks/magic-missile.png` 
 };
-export const BASE_STATS: Record<CharacterClass, Attributes> = { [CharacterClass.FIGHTER]: { STR: 15, DEX: 13, CON: 14, INT: 8, WIS: 10, CHA: 12 }, [CharacterClass.RANGER]: { STR: 12, DEX: 15, CON: 13, INT: 10, WIS: 14, CHA: 8 }, [CharacterClass.WIZARD]: { STR: 8, DEX: 13, CON: 12, INT: 15, WIS: 14, CHA: 10 }, [CharacterClass.CLERIC]: { STR: 14, DEX: 8, CON: 13, INT: 10, WIS: 15, CHA: 12 }, [CharacterClass.ROGUE]: { STR: 10, DEX: 15, CON: 12, INT: 13, WIS: 8, CHA: 14 }, [CharacterClass.BARBARIAN]: { STR: 15, DEX: 12, CON: 15, INT: 8, WIS: 10, CHA: 8 }, [CharacterClass.PALADIN]: { STR: 14, DEX: 8, CON: 14, INT: 10, WIS: 12, CHA: 15 }, [CharacterClass.SORCERER]: { STR: 8, DEX: 12, CON: 13, INT: 14, WIS: 10, CHA: 15 }, [CharacterClass.WARLOCK]: { STR: 10, DEX: 12, CON: 13, INT: 14, WIS: 8, CHA: 15 }, [CharacterClass.DRUID]: { STR: 12, DEX: 10, CON: 13, INT: 12, WIS: 15, CHA: 8 }, [CharacterClass.BARD]: { STR: 8, DEX: 14, CON: 12, INT: 12, WIS: 10, CHA: 15 } };
+export const BASE_STATS: Record<CharacterClass, Attributes> = { 
+    [CharacterClass.NOVICE]: { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 },
+    [CharacterClass.FIGHTER]: { STR: 15, DEX: 13, CON: 14, INT: 8, WIS: 10, CHA: 12 }, 
+    [CharacterClass.RANGER]: { STR: 12, DEX: 15, CON: 13, INT: 10, WIS: 14, CHA: 8 }, 
+    [CharacterClass.WIZARD]: { STR: 8, DEX: 13, CON: 12, INT: 15, WIS: 14, CHA: 10 }, 
+    [CharacterClass.CLERIC]: { STR: 14, DEX: 8, CON: 13, INT: 10, WIS: 15, CHA: 12 }, 
+    [CharacterClass.ROGUE]: { STR: 10, DEX: 15, CON: 12, INT: 13, WIS: 8, CHA: 14 }, 
+    [CharacterClass.BARBARIAN]: { STR: 15, DEX: 12, CON: 15, INT: 8, WIS: 10, CHA: 8 }, 
+    [CharacterClass.PALADIN]: { STR: 14, DEX: 8, CON: 14, INT: 10, WIS: 12, CHA: 15 }, 
+    [CharacterClass.SORCERER]: { STR: 8, DEX: 12, CON: 13, INT: 14, WIS: 10, CHA: 15 }, 
+    [CharacterClass.WARLOCK]: { STR: 10, DEX: 12, CON: 13, INT: 14, WIS: 8, CHA: 15 }, 
+    [CharacterClass.DRUID]: { STR: 12, DEX: 10, CON: 13, INT: 12, WIS: 15, CHA: 8 }, 
+    [CharacterClass.BARD]: { STR: 8, DEX: 14, CON: 12, INT: 12, WIS: 10, CHA: 15 } 
+};
 export const RACE_BONUS: Record<CharacterRace, Partial<Attributes>> = { [CharacterRace.HUMAN]: { STR: 1, DEX: 1, CON: 1, INT: 1, WIS: 1, CHA: 1 }, [CharacterRace.ELF]: { DEX: 2, WIS: 1 }, [CharacterRace.DWARF]: { CON: 2, STR: 1 }, [CharacterRace.HALFLING]: { DEX: 2, CHA: 1 }, [CharacterRace.DRAGONBORN]: { STR: 2, CHA: 1 }, [CharacterRace.GNOME]: { INT: 2, DEX: 1 }, [CharacterRace.TIEFLING]: { CHA: 2, INT: 1 }, [CharacterRace.HALF_ORC]: { STR: 2, CON: 1 } };
 
 export const DIFFICULTY_SETTINGS: Record<Difficulty, { enemyStatMod: number }> = {
@@ -262,84 +284,224 @@ export const ITEMS: Record<string, any> = {
 };
 
 export const CLASS_TREES: Record<CharacterClass, any[]> = {
+    [CharacterClass.NOVICE]: [
+        { level: 2, unlocksSkill: 'basic_attack' },
+        { level: 3, unlocksSkill: 'defend' },
+        { level: 4, unlocksSkill: 'focus' },
+        { level: 5, evolution: true, choices: [
+            { id: 'branch_warrior', featureName: 'Guerrero', description: 'Domina el arte de la guerra cuerpo a cuerpo. Especializado en daño físico y tanqueo.', branch: ClassBranch.WARRIOR },
+            { id: 'branch_mage', featureName: 'Mago', description: 'Despierta los misterios arcanos. Dominio de la magia destructiva y el conocimiento.', branch: ClassBranch.MAGE },
+            { id: 'branch_rogue', featureName: 'Explorador', description: 'Acecha en las sombras y domina la precisión. Sigilo y combate a distancia.', branch: ClassBranch.ROGUE },
+            { id: 'branch_cleric', featureName: 'Clérigo', description: 'Canaliza el poder divino. Sanación y protección sagrada.', branch: ClassBranch.CLERIC }
+        ]}
+    ],
+    // ========== GUERRERO (SWORDSMAN) ==========
     [CharacterClass.FIGHTER]: [
-        { level: 2, unlocksSkill: 'action_surge' },
-        { level: 3, choices: [
-            { id: 'f_champ', featureName: 'Champion', description: 'Improved Criticals.', passiveEffect: 'CRIT_FOCUS' },
-            { id: 'f_bm', featureName: 'Battle Master', description: 'Tactical Maneuvers.', unlocksSkill: 'maneuver' }
+        { level: 6, unlocksSkill: 'bash' },
+        { level: 7, unlocksSkill: 'magnum_break' },
+        { level: 8, passiveEffect: 'INCREASE_STR' },
+        { level: 10, unlocksSkill: 'power_strike' },
+        { level: 12, unlocksSkill: 'shield_bash' },
+        { level: 15, evolution: true, choices: [
+            { id: 'knight', featureName: 'Caballero (Knight)', description: 'Maestro de la lanza y el tanqueo. Barrido, provocación y montura.', subclass: CharacterClass.FIGHTER, unlocksSkill: 'brandish_spear' },
+            { id: 'crusader', featureName: 'Cruzado (Cruzader)', description: 'Guerrero sagrado. Golpes divinos, fe y escudo boomerang.', subclass: CharacterClass.PALADIN, unlocksSkill: 'holy_cross' }
         ]},
-        { level: 5, passiveEffect: 'EXTRA_ATTACK' }
-    ],
-    [CharacterClass.RANGER]: [
-        { level: 2, unlocksSpell: 'hunters_mark' },
-        { level: 3, choices: [
-            { id: 'r_hunter', featureName: 'Hunter', description: 'Expert prey tracking.', passiveEffect: 'HUNTER_SENSE' },
-            { id: 'r_beast', featureName: 'Beast Master', description: 'Animal companion.', unlocksSkill: 'summon_beast' }
+        { level: 18, unlocksSkill: 'rally' },
+        { level: 20, unlocksSkill: 'provoke' },
+        { level: 25, evolution: true, choices: [
+            { id: 'lord_knight', featureName: 'Señor Caballero (Lord Knight)', description: 'Espiral perforadora y estado de furia. Máximo daño físico.', subclass: CharacterClass.FIGHTER, unlocksSkill: 'spiral_pierce' },
+            { id: 'paladin', featureName: 'Paladín', description: 'Escudo reflector y sanación limitada. Tankeo sagrado.', subclass: CharacterClass.PALADIN, unlocksSkill: 'shield_reflect' }
         ]},
-        { level: 5, passiveEffect: 'EXTRA_ATTACK' }
+        { level: 30, passiveEffect: 'MASTER_FIGHTER' }
     ],
+    // ========== MAGO ==========
     [CharacterClass.WIZARD]: [
-        { level: 2, unlocksSpell: 'shield' },
-        { level: 3, choices: [
-            { id: 'w_evo', featureName: 'School of Evocation', description: 'Mastery of destructive elements.', magicSchool: MagicSchool.EVOCATION },
-            { id: 'w_abj', featureName: 'School of Abjuration', description: 'Mastery of protective wards.', magicSchool: MagicSchool.ABJURATION }
-        ]}
-    ],
-    [CharacterClass.CLERIC]: [
-        { level: 2, unlocksSkill: 'channel_divinity' },
-        { level: 3, choices: [
-            { id: 'c_life', featureName: 'Life Domain', description: 'Divine healing energy.', magicSchool: MagicSchool.ABJURATION },
-            { id: 'c_war', featureName: 'War Domain', description: 'Holy warrior spirit.', unlocksSkill: 'divine_strike' }
-        ]}
-    ],
-    [CharacterClass.ROGUE]: [
-        { level: 2, unlocksSkill: 'cunning_action' },
-        { level: 3, choices: [
-            { id: 'rog_thief', featureName: 'Thief', description: 'Expert infiltration.', passiveEffect: 'FAST_HANDS' },
-            { id: 'rog_ass', featureName: 'Assassin', description: 'Lethal efficiency.', passiveEffect: 'SNEAK_ATTACK' }
-        ]}
-    ],
-    [CharacterClass.BARBARIAN]: [
-        { level: 2, unlocksSkill: 'reckless_attack' },
-        { level: 3, choices: [
-            { id: 'b_berserker', featureName: 'Path of the Berserker', description: 'Unstoppable rage.', passiveEffect: 'FRENZY' },
-            { id: 'b_totem', featureName: 'Path of the Totem Warrior', description: 'Spirit animal guidance.', passiveEffect: 'BEAR_TOTEM' }
+        { level: 6, unlocksSkill: 'fire_bolt' },
+        { level: 7, unlocksSkill: 'cold_bolt' },
+        { level: 8, passiveEffect: 'INCREASE_INT' },
+        { level: 10, unlocksSkill: 'shield' },
+        { level: 12, unlocksSkill: 'magic_missile' },
+        { level: 15, evolution: true, choices: [
+            { id: 'wizard', featureName: 'Mago (Wizard)', description: 'Magia destructiva. Bola de fuego, congelar y crítico mágico.', subclass: CharacterClass.WIZARD, unlocksSkill: 'fire_ball' },
+            { id: 'sage', featureName: 'Sabio (Sage)', description: 'Conocimiento mágico. Cambio elemental, dispel y auto-spell.', subclass: CharacterClass.WIZARD, unlocksSkill: 'elemental_change' }
         ]},
-        { level: 5, passiveEffect: 'EXTRA_ATTACK' }
+        { level: 18, unlocksSkill: 'frost_diver' },
+        { level: 20, unlocksSkill: 'burning_hands' },
+        { level: 25, evolution: true, choices: [
+            { id: 'high_wizard', featureName: 'Archimago (High Wizard)', description: 'Lluvia de meteoros y amplificación mágica. Daño masivo.', subclass: CharacterClass.WIZARD, unlocksSkill: 'meteor_storm' },
+            { id: 'professor', featureName: 'Erudito (Professor)', description: 'Golpe mental y puño de hechizo. Híbrido magia/combate.', subclass: CharacterClass.WIZARD, unlocksSkill: 'mind_breaker' }
+        ]},
+        { level: 30, passiveEffect: 'MASTER_WIZARD' }
     ],
+    // ========== CLÉRIGO ==========
+    [CharacterClass.CLERIC]: [
+        { level: 6, unlocksSkill: 'cleric_heal' },
+        { level: 7, unlocksSkill: 'increase_agi' },
+        { level: 8, passiveEffect: 'MEDITATIO' },
+        { level: 10, unlocksSkill: 'magnificat' },
+        { level: 12, unlocksSkill: 'resurrection' },
+        { level: 15, evolution: true, choices: [
+            { id: 'priest', featureName: 'Sacerdote (Priest)', description: 'Sanación y protección. Muro sagrado y magnificat.', subclass: CharacterClass.CLERIC, unlocksSkill: 'safety_wall' },
+            { id: 'monk', featureName: 'Monje (Monk)', description: 'Combate cuerpo a cuerpo sagrada. Dedo ofensivo y puño de hierro.', subclass: CharacterClass.CLERIC, unlocksSkill: 'finger_offensive' }
+        ]},
+        { level: 18, unlocksSkill: 'assumptio' },
+        { level: 20, unlocksSkill: 'spiritual_cadence' },
+        { level: 25, evolution: true, choices: [
+            { id: 'high_priest', featureName: 'Sumo Sacerdote (High Priest)', description: 'Basílica sagrada y asunción. Zona invulnerable y máximo soporte.', subclass: CharacterClass.CLERIC, unlocksSkill: 'basilica' },
+            { id: 'champion', featureName: 'Campeón (Champion)', description: 'Golpe Asura y guillotina. Daño devastador cuerpo a cuerpo.', subclass: CharacterClass.CLERIC, unlocksSkill: 'asura_strike' }
+        ]},
+        { level: 30, passiveEffect: 'MASTER_CLERIC' }
+    ],
+    // ========== PÍCARO ==========
+    [CharacterClass.ROGUE]: [
+        { level: 6, unlocksSkill: 'double_attack' },
+        { level: 7, unlocksSkill: 'steal' },
+        { level: 8, unlocksSkill: 'envenom' },
+        { level: 10, unlocksSkill: 'sneak_attack' },
+        { level: 12, unlocksSkill: 'evasion' },
+        { level: 15, evolution: true, choices: [
+            { id: 'assassin', featureName: 'Asesino (Assassin)', description: 'Maestro del sigilo y veneno. Golpe sónico y cloaking.', subclass: CharacterClass.ROGUE, unlocksSkill: 'sonic_blow' },
+            { id: 'rogue', featureName: 'Pícaro (Rogue)', description: 'Robo y desarme. Gank, snatch y strip.', subclass: CharacterClass.ROGUE, unlocksSkill: 'snatch' }
+        ]},
+        { level: 18, unlocksSkill: 'venom_splasher' },
+        { level: 20, unlocksSkill: 'cloaking' },
+        { level: 25, evolution: true, choices: [
+            { id: 'assassin_cross', featureName: 'Asesino Supremo (Assassin Cross)', description: 'Asalto meteoro y veneno mortal. Daño extremo.', subclass: CharacterClass.ROGUE, unlocksSkill: 'meteor_assault' },
+            { id: 'stalker', featureName: 'Acechador (Stalker)', description: 'Strip completo y preservación. Control total.', subclass: CharacterClass.ROGUE, unlocksSkill: 'full_strip' }
+        ]},
+        { level: 30, passiveEffect: 'MASTER_ROGUE' }
+    ],
+    // ========== BARBARO ==========
+    [CharacterClass.BARBARIAN]: [
+        { level: 6, unlocksSkill: 'reckless_attack' },
+        { level: 7, unlocksSkill: 'rage' },
+        { level: 8, passiveEffect: 'INCREASE_STR' },
+        { level: 10, unlocksSkill: 'intimidating_presence' },
+        { level: 12, unlocksSkill: 'bash' },
+        { level: 15, evolution: true, choices: [
+            { id: 'berserker', featureName: 'Berserker', description: 'Furia imparable y violencia. Daño máximo.', subclass: CharacterClass.BARBARIAN, unlocksSkill: 'magnum_break' },
+            { id: 'totem', featureName: 'Guerrero Tótem', description: 'Espíritu animal y resistencia. Tanqueo primal.', subclass: CharacterClass.BARBARIAN, unlocksSkill: 'provoke' }
+        ]},
+        { level: 18, unlocksSkill: 'power_strike' },
+        { level: 20, unlocksSkill: 'primal_path' },
+        { level: 25, evolution: true, choices: [
+            { id: 'berserker_adv', featureName: 'Berserker Legendario', description: 'Furia legendaria destructiva. Daño masivo.', subclass: CharacterClass.BARBARIAN, unlocksSkill: 'fury' },
+            { id: 'spiritwalker', featureName: 'Caminante Espiritual', description: 'Unión con espíritus. Soporte primal.', subclass: CharacterClass.BARBARIAN, unlocksSkill: 'assumptio' }
+        ]},
+        { level: 30, passiveEffect: 'MASTER_BARBARIAN' }
+    ],
+    // ========== RANGER ==========
+    [CharacterClass.RANGER]: [
+        { level: 6, unlocksSkill: 'double_strafe' },
+        { level: 7, unlocksSkill: 'arrow_shower' },
+        { level: 8, passiveEffect: 'VULTURES_EYE' },
+        { level: 10, unlocksSkill: 'precise_shot' },
+        { level: 12, unlocksSkill: 'camouflage' },
+        { level: 15, evolution: true, choices: [
+            { id: 'hunter', featureName: 'Cazador (Hunter)', description: 'Bestia compañero y trampas. Blitz beat y land mine.', subclass: CharacterClass.RANGER, unlocksSkill: 'beastmaster' },
+            { id: 'bard', featureName: 'Bardo (Bard)', description: 'Canciones de apoyo y confusión. Buffos de grupo.', subclass: CharacterClass.BARD, unlocksSkill: 'song_of_bravery' }
+        ]},
+        { level: 18, unlocksSkill: 'blitz_beat' },
+        { level: 20, unlocksSkill: 'volley' },
+        { level: 25, evolution: true, choices: [
+            { id: 'sniper', featureName: 'Francotirador (Sniper)', description: 'Flecha enfocada y viento caminar. Máximo rango y evasión.', subclass: CharacterClass.RANGER, unlocksSkill: 'focused_arrow_strike' },
+            { id: 'clown', featureName: 'Clown', description: 'Improvisación y tarot. Efectos aleatorios.', subclass: CharacterClass.BARD, unlocksSkill: 'tarot_card_of_fate' }
+        ]},
+        { level: 30, passiveEffect: 'MASTER_RANGER' }
+    ],
+    // ========== PALADIN ==========
     [CharacterClass.PALADIN]: [
-        { level: 2, unlocksSkill: 'divine_smite' },
-        { level: 3, choices: [
-            { id: 'p_devotion', featureName: 'Oath of Devotion', description: 'Sacred protector.', magicSchool: MagicSchool.ABJURATION },
-            { id: 'p_vengeance', featureName: 'Oath of Vengeance', description: 'Relentless pursuer.', unlocksSkill: 'vow_of_enmity' }
-        ]}
+        { level: 6, unlocksSkill: 'divine_smite' },
+        { level: 7, unlocksSkill: 'lay_on_hands' },
+        { level: 8, passiveEffect: 'FAITH' },
+        { level: 10, unlocksSkill: 'shield_boomerang' },
+        { level: 12, unlocksSkill: 'faith' },
+        { level: 15, evolution: true, choices: [
+            { id: 'holy_knight', featureName: 'Caballero Sagrado', description: 'Luz y justicia absolutas. Máximo tankeo sagrado.', subclass: CharacterClass.PALADIN, unlocksSkill: 'shield_reflect' },
+            { id: 'avenger', featureName: 'Vengador', description: 'Justicia implacable. Daño sagrado y provocación.', subclass: CharacterClass.PALADIN, unlocksSkill: 'holy_cross' }
+        ]},
+        { level: 18, unlocksSkill: 'assumptio' },
+        { level: 20, unlocksSkill: 'safety_wall' },
+        { level: 25, evolution: true, choices: [
+            { id: 'crusader_adv', featureName: 'Cruzado Legendario', description: 'Poder sagrado definitivo. Daño y soporte.', subclass: CharacterClass.PALADIN, unlocksSkill: 'basilica' },
+            { id: 'templar', featureName: 'Templario', description: 'Guerrero de la luz. Máxima defensa.', subclass: CharacterClass.PALADIN, unlocksSkill: 'shield_reflect' }
+        ]},
+        { level: 30, passiveEffect: 'MASTER_PALADIN' }
     ],
+    // ========== SORCERER ==========
     [CharacterClass.SORCERER]: [
-        { level: 2, unlocksSkill: 'font_of_magic' },
-        { level: 3, choices: [
-            { id: 's_draconic', featureName: 'Draconic Bloodline', description: 'Inherited elemental power.', passiveEffect: 'DRACONIC_RESILIENCE' },
-            { id: 's_wild', featureName: 'Wild Magic', description: 'Unpredictable chaos.', unlocksSkill: 'tides_of_chaos' }
-        ]}
+        { level: 6, unlocksSkill: 'font_of_magic' },
+        { level: 7, unlocksSkill: 'chromatic_orb' },
+        { level: 8, passiveEffect: 'INCREASE_INT' },
+        { level: 10, unlocksSkill: 'mage_armor' },
+        { level: 12, unlocksSkill: 'cold_bolt' },
+        { level: 15, evolution: true, choices: [
+            { id: 'draconic', featureName: 'Linaje Dracónico', description: 'Poder elemental heredado. Daño y resistencia.', subclass: CharacterClass.SORCERER, unlocksSkill: 'fire_ball' },
+            { id: 'wild', featureName: 'Magia Salvaje', description: 'Caos impredecible. Efectos aleatorios.', subclass: CharacterClass.SORCERER, unlocksSkill: 'tides_of_chaos' }
+        ]},
+        { level: 18, unlocksSkill: 'fire_bolt' },
+        { level: 20, unlocksSkill: 'amplify_magic' },
+        { level: 25, evolution: true, choices: [
+            { id: 'true_dragon', featureName: 'Dragón Verdadero', description: 'Poder dracónico supremo.', subclass: CharacterClass.SORCERER, unlocksSkill: 'meteor_storm' },
+            { id: 'chaos_mage', featureName: 'Mago del Caos', description: 'Magia caótica destructiva.', subclass: CharacterClass.SORCERER, unlocksSkill: 'spell_fist' }
+        ]},
+        { level: 30, passiveEffect: 'MASTER_SORCERER' }
     ],
+    // ========== WARLOCK ==========
     [CharacterClass.WARLOCK]: [
-        { level: 2, unlocksSkill: 'eldritch_invocations' },
-        { level: 3, choices: [
-            { id: 'war_fiend', featureName: 'The Fiend', description: 'Infernal patron gift.', unlocksSkill: 'dark_ones_blessing' },
-            { id: 'war_fey', featureName: 'The Archfey', description: 'Fey presence charm.', unlocksSkill: 'fey_presence' }
-        ]}
+        { level: 6, unlocksSkill: 'eldritch_invocations' },
+        { level: 7, unlocksSkill: 'eldritch_blast' },
+        { level: 8, passiveEffect: 'INCREASE_INT' },
+        { level: 10, unlocksSkill: 'hex' },
+        { level: 12, unlocksSkill: 'dark_ones_blessing' },
+        { level: 15, evolution: true, choices: [
+            { id: 'fiend', featureName: 'El Infernal', description: 'Patrono infernal. Daño oscuro.', subclass: CharacterClass.WARLOCK, unlocksSkill: 'fire_ball' },
+            { id: 'fey', featureName: 'El Feérico', description: 'Encantamiento feérico. Control.', subclass: CharacterClass.WARLOCK, unlocksSkill: 'tides_of_chaos' }
+        ]},
+        { level: 18, unlocksSkill: 'mystic_arcane' },
+        { level: 20, unlocksSkill: 'fey_presence' },
+        { level: 25, evolution: true, choices: [
+            { id: 'demon_lord', featureName: 'Señor Demoníaco', description: 'Poder demoníaco supremo.', subclass: CharacterClass.WARLOCK, unlocksSkill: 'meteor_storm' },
+            { id: 'fae_lord', featureName: 'Señor Feérico', description: 'Majestad feérica oscura.', subclass: CharacterClass.WARLOCK, unlocksSkill: 'mind_breaker' }
+        ]},
+        { level: 30, passiveEffect: 'MASTER_WARLOCK' }
     ],
+    // ========== DRUID ==========
     [CharacterClass.DRUID]: [
-        { level: 2, unlocksSkill: 'wild_shape' },
-        { level: 3, choices: [
-            { id: 'd_moon', featureName: 'Circle of the Moon', description: 'Primal shapeshifting.', unlocksSkill: 'wild_shape_combat' },
-            { id: 'd_land', featureName: 'Circle of the Land', description: 'Nature recovery.', magicSchool: MagicSchool.CONJURATION }
-        ]}
+        { level: 6, unlocksSkill: 'wild_shape' },
+        { level: 7, unlocksSkill: 'entangle' },
+        { level: 8, passiveEffect: 'MEDITATIO' },
+        { level: 10, unlocksSkill: 'goodberry' },
+        { level: 12, unlocksSkill: 'moonbeam' },
+        { level: 15, evolution: true, choices: [
+            { id: 'moon', featureName: 'Círculo de la Luna', description: 'Transformación primal guerrera. Forma de combate.', subclass: CharacterClass.DRUID, unlocksSkill: 'finger_offensive' },
+            { id: 'land', featureName: 'Círculo de la Tierra', description: 'Recuperación natural. Sanación y buffs.', subclass: CharacterClass.DRUID, unlocksSkill: 'cleric_heal' }
+        ]},
+        { level: 18, unlocksSkill: 'assumptio' },
+        { level: 20, unlocksSkill: 'magnificat' },
+        { level: 25, evolution: true, choices: [
+            { id: 'archdruid', featureName: 'Archidruida', description: 'Sabiduría natural suprema.', subclass: CharacterClass.DRUID, unlocksSkill: 'basilica' },
+            { id: 'predator', featureName: 'Depredador Prime', description: 'El mejor depredador.', subclass: CharacterClass.DRUID, unlocksSkill: 'asura_strike' }
+        ]},
+        { level: 30, passiveEffect: 'MASTER_DRUID' }
     ],
+    // ========== BARDO ==========
     [CharacterClass.BARD]: [
-        { level: 2, unlocksSkill: 'jack_of_all_trades' },
-        { level: 3, choices: [
-            { id: 'brd_lore', featureName: 'College of Lore', description: 'Ancient knowledge mastery.', magicSchool: MagicSchool.DIVINATION },
-            { id: 'brd_valor', featureName: 'College of Valor', description: 'Inspirational combat.', passiveEffect: 'COMBAT_INSPIRATION' }
-        ]}
+        { level: 6, unlocksSkill: 'jack_of_all_trades' },
+        { level: 7, unlocksSkill: 'vicious_mockery' },
+        { level: 8, passiveEffect: 'MUSICAL_KNOWLEDGE' },
+        { level: 10, unlocksSkill: 'healing_word' },
+        { level: 12, unlocksSkill: 'song_of_bravery' },
+        { level: 15, evolution: true, choices: [
+            { id: 'lore', featureName: 'Colegio del Saber', description: 'Conocimiento ancestral. Magía y buffs.', subclass: CharacterClass.BARD, unlocksSkill: 'dispell' },
+            { id: 'valor', featureName: 'Colegio del Valor', description: 'Inspiración en combate. Soporte.', subclass: CharacterClass.BARD, unlocksSkill: 'inspire' }
+        ]},
+        { level: 18, unlocksSkill: 'drums_distraction' },
+        { level: 20, unlocksSkill: 'tarot_card_of_fate' },
+        { level: 25, evolution: true, choices: [
+            { id: 'maestro', featureName: 'Maestro', description: 'Maestría musical y poder.', subclass: CharacterClass.BARD, unlocksSkill: 'meteor_storm' },
+            { id: 'storyteller', featureName: 'Cuentacuentos', description: 'Poder de los mitos.', subclass: CharacterClass.BARD, unlocksSkill: 'improvisation' }
+        ]},
+        { level: 30, passiveEffect: 'MASTER_BARD' }
     ]
 };

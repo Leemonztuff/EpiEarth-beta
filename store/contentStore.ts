@@ -2,6 +2,7 @@
 import { create } from 'zustand';
 import { Item, TerrainType, Spell, Skill, EnemyDefinition, Attributes, CharacterClass, NPCEntity, Quest, HexCell, BattleCell } from '../types';
 import { getSupabase } from '../services/supabaseClient';
+import { DEFAULT_SKILLS } from '../data/skillsData';
 
 export interface CustomMap {
     id: string;
@@ -68,7 +69,7 @@ export interface ContentState {
 export const useContentStore = create<ContentState>((set, get) => ({
     items: {},
     spells: {},
-    skills: {},
+    skills: DEFAULT_SKILLS,
     enemies: {},
     npcs: {},
     quests: {},

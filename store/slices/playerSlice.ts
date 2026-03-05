@@ -1,7 +1,7 @@
 
 // @ts-nocheck
 import { StateCreator } from 'zustand';
-import { CharacterRace, CharacterClass, Attributes, Difficulty, EquipmentSlot, Item, Ability, Entity, CombatStatsComponent, VisualComponent, Dimension, GameState, CreatureType, ItemRarity, MovementType } from '../../types';
+import { CharacterRace, CharacterClass, Attributes, Difficulty, EquipmentSlot, Item, Ability, Entity, CombatStatsComponent, VisualComponent, Dimension, GameState, CreatureType, ItemRarity, MovementType, EvolutionStage, ClassBranch } from '../../types';
 import { calculateHp, getModifier, calculateVisionRange, getCorruptionPenalty, rollDice, calculateDerivedStats } from '../../services/dndRules';
 import { BASE_STATS, RACE_BONUS, XP_TABLE, getSprite, CLASS_TREES, ITEMS } from '../../constants';
 import { sfx } from '../../services/SoundSystem';
@@ -16,9 +16,9 @@ export interface PlayerSlice {
   party: (Entity & { stats: CombatStatsComponent, visual: VisualComponent })[];
   characterPool: (Entity & { stats: CombatStatsComponent, visual: VisualComponent })[]; 
   hasHighPotentialSummon: boolean; 
-  createCharacter: (name: string, race: CharacterRace, cls: CharacterClass, stats: Attributes, difficulty: Difficulty) => void;
+  createCharacter: (name: string, race: CharacterRace, cls: CharacterClass, stats: Attributes, difficulty: Difficulty, evolutionStage?: EvolutionStage, branch?: ClassBranch) => void;
   recalculateStats: (entity: Entity & { stats: CombatStatsComponent }) => CombatStatsComponent;
-  applyLevelUp: (characterId: string, bonusAttributes: Partial<Attributes>, selectedChoices?: string[]) => void;
+  applyLevelUp: (characterId: string, bonusAttributes: Partial<Attributes>, selectedChoices?: string[], selectedBranch?: ClassBranch) => void;
   summonCharacter: (seed: string, method: 'FORCE' | 'STABILIZE') => void;
   swapPartyMember: (partyIndex: number, poolIndex: number) => void;
   addToParty: (poolIndex: number) => void;
@@ -104,8 +104,8 @@ export const createPlayerSlice: StateCreator<any, [], [], PlayerSlice> = (set, g
       set({ party: party.map(m => ({ ...m, stats: { ...m.stats, xp: m.stats.xp + amount } })) });
   },
 
-  createCharacter: (name, race, cls, stats, difficulty) => {
-    logger.game.info('Starting character creation:', { name, race, cls, difficulty });
+  createCharacter: (name, race, cls, stats, difficulty, evolutionStage = EvolutionStage.NOVICE, branch) => {
+    logger.game.info('Starting character creation:', { name, race, cls, difficulty, evolutionStage });
     try {
       try { sfx.playVictory(); } catch(e) { logger.game.error('sfx error:', e); }
       const hitDie = getHitDie(cls);
@@ -119,7 +119,7 @@ export const createPlayerSlice: StateCreator<any, [], [], PlayerSlice> = (set, g
           id: 'player_leader', name, type: 'PLAYER', equipment, 
           stats: { 
               level: 1, class: cls, race, creatureType: CreatureType.HUMANOID, 
-              xp: 0, xpToNextLevel: XP_TABLE[1] || 300, hp: maxHp, maxHp, stamina: 20, maxStamina: 20, ac: 10, initiativeBonus: getModifier(stats.DEX), speed: 30, movementType: MovementType.WALK, attributes: stats, baseAttributes: { ...stats }, spellSlots: getCasterSlots(cls, 1), corruption: 0, activeCooldowns: {}, activeStatusEffects: [], resistances: [], vulnerabilities: [], immunities: [], knownSkills: skills, knownSpells: spells, traits, maxActions, derived: calculateDerivedStats(stats, cls, 1, equipment)
+              xp: 0, xpToNextLevel: XP_TABLE[2] || 300, hp: maxHp, maxHp, stamina: 20, maxStamina: 20, ac: 10, initiativeBonus: getModifier(stats.DEX), speed: 30, movementType: MovementType.WALK, attributes: stats, baseAttributes: { ...stats }, spellSlots: getCasterSlots(cls, 1), corruption: 0, activeCooldowns: {}, activeStatusEffects: [], resistances: [], vulnerabilities: [], immunities: [], knownSkills: skills, knownSpells: spells, traits, maxActions, derived: calculateDerivedStats(stats, cls, 1, equipment), evolutionStage, branch
           }, 
           visual: { color: '#3b82f6', modelType: 'billboard', spriteUrl: getSprite(race, cls) } 
       };
@@ -155,15 +155,70 @@ export const createPlayerSlice: StateCreator<any, [], [], PlayerSlice> = (set, g
     return { ...s, maxHp, derived: calculateDerivedStats(s.attributes, s.class, s.level, entity.equipment) };
   },
 
-  applyLevelUp: (id, bonus, choices = []) => {
+  applyLevelUp: (id, bonus, choices = [], selectedBranch?: ClassBranch) => {
     const { party } = get();
     const updated = party.map(m => {
         if (m.id !== id) return m;
         const nextLvl = m.stats.level + 1;
+        
+        let newClass = m.stats.class;
+        let newEvolutionStage = m.stats.evolutionStage || EvolutionStage.NOVICE;
+        let newBranch = m.stats.branch || selectedBranch;
+        
+        if (m.stats.class === CharacterClass.NOVICE && nextLvl >= 5) {
+            const branchChoice = selectedBranch || (choices.length > 0 ? choices[0] : null);
+            if (branchChoice) {
+                if (branchChoice === 'branch_warrior') {
+                    newClass = CharacterClass.FIGHTER;
+                    newBranch = ClassBranch.WARRIOR;
+                } else if (branchChoice === 'branch_mage') {
+                    newClass = CharacterClass.WIZARD;
+                    newBranch = ClassBranch.MAGE;
+                } else if (branchChoice === 'branch_rogue') {
+                    newClass = CharacterClass.RANGER;
+                    newBranch = ClassBranch.ROGUE;
+                } else if (branchChoice === 'branch_cleric') {
+                    newClass = CharacterClass.CLERIC;
+                    newBranch = ClassBranch.CLERIC;
+                } else if (typeof branchChoice === 'string' && branchChoice.startsWith('branch_')) {
+                    newBranch = ClassBranch[branchChoice.replace('branch_', '').toUpperCase() as keyof typeof ClassBranch];
+                    if (newBranch === ClassBranch.WARRIOR) newClass = CharacterClass.FIGHTER;
+                    else if (newBranch === ClassBranch.MAGE) newClass = CharacterClass.WIZARD;
+                    else if (newBranch === ClassBranch.ROGUE) newClass = CharacterClass.RANGER;
+                    else if (newBranch === ClassBranch.CLERIC) newClass = CharacterClass.CLERIC;
+                }
+                newEvolutionStage = EvolutionStage.FIRST;
+            }
+        } else if (nextLvl >= 15 && m.stats.evolutionStage === EvolutionStage.FIRST) {
+            newEvolutionStage = EvolutionStage.SECOND;
+        } else if (nextLvl >= 25 && m.stats.evolutionStage === EvolutionStage.SECOND) {
+            newEvolutionStage = EvolutionStage.THIRD;
+        } else if (nextLvl >= 30 && m.stats.evolutionStage === EvolutionStage.THIRD) {
+            newEvolutionStage = EvolutionStage.MASTER;
+        }
+        
         const newAttrs = { ...m.stats.baseAttributes };
         Object.entries(bonus).forEach(([k, v]) => { if (v) newAttrs[k] += v; });
-        const features = getUnlockedFeatures(m.stats.class, nextLvl);
-        const temp = { ...m, stats: { ...m.stats, level: nextLvl, baseAttributes: newAttrs, attributes: newAttrs, xpToNextLevel: XP_TABLE[nextLvl] || 99999, knownSkills: Array.from(new Set([...m.stats.knownSkills, ...features.skills])), knownSpells: Array.from(new Set([...m.stats.knownSpells, ...features.spells])), traits: Array.from(new Set([...m.stats.traits, ...features.traits])) } };
+        
+        const finalClass = newClass !== m.stats.class ? newClass : m.stats.class;
+        const features = getUnlockedFeatures(finalClass, nextLvl);
+        
+        const temp = { 
+            ...m, 
+            stats: { 
+                ...m.stats, 
+                class: finalClass,
+                level: nextLvl, 
+                baseAttributes: newAttrs, 
+                attributes: newAttrs, 
+                xpToNextLevel: XP_TABLE[nextLvl + 1] || 99999, 
+                knownSkills: Array.from(new Set([...m.stats.knownSkills, ...features.skills])), 
+                knownSpells: Array.from(new Set([...m.stats.knownSpells, ...features.spells])), 
+                traits: Array.from(new Set([...m.stats.traits, ...features.traits])),
+                evolutionStage: newEvolutionStage,
+                branch: newBranch
+            } 
+        };
         return { ...m, stats: get().recalculateStats(temp) };
     });
     set({ party: updated });

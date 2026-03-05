@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { CharacterRace, CharacterClass, Attributes, Ability, Difficulty, GameState } from '../types';
+import { CharacterRace, CharacterClass, Attributes, Ability, Difficulty, GameState, EvolutionStage, ClassBranch } from '../types';
 import { BASE_STATS, RACE_BONUS, getSprite, CLASS_CONFIG, RACE_ICONS, WESNOTH_BASE_URL, NOISE_TEXTURE_URL } from '../constants';
 import { getModifier } from '../services/dndRules';
 import { useGameStore } from '../store/gameStore';
@@ -10,51 +10,93 @@ import { SaveLoadModal } from './SaveLoadModal';
 import { sfx } from '../services/SoundSystem';
 import { AssetManager } from '../services/AssetManager';
 
-const StatBar: React.FC<{ label: string, value: number, bonus: number }> = ({ label, value, bonus }) => {
+const roll3d6 = (): number => {
+    const d1 = Math.floor(Math.random() * 6) + 1;
+    const d2 = Math.floor(Math.random() * 6) + 1;
+    const d3 = Math.floor(Math.random() * 6) + 1;
+    return d1 + d2 + d3;
+};
+
+const StatBar: React.FC<{ label: string, value: number, bonus: number, baseValue: number, onIncrease: () => void, onDecrease: () => void, canIncrease: boolean, canDecrease: boolean }> = ({ label, value, bonus, baseValue, onIncrease, onDecrease, canIncrease, canDecrease }) => {
     const max = 20; 
-    const percentage = Math.min(100, (value / max) * 100);
+    const totalValue = baseValue + value + bonus;
+    const percentage = Math.min(100, (totalValue / max) * 100);
     const bonusPct = Math.min(100, (bonus / max) * 100);
+    const basePct = Math.min(100, (baseValue / max) * 100);
+    const allocatedPct = Math.min(100, (value / max) * 100);
     
     return (
         <div className="flex items-center gap-2 text-[10px] md:text-xs mb-1.5 w-full">
             <span className="w-8 font-black text-slate-500 uppercase shrink-0">{label}</span>
             <div className="flex-1 h-2 bg-slate-900 rounded-full overflow-hidden relative border border-slate-800">
-                <div className="absolute top-0 left-0 h-full bg-slate-600 transition-all duration-300" style={{ width: `${percentage - bonusPct}%` }} />
-                <div className="absolute top-0 h-full bg-amber-500 transition-all duration-300 shadow-[0_0_8px_rgba(245,158,11,0.5)]" style={{ left: `${percentage - bonusPct}%`, width: `${bonusPct}%` }} />
+                <div className="absolute top-0 left-0 h-full bg-slate-600 transition-all duration-300" style={{ width: `${percentage - bonusPct - allocatedPct}%` }} />
+                <div className="absolute top-0 h-full bg-slate-500 transition-all duration-300" style={{ left: `${percentage - bonusPct - allocatedPct}%`, width: `${allocatedPct}%` }} />
+                <div className="absolute top-0 h-full bg-amber-500 transition-all duration-300" style={{ left: `${percentage - bonusPct}%`, width: `${bonusPct}%` }} />
             </div>
-            <span className={`w-6 text-right font-mono font-bold shrink-0 ${bonus > 0 ? 'text-amber-400' : 'text-slate-300'}`}>{value}</span>
+            <span className={`w-8 text-right font-mono font-bold shrink-0 ${bonus > 0 ? 'text-amber-400' : 'text-slate-300'}`}>{totalValue}</span>
+            <div className="flex gap-1 shrink-0">
+                <button onClick={onDecrease} disabled={!canDecrease} className="w-6 h-6 rounded bg-slate-800 flex items-center justify-center text-xs text-slate-400 hover:bg-slate-700 disabled:opacity-20">-</button>
+                <button onClick={onIncrease} disabled={!canIncrease} className="w-6 h-6 rounded bg-slate-800 flex items-center justify-center text-xs text-amber-500 hover:bg-amber-900 disabled:opacity-20">+</button>
+            </div>
         </div>
     );
 };
 
 export const TitleScreen: React.FC<{ onComplete: any }> = ({ onComplete }) => {
   const [view, setView] = useState<'MENU' | 'CREATION'>('MENU');
-  const [activeTab, setActiveTab] = useState<'IDENTITY' | 'LINEAGE' | 'VOCATION'>('IDENTITY');
+  const [activeTab, setActiveTab] = useState<'IDENTITY' | 'LINEAGE' | 'ATTRIBUTES'>('IDENTITY');
   const [name, setName] = useState('');
   const [race, setRace] = useState<CharacterRace>(CharacterRace.HUMAN);
-  const [cls, setCls] = useState<CharacterClass>(CharacterClass.FIGHTER);
   const [difficulty, setDifficulty] = useState<Difficulty>(Difficulty.NORMAL);
   const [showAuth, setShowAuth] = useState(false);
   const [showLoad, setShowLoad] = useState(false);
   
+  const [rolledPoints, setRolledPoints] = useState<number | null>(null);
+  const [allocatedPoints, setAllocatedPoints] = useState<Attributes>({ STR: 0, DEX: 0, CON: 0, INT: 0, WIS: 0, CHA: 0 });
+  
   const { userSession, setAdminMode } = useGameStore();
   const { isLoading } = useContentStore();
 
-  const currentStats: Attributes = useMemo(() => {
-      const base = { ...BASE_STATS[cls] };
-      const bonus = RACE_BONUS[race];
-      const result = { ...base };
-      (Object.keys(base) as Ability[]).forEach(k => { if (bonus[k]) result[k] += bonus[k]!; });
-      return result;
-  }, [race, cls]);
+  const baseStats = BASE_STATS[CharacterClass.NOVICE];
+  const raceBonus = RACE_BONUS[race];
 
-  const spriteUrl = useMemo(() => AssetManager.getSafeSprite(getSprite(race, cls)), [race, cls]);
+  const handleRoll = () => {
+      const points = roll3d6();
+      setRolledPoints(points);
+      setAllocatedPoints({ STR: 0, DEX: 0, CON: 0, INT: 0, WIS: 0, CHA: 0 });
+      sfx.playUiClick();
+  };
+
+  const handlePointAllocation = (attr: Ability, delta: number) => {
+      if (rolledPoints === null) return;
+      const totalAllocated = Object.values(allocatedPoints).reduce((a, b) => a + b, 0);
+      const remaining = rolledPoints - totalAllocated;
+
+      if (delta > 0 && remaining > 0) {
+          setAllocatedPoints(prev => ({ ...prev, [attr]: prev[attr] + 1 }));
+      } else if (delta < 0 && allocatedPoints[attr] > 0) {
+          setAllocatedPoints(prev => ({ ...prev, [attr]: prev[attr] - 1 }));
+      }
+  };
+
+  const currentStats: Attributes = useMemo(() => {
+      const result = { ...baseStats };
+      (Object.keys(baseStats) as Ability[]).forEach(k => {
+          result[k] = baseStats[k]! + allocatedPoints[k]!;
+          if (raceBonus[k]) result[k] += raceBonus[k]!;
+      });
+      return result;
+  }, [race, allocatedPoints]);
+
+  const totalAllocated = Object.values(allocatedPoints).reduce((a, b) => a + b, 0);
+  const remainingPoints = rolledPoints !== null ? rolledPoints - totalAllocated : 0;
+
+  const spriteUrl = useMemo(() => AssetManager.getSafeSprite(getSprite(race, CharacterClass.NOVICE)), [race]);
 
   const handleAdminPortal = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     sfx.playUiClick();
-    // Navegación client-side para evitar el 404 en el servidor de Vercel
     setAdminMode(true);
   };
 
@@ -74,7 +116,6 @@ export const TitleScreen: React.FC<{ onComplete: any }> = ({ onComplete }) => {
                 <button onClick={() => setShowLoad(true)} className="bg-slate-900 text-white border border-slate-700 py-3 rounded-xl font-bold uppercase tracking-widest text-xs hover:bg-slate-800 transition-colors">Continue</button>
             </div>
 
-            {/* Hidden Admin Access - Better for touch devices */}
             <div className="absolute bottom-6 right-6 z-20">
                 <button 
                     onClick={handleAdminPortal}
@@ -94,7 +135,6 @@ export const TitleScreen: React.FC<{ onComplete: any }> = ({ onComplete }) => {
 
   return (
     <div className="fixed inset-0 z-[150] bg-slate-950 flex flex-col md:flex-row overflow-hidden animate-in fade-in duration-300">
-        {/* Preview Panel */}
         <div className="relative w-full h-[30vh] md:h-full md:w-1/3 bg-slate-900 border-b md:border-b-0 md:border-r border-slate-800 flex flex-col shadow-2xl shrink-0 overflow-hidden">
             <div className="absolute inset-0 bg-gradient-to-b from-slate-800/20 to-black pointer-events-none" />
             
@@ -107,7 +147,7 @@ export const TitleScreen: React.FC<{ onComplete: any }> = ({ onComplete }) => {
                     <div className="absolute inset-0 bg-amber-500/10 blur-[40px] md:blur-[60px] rounded-full animate-pulse" />
                     <img 
                         src={spriteUrl} 
-                        className="relative z-10 w-full h-full object-contain pixelated scale-[1.5] md:scale-[1.8] drop-shadow-[0_15px_30px_rgba(0,0,0,0.8)] transition-all"
+                        className="relative z-10 w-full h-full object-contain scale-[1.5] md:scale-[1.8] drop-shadow-[0_15px_30px_rgba(0,0,0,0.8)] transition-all"
                         onError={(e) => { e.currentTarget.src = AssetManager.getSafeSprite('units/human-loyalists/lieutenant.png'); }}
                     />
                 </div>
@@ -118,32 +158,39 @@ export const TitleScreen: React.FC<{ onComplete: any }> = ({ onComplete }) => {
                     </h2>
                     <div className="flex items-center justify-center gap-2 mt-2">
                         <span className="text-[8px] md:text-[10px] font-black uppercase tracking-widest text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">Lvl 1</span>
-                        <span className="text-[8px] md:text-[10px] font-bold uppercase tracking-widest text-slate-400">{race} • {cls}</span>
+                        <span className="text-[8px] md:text-[10px] font-bold uppercase tracking-widest text-slate-400">{race} • NOVICE</span>
                     </div>
                 </div>
             </div>
 
-            {/* Desktop Stats (Hidden on Mobile view top) */}
             <div className="p-6 bg-black/40 border-t border-slate-800 hidden md:block">
                 <div className="grid grid-cols-2 gap-x-6 gap-y-2">
                     {Object.values(Ability).map(attr => (
-                        <StatBar key={attr} label={attr} value={currentStats[attr]} bonus={RACE_BONUS[race][attr] || 0} />
+                        <StatBar 
+                            key={attr} 
+                            label={attr} 
+                            value={allocatedPoints[attr]} 
+                            bonus={raceBonus[attr] || 0}
+                            baseValue={baseStats[attr]!}
+                            onIncrease={() => handlePointAllocation(attr, 1)}
+                            onDecrease={() => handlePointAllocation(attr, -1)}
+                            canIncrease={remainingPoints > 0}
+                            canDecrease={allocatedPoints[attr] > 0}
+                        />
                     ))}
                 </div>
             </div>
         </div>
 
-        {/* Customization Options */}
         <div className="flex-1 flex flex-col bg-slate-950 relative overflow-hidden">
-            {/* Mobile-Friendly Tabs */}
             <div className="flex border-b border-slate-800 bg-slate-900/50 shrink-0 sticky top-0 z-20">
-                {(['IDENTITY', 'LINEAGE', 'VOCATION'] as const).map(tab => (
+                {(['IDENTITY', 'LINEAGE', 'ATTRIBUTES'] as const).map(tab => (
                     <button
                         key={tab}
                         onClick={() => { sfx.playUiClick(); setActiveTab(tab); }}
                         className={`flex-1 py-4 text-[10px] md:text-xs font-black uppercase tracking-[0.15em] transition-all relative ${activeTab === tab ? 'text-amber-400 bg-slate-900' : 'text-slate-500 hover:text-slate-300'}`}
                     >
-                        {tab === 'LINEAGE' ? 'RACE' : (tab === 'VOCATION' ? 'CLASS' : tab)}
+                        {tab === 'LINEAGE' ? 'RACE' : (tab === 'ATTRIBUTES' ? 'STATS' : tab)}
                         {activeTab === tab && <div className="absolute bottom-0 left-0 right-0 h-1 bg-amber-500 shadow-[0_-2px_10px_rgba(245,158,11,0.5)]" />}
                     </button>
                 ))}
@@ -193,29 +240,77 @@ export const TitleScreen: React.FC<{ onComplete: any }> = ({ onComplete }) => {
                         </div>
                     )}
 
-                    {activeTab === 'VOCATION' && (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 animate-in slide-in-from-bottom-4 duration-500">
-                            {Object.values(CharacterClass).map(c => (
-                                <button key={c} onClick={() => { setCls(c); sfx.playUiClick(); }} className={`p-4 rounded-xl border-2 transition-all text-left group relative ${cls === c ? 'bg-slate-800 border-amber-500 shadow-lg shadow-amber-900/10' : 'bg-slate-900/40 border-slate-800'}`}>
-                                    <div className="flex justify-between items-start mb-2">
-                                        <span className={`text-[11px] font-black uppercase tracking-widest ${cls === c ? 'text-amber-400' : 'text-white'}`}>{c}</span>
-                                        <div className="w-6 h-6 bg-black/30 rounded flex items-center justify-center overflow-hidden">
-                                            <img src={AssetManager.getSafeSprite(CLASS_CONFIG[c]?.icon || RACE_ICONS[CharacterRace.HUMAN])} className={`w-5 h-5 object-contain transition-all ${cls === c ? 'opacity-100' : 'opacity-20 grayscale group-hover:opacity-40'}`} onError={e => e.currentTarget.style.display='none'} />
+                    {activeTab === 'ATTRIBUTES' && (
+                        <div className="animate-in slide-in-from-bottom-4 duration-500">
+                            {!rolledPoints ? (
+                                <div className="text-center py-8">
+                                    <div className="mb-6">
+                                        <div className="text-6xl mb-4">🎲</div>
+                                        <h3 className="text-2xl font-serif font-bold text-white mb-2">Roll for Potential</h3>
+                                        <p className="text-sm text-slate-400">Tira 3d6 para determinar tus puntos de atributo disponibles. ¡Cada tirada es única!</p>
+                                    </div>
+                                    <button 
+                                        onClick={handleRoll}
+                                        className="bg-amber-600 hover:bg-amber-500 text-white font-black uppercase tracking-[0.2em] text-sm py-4 px-12 rounded-xl shadow-[0_0_20px_rgba(217,119,6,0.3)] active:scale-95 transition-all"
+                                    >
+                                        Roll 3d6
+                                    </button>
+                                </div>
+                            ) : (
+                                <div>
+                                    <div className="flex justify-between items-center mb-6">
+                                        <div>
+                                            <h3 className="text-xl font-serif font-bold text-white">Points Available</h3>
+                                            <p className="text-xs text-slate-500">Distribuye tus puntos libremente</p>
+                                        </div>
+                                        <div className={`text-3xl font-black ${remainingPoints > 0 ? 'text-amber-500' : 'text-emerald-500'}`}>
+                                            {remainingPoints}
                                         </div>
                                     </div>
-                                    <div className="text-[9px] text-slate-500 uppercase font-bold tracking-tighter leading-tight">{CLASS_CONFIG[c]?.archetype || 'Fated Hero'}</div>
-                                </button>
-                            ))}
+
+                                    <div className="space-y-2 mb-6">
+                                        {Object.values(Ability).map(attr => (
+                                            <StatBar 
+                                                key={attr} 
+                                                label={attr} 
+                                                value={allocatedPoints[attr]} 
+                                                bonus={raceBonus[attr] || 0}
+                                                baseValue={baseStats[attr]!}
+                                                onIncrease={() => handlePointAllocation(attr, 1)}
+                                                onDecrease={() => handlePointAllocation(attr, -1)}
+                                                canIncrease={remainingPoints > 0}
+                                                canDecrease={allocatedPoints[attr] > 0}
+                                            />
+                                        ))}
+                                    </div>
+
+                                    <button 
+                                        onClick={() => { setRolledPoints(null); setAllocatedPoints({ STR: 0, DEX: 0, CON: 0, INT: 0, WIS: 0, CHA: 0 }); }}
+                                        className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-slate-400 font-bold uppercase text-xs tracking-widest rounded-xl border border-slate-700 transition-all"
+                                    >
+                                        Reroll
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     )}
 
-                    {/* Show stats on mobile within the content scroll to avoid layout crunch */}
                     <div className="mt-8 md:hidden animate-in fade-in duration-700">
                          <div className="p-5 bg-slate-900/80 rounded-2xl border border-slate-800 shadow-inner">
                             <h3 className="text-[9px] font-black text-amber-500 uppercase tracking-widest mb-4 border-b border-white/5 pb-2">Attribute Distribution</h3>
                             <div className="grid grid-cols-2 gap-x-6 gap-y-3">
                                 {Object.values(Ability).map(attr => (
-                                    <StatBar key={attr} label={attr} value={currentStats[attr]} bonus={RACE_BONUS[race][attr] || 0} />
+                                    <StatBar 
+                                        key={attr} 
+                                        label={attr} 
+                                        value={allocatedPoints[attr]} 
+                                        bonus={raceBonus[attr] || 0}
+                                        baseValue={baseStats[attr]!}
+                                        onIncrease={() => handlePointAllocation(attr, 1)}
+                                        onDecrease={() => handlePointAllocation(attr, -1)}
+                                        canIncrease={remainingPoints > 0}
+                                        canDecrease={allocatedPoints[attr] > 0}
+                                    />
                                 ))}
                             </div>
                          </div>
@@ -223,11 +318,10 @@ export const TitleScreen: React.FC<{ onComplete: any }> = ({ onComplete }) => {
                 </div>
             </div>
 
-            {/* Bottom Floating Actions */}
             <div className="absolute bottom-0 left-0 right-0 p-5 bg-slate-950/95 border-t border-slate-800 backdrop-blur-xl flex gap-3 z-30 shadow-[0_-10px_30px_rgba(0,0,0,0.8)]">
                 {activeTab !== 'IDENTITY' && (
                     <button 
-                        onClick={() => setActiveTab(prev => prev === 'VOCATION' ? 'LINEAGE' : 'IDENTITY')}
+                        onClick={() => setActiveTab(prev => prev === 'ATTRIBUTES' ? 'LINEAGE' : 'IDENTITY')}
                         className="px-6 py-4 rounded-xl border border-slate-700 text-slate-400 font-black uppercase text-[10px] tracking-[0.2em] active:bg-slate-800 active:text-white transition-all shadow-lg"
                     >
                         Back
@@ -237,12 +331,19 @@ export const TitleScreen: React.FC<{ onComplete: any }> = ({ onComplete }) => {
                 <button 
                     onClick={() => {
                         if (activeTab === 'IDENTITY') setActiveTab('LINEAGE');
-                        else if (activeTab === 'LINEAGE') setActiveTab('VOCATION');
-                        else onComplete(name.trim() || `${race} ${cls}`, race, cls, currentStats, difficulty);
+                        else if (activeTab === 'LINEAGE') {
+                            if (rolledPoints === null) {
+                                setActiveTab('ATTRIBUTES');
+                            } else {
+                                onComplete(name.trim() || `${race} Novice`, race, CharacterClass.NOVICE, currentStats, difficulty, EvolutionStage.NOVICE);
+                            }
+                        }
+                        else onComplete(name.trim() || `${race} Novice`, race, CharacterClass.NOVICE, currentStats, difficulty, EvolutionStage.NOVICE);
                     }}
-                    className="flex-1 bg-amber-600 hover:bg-amber-500 text-white font-black uppercase tracking-[0.25em] text-xs py-4 rounded-xl shadow-[0_0_20px_rgba(217,119,6,0.3)] active:scale-[0.97] transition-all border-b-4 border-amber-800"
+                    disabled={activeTab === 'ATTRIBUTES' && (rolledPoints === null || remainingPoints > 0)}
+                    className="flex-1 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-black uppercase tracking-[0.25em] text-xs py-4 rounded-xl shadow-[0_0_20px_rgba(217,119,6,0.3)] active:scale-[0.97] transition-all border-b-4 border-amber-800 disabled:border-slate-900"
                 >
-                    {activeTab === 'VOCATION' ? 'Embark Journey' : 'Next Step'}
+                    {activeTab === 'ATTRIBUTES' ? (remainingPoints > 0 ? 'Allocate All Points' : 'Begin Journey') : 'Next Step'}
                 </button>
             </div>
         </div>

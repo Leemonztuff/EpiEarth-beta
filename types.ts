@@ -10,9 +10,25 @@ export enum TerrainType {
 }
 
 export enum CharacterClass {
+    NOVICE = 'NOVICE',
     FIGHTER = 'FIGHTER', RANGER = 'RANGER', WIZARD = 'WIZARD', CLERIC = 'CLERIC',
     ROGUE = 'ROGUE', BARBARIAN = 'BARBARIAN', PALADIN = 'PALADIN', SORCERER = 'SORCERER',
     WARLOCK = 'WARLOCK', DRUID = 'DRUID', BARD = 'BARD'
+}
+
+export enum ClassBranch {
+    WARRIOR = 'WARRIOR',    // Fighter, Paladin, Barbarian
+    MAGE = 'MAGE',          // Wizard, Sorcerer, Warlock
+    ROGUE = 'ROGUE',       // Ranger, Rogue, Bard
+    CLERIC = 'CLERIC'       // Cleric, Druid
+}
+
+export enum EvolutionStage {
+    NOVICE = 'NOVICE',
+    FIRST = 'FIRST',        // Level 5 - Class branch
+    SECOND = 'SECOND',     // Level 15 - Subclass
+    THIRD = 'THIRD',       // Level 25 - Advanced class
+    MASTER = 'MASTER'      // Level 30 - Max level
 }
 
 export enum CharacterRace {
@@ -80,8 +96,65 @@ export enum GameState {
     DUNGEON = 'DUNGEON', BATTLE_INIT = 'BATTLE_INIT', BATTLE_TACTICAL = 'BATTLE_TACTICAL',
     BATTLE_VICTORY = 'BATTLE_VICTORY', BATTLE_DEFEAT = 'BATTLE_DEFEAT', DIALOGUE = 'DIALOGUE',
     LEVEL_UP = 'LEVEL_UP', SUMMONING = 'SUMMONING', TEMPLE_HUB = 'TEMPLE_HUB',
-    PARTY_MANAGEMENT = 'PARTY_MANAGEMENT', GAME_WON = 'GAME_WON'
+    PARTY_MANAGEMENT = 'PARTY_MANAGEMENT', GAME_WON = 'GAME_WON',
+    EXPLORATION_3D = 'EXPLORATION_3D', ENCOUNTER = 'ENCOUNTER', BATTLE_VERSUS = 'BATTLE_VERSUS'
 }
+
+export enum TrapType {
+    SPIKE = 'SPIKE', FIRE = 'FIRE', ICE = 'ICE', POISON = 'POISON',
+    EXPLOSIVE = 'EXPLOSIVE', STUN = 'STUN', TELEPORT = 'TELEPORT',
+    DECOY = 'DECOY', TRAP_DOOR = 'TRAP_DOOR', ALARM = 'ALARM'
+}
+
+export interface Trap {
+    id: string;
+    type: TrapType;
+    position: { x: number; y: number; z: number };
+    isArmed: boolean;
+    isTriggered: boolean;
+    ownerId?: string;
+    damage?: number;
+    duration?: number;
+    description: string;
+}
+
+export interface VersusBattleState {
+    playerEntity: Entity;
+    enemyEntity: Entity;
+    playerHp: number;
+    playerMaxHp: number;
+    enemyHp: number;
+    enemyMaxHp: number;
+    turn: 'PLAYER' | 'ENEMY';
+    phase: 'SELECT' | 'ANIMATION' | 'DAMAGE' | 'END';
+    selectedAction: BattleAction | null;
+    selectedSkill: string | null;
+    animationQueue: BattleAnimation[];
+    cameraEffect: CameraEffect;
+    screenShake: number;
+    zoomLevel: number;
+}
+
+export interface BattleAnimation {
+    type: 'ATTACK' | 'SKILL' | 'ITEM' | 'DAMAGE' | 'HEAL' | 'STATUS' | 'ENTER' | 'FLEE';
+    attacker: 'PLAYER' | 'ENEMY';
+    target: 'PLAYER' | 'ENEMY';
+    skillId?: string;
+    damage?: number;
+    heal?: number;
+    duration: number;
+    particleEffects?: ParticleEffect[];
+}
+
+export interface ParticleEffect {
+    type: 'fire' | 'ice' | 'lightning' | 'smoke' | 'blood' | 'sparkle' | 'explosion';
+    position: { x: number; y: number };
+    duration: number;
+}
+
+export type CameraEffect = 
+    | 'NONE' | 'ZOOM_IN' | 'ZOOM_OUT' | 'SHAKE' | 'SLAM' | 'FLASH' | 
+    'PARALLAX_LEFT' | 'PARALLAX_RIGHT' | 'ROTATE' | 'PULSE';
 
 export enum BattleAction {
     MOVE = 'MOVE', ATTACK = 'ATTACK', WAIT = 'WAIT', ITEM = 'ITEM', SPELL = 'SPELL', SKILL = 'SKILL'
@@ -141,6 +214,7 @@ export interface CombatStatsComponent {
     knownSkills?: string[]; knownSpells?: string[]; traits?: string[];
     maxActions?: number; derived?: DerivedStats;
     attackDamageType?: DamageType; affinity?: DamageType;
+    evolutionStage?: EvolutionStage; branch?: ClassBranch;
 }
 
 export interface Entity {
@@ -189,7 +263,16 @@ export interface BattleCell {
 
 export interface Spell { id: string; name: string; description: string; school: MagicSchool; level: number; range: number; effect: ActionEffect[]; }
 
-export interface Skill { id: string; name: string; description: string; range: number; effect: ActionEffect[]; }
+export interface Skill { 
+    id: string; 
+    name: string; 
+    description: string; 
+    range: number; 
+    effect: ActionEffect[];
+    type?: 'active' | 'passive';
+    mpCost?: number;
+    cooldown?: number;
+}
 
 export interface NPCEntity { id: string; name: string; role: string; sprite: string; dialogueNodes?: Record<string, DialogueNode>; startNodeId?: string; }
 

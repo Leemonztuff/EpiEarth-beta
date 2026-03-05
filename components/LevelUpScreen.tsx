@@ -2,9 +2,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { useContentStore } from '../store/contentStore';
-import { GameState, Ability, Attributes, MagicSchool } from '../types';
+import { GameState, Ability, Attributes, MagicSchool, CharacterClass, EvolutionStage, ClassBranch } from '../types';
 import { sfx } from '../services/SoundSystem';
-import { CLASS_TREES, SCHOOL_COLORS } from '../constants';
+import { CLASS_TREES, SCHOOL_COLORS, CLASS_CONFIG } from '../constants';
 
 const SchoolSeal = ({ school }: { school: MagicSchool }) => {
     const seals: Record<MagicSchool, string> = {
@@ -35,6 +35,8 @@ export const LevelUpScreen = () => {
     const character = party[characterIndex];
     const eligibleCharacters = party.filter(p => p.stats.xp >= p.stats.xpToNextLevel);
     const nextLevel = character ? character.stats.level + 1 : 1;
+
+    const isEvolutionLevel = nextLevel === 5 || nextLevel === 15 || nextLevel === 25 || nextLevel === 30;
 
     const availableChoices = useMemo(() => {
         if (!character) return [];
@@ -69,6 +71,22 @@ export const LevelUpScreen = () => {
         }
     };
 
+    const getEvolutionTitle = () => {
+        if (!character) return '';
+        if (character.stats.level < 5) return 'Elige tu Camino';
+        if (character.stats.level < 15) return 'Especialización';
+        if (character.stats.level < 25) return 'Evolución Avanzada';
+        return 'Maestría Final';
+    };
+
+    const getEvolutionDescription = () => {
+        if (!character) return '';
+        if (character.stats.level < 5) return 'Has alcanzado el nivel 5. Elige una rama de clase para especializarte.';
+        if (character.stats.level < 15) return 'Has alcanzado el nivel 15. Elige una subclase para profundizar tus habilidades.';
+        if (character.stats.level < 25) return 'Has alcanzado el nivel 25. Evoluciona a una clase avanzada.';
+        return 'Has alcanzado el nivel 30. Alcanza la maestría total.';
+    };
+
     const goToMastery = () => {
         if (pointsRemaining > 0 && !confirm("You have unused points. Continue anyway?")) return;
         if (availableChoices.length > 0) {
@@ -80,7 +98,8 @@ export const LevelUpScreen = () => {
     };
 
     const handleConfirm = () => {
-        applyLevelUp(character.id, pendingAttributes, selectedChoiceIds);
+        const selectedBranch = selectedChoiceIds.length > 0 ? selectedChoiceIds[0] as ClassBranch : undefined;
+        applyLevelUp(character.id, pendingAttributes, selectedChoiceIds, selectedBranch);
         sfx.playVictory();
         
         setPendingAttributes({});
@@ -175,10 +194,14 @@ export const LevelUpScreen = () => {
                         <div className="animate-in slide-in-from-right-4 duration-300 h-full flex flex-col">
                             <header className="mb-8 border-b border-white/5 pb-4">
                                 <div className="flex justify-between items-center mb-2">
-                                    <h4 className="text-2xl font-serif font-bold text-slate-100 uppercase tracking-wide">Path of Mastery</h4>
+                                    <h4 className="text-2xl font-serif font-bold text-slate-100 uppercase tracking-wide">
+                                        {isEvolutionLevel ? getEvolutionTitle() : 'Path of Mastery'}
+                                    </h4>
                                     <button onClick={() => setPhase('ATTRIBUTES')} className="text-[10px] font-black uppercase text-slate-500 hover:text-white transition-colors">← Attributes</button>
                                 </div>
-                                <p className="text-sm text-slate-400">Select one specialization to unlock new tactical possibilities or permanent traits.</p>
+                                <p className="text-sm text-slate-400">
+                                    {isEvolutionLevel ? getEvolutionDescription() : 'Select one specialization to unlock new tactical possibilities or permanent traits.'}
+                                </p>
                             </header>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1">
