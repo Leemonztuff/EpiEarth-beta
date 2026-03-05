@@ -171,3 +171,62 @@ Use the `AssetManager` service for handling game assets. Large assets should be 
 - Code-split heavy components (BattleScene, OverworldMap)
 - Memoize expensive game calculations
 - Use object pooling for frequently created/destroyed objects (projectiles, particles)
+
+## Battle System Patterns
+
+### Battle Scene Components
+Battle-related components are located in `components/battle/`:
+- `BattleScene.tsx` - Main battle canvas with 3D rendering
+- `CinematicCamera.tsx` - Camera control and transitions
+- `TerrainLayer.tsx` - Grid-based terrain rendering with InstancedMesh
+- `EntityRenderer.tsx` - Character/enemy sprite rendering
+- `LightingSystem.tsx` - Dynamic lighting per biome
+- `FogController.tsx` - Atmospheric fog effects
+- `PixelPostProcess.tsx` - Pixel-art post-processing shader
+
+### Post-Processing Pipeline
+The battle scene uses a custom pixel-art post-processing pipeline:
+```tsx
+<PixelPostProcess 
+    pixelSize={3}        // Resolution divisor
+    colorDepth={16}      // Color levels per channel
+    ditherIntensity={0.4}
+    enablePalette={false} // Optional palette limitation
+/>
+```
+
+### Three.js Shaders
+Custom shaders should use `@react-three/fiber` patterns:
+- Use `shaderMaterial` from drei for reusable materials
+- Handle cleanup in `useEffect` return
+- Use `useFrame` for animated shaders
+
+## Testing Guidelines
+
+### Single Test Execution
+```bash
+# Run specific test file
+npx vitest run src/path/to/test.file.ts
+
+# Run tests matching a pattern
+npx vitest run --grep "battle"
+
+# Run with coverage for specific file
+npx vitest run src/services/dndRules.test.ts --coverage
+```
+
+### Test Patterns
+- Place tests alongside source files: `service.ts` → `service.test.ts`
+- Use Vitest's `describe` and `it` blocks
+- Mock external dependencies (Supabase, Gemini API)
+- Test game logic (damage calculation, pathfinding) in isolation
+
+## Common Issues
+
+### Build Errors
+- If `npm run build` fails with peer dependencies, try `npm install --legacy-peer-deps`
+- Run `npx tsc --noEmit` to check types without building
+
+### Development Server
+- Server runs on port 3000: `http://localhost:3000`
+- Use `npm run dev` for hot-reload development
