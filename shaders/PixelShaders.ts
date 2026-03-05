@@ -4,23 +4,36 @@ import * as THREE from 'three';
 
 // ============== SHADERS PIXEL ART ==============
 
-// Vertex shader básico
+// Vertex shader básico con vertex lighting
 export const pixelVertexShader = `
+  uniform vec3 uLightPosition;
+  uniform float uLightIntensity;
+  uniform float uAmbientIntensity;
+
   varying vec2 vUv;
   varying vec3 vNormal;
   varying vec3 vWorldPosition;
+  varying float vLight;
   
   void main() {
     vUv = uv;
     vNormal = normalize(normalMatrix * normal);
     vec4 worldPos = modelMatrix * vec4(position, 1.0);
     vWorldPosition = worldPos.xyz;
+    
+    // Vertex lighting
+    vec3 lightDir = normalize(uLightPosition - vWorldPosition);
+    vLight = max(dot(vNormal, lightDir), 0.0) * uLightIntensity + uAmbientIntensity;
+    
     gl_Position = projectionMatrix * viewMatrix * worldPos;
   }
 `;
 
 // Fragment shader de iluminación pixelada
 export const pixelFragmentShader = `
+  precision mediump float;
+  precision mediump int;
+
   uniform vec3 uColor;
   uniform vec3 uLightPosition;
   uniform vec3 uLightColor;
@@ -33,6 +46,7 @@ export const pixelFragmentShader = `
   varying vec2 vUv;
   varying vec3 vNormal;
   varying vec3 vWorldPosition;
+  varying float vLight;
   
   // Paleta de color estilo D&D retro
   const vec3 palette[8] = vec3[8](
@@ -46,55 +60,56 @@ export const pixelFragmentShader = `
     vec3(0.9, 0.9, 0.7)        // 7 - Piel/amarillo
   );
   
-  // Función de dithering (patrón de Bayer 4x4)
-  float dither4x4(vec2 position) {
-    int x = int(mod(position.x, 4.0));
-    int y = int(mod(position.y, 4.0));
+  // Función de cuantización a paleta
+  vec3 closestColor(vec3 c) {
+    float best = 999.0;
+    vec3 bestColor = palette[0];
+    for (int i = 0; i < 8; i++) {
+      float d = distance(c, palette[i]);
+      if (d < best) {
+        best = d;
+        bestColor = palette[i];
+      }
+    }
+    return bestColor;
+  }
+  
+  // Bayer matrix 4x4 optimizada
+  float bayer4x4(vec2 p) {
+    int x = int(mod(p.x, 4.0));
+    int y = int(mod(p.y, 4.0));
     int index = x + y * 4;
-    float limit = 0.0;
-    
-    if (index == 0) limit = 0.0625;
-    else if (index == 1) limit = 0.5625;
-    else if (index == 2) limit = 0.1875;
-    else if (index == 3) limit = 0.6875;
-    else if (index == 4) limit = 0.8125;
-    else if (index == 5) limit = 0.3125;
-    else if (index == 6) limit = 0.9375;
-    else if (index == 7) limit = 0.4375;
-    else if (index == 8) limit = 0.25;
-    else if (index == 9) limit = 0.75;
-    else if (index == 10) limit = 0.125;
-    else if (index == 11) limit = 0.625;
-    else if (index == 12) limit = 1.0;
-    else if (index == 13) limit = 0.5;
-    else if (index == 14) limit = 0.875;
-    else limit = 0.375;
-    
-    return limit;
+    float bayer[16] = float[16](
+      0.0/16.0, 8.0/16.0, 2.0/16.0, 10.0/16.0,
+      12.0/16.0, 4.0/16.0, 14.0/16.0, 6.0/16.0,
+      3.0/16.0, 11.0/16.0, 1.0/16.0, 9.0/16.0,
+      15.0/16.0, 7.0/16.0, 13.0/16.0, 5.0/16.0
+    );
+    return bayer[index];
   }
   
   void main() {
-    // Pixelación de coordenadas
-    vec2 pixelCoord = floor(vWorldPosition.xy / uPixelSize) * uPixelSize;
+    // Pixelación en pantalla para efecto real
+    vec2 pixel = floor(gl_FragCoord.xy / uPixelSize) * uPixelSize;
     
-    // Luz direccional simple
-    vec3 lightDir = normalize(uLightPosition - vWorldPosition);
-    float diff = max(dot(vNormal, lightDir), 0.0);
+    // Usar vertex lighting
+    vec3 finalColor = uColor * vLight * uLightColor;
     
-    // Aplicar iluminación
-    vec3 ambient = uColor * uAmbientIntensity;
-    vec3 diffuse = uColor * diff * uLightColor * uLightIntensity;
+    // Dithering sin branching
+    float ditherValue = mix(0.0, bayer4x4(pixel), float(uEnableDithering));
+    finalColor = floor(finalColor * 8.0 + ditherValue) / 8.0;
     
-    vec3 finalColor = ambient + diffuse;
+    // Cuantización a paleta
+    finalColor = closestColor(finalColor);
     
-    // Dithering opcional
-    if (uEnableDithering) {
-      float ditherValue = dither4x4(pixelCoord);
-      finalColor = floor(finalColor * 8.0 + ditherValue) / 8.0;
-    }
+    // Fog pixelado
+    float dist = length(vWorldPosition - cameraPosition);
+    float fog = smoothstep(20.0, 60.0, dist);
+    finalColor = mix(finalColor, vec3(0.05, 0.05, 0.08), fog);
     
-    // Quantización de color (reducir colores)
-    finalColor = floor(finalColor * 4.0) / 4.0;
+    // Shadow fake barato
+    float shadow = clamp(vNormal.y, 0.2, 1.0);
+    finalColor *= shadow;
     
     gl_FragColor = vec4(finalColor, 1.0);
   }
@@ -102,7 +117,11 @@ export const pixelFragmentShader = `
 
 // Shader para sprites con outline
 export const spriteOutlineShader = `
+  precision mediump float;
+  precision mediump int;
+
   uniform sampler2D uTexture;
+  uniform vec2 uTextureSize;
   uniform vec3 uOutlineColor;
   uniform float uOutlineThickness;
   uniform bool uEnableOutline;
@@ -122,21 +141,23 @@ export const spriteOutlineShader = `
     vec3 finalColor = texColor.rgb;
     float alpha = texColor.a;
     
-    // Outline
+    // Outline con offsets fijos
     if (uEnableOutline) {
-      vec2 texelSize = vec2(1.0) / vec2(textureSize(uTexture, 0));
+      vec2 texelSize = 1.0 / uTextureSize;
       float outlineAlpha = 0.0;
       
-      for (float x = -1.0; x <= 1.0; x += 1.0) {
-        for (float y = -1.0; y <= 1.0; y += 1.0) {
-          if (x == 0.0 && y == 0.0) continue;
-          
-          vec2 offset = vec2(x, y) * uOutlineThickness * texelSize;
-          vec4 neighbor = texture2D(uTexture, vUv + offset);
-          
-          if (neighbor.a < 0.1) {
-            outlineAlpha = max(outlineAlpha, 1.0 - length(vec2(x, y)) * 0.5);
-          }
+      vec2 offsets[8] = vec2[8](
+        vec2(-1.0, -1.0), vec2(0.0, -1.0), vec2(1.0, -1.0),
+        vec2(-1.0, 0.0),                     vec2(1.0, 0.0),
+        vec2(-1.0, 1.0),  vec2(0.0, 1.0),  vec2(1.0, 1.0)
+      );
+      
+      for (int i = 0; i < 8; i++) {
+        vec2 offset = offsets[i] * uOutlineThickness * texelSize;
+        vec4 neighbor = texture2D(uTexture, vUv + offset);
+        
+        if (neighbor.a < 0.1) {
+          outlineAlpha = max(outlineAlpha, 1.0 - length(offsets[i]) * 0.5);
         }
       }
       
@@ -253,6 +274,9 @@ export const createPixelMaterial = (options: {
   ambientIntensity?: number;
   pixelSize?: number;
   enableDithering?: boolean;
+  transparent?: boolean;
+  depthWrite?: boolean;
+  side?: THREE.Side;
 } = {}) => {
   const {
     color = new THREE.Color(0x888888),
@@ -261,7 +285,10 @@ export const createPixelMaterial = (options: {
     lightIntensity = 1.0,
     ambientIntensity = 0.3,
     pixelSize = 0.1,
-    enableDithering = false
+    enableDithering = false,
+    transparent = false,
+    depthWrite = true,
+    side = THREE.FrontSide
   } = options;
 
   return new THREE.ShaderMaterial({
@@ -276,7 +303,10 @@ export const createPixelMaterial = (options: {
       uTime: { value: 0 }
     },
     vertexShader: pixelVertexShader,
-    fragmentShader: pixelFragmentShader
+    fragmentShader: pixelFragmentShader,
+    transparent,
+    depthWrite,
+    side
   });
 };
 
