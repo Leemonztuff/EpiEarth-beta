@@ -9,7 +9,25 @@ import { AssetManager } from '../../services/AssetManager';
 import { useGameStore } from '../../store/gameStore';
 
 const StatusBadge = ({ type }: { type: StatusEffectType }) => {
-    const icons = { [StatusEffectType.POISON]: '🤢', [StatusEffectType.BURN]: '🔥', [StatusEffectType.HASTE]: '⚡', [StatusEffectType.SLOW]: '❄️' };
+    const icons: Record<string, string> = { 
+        [StatusEffectType.POISON]: '☠', 
+        [StatusEffectType.BURN]: '🔥', 
+        [StatusEffectType.HASTE]: '⚡', 
+        [StatusEffectType.SLOW]: '❄',
+        [StatusEffectType.REGEN]: '♥',
+        [StatusEffectType.SHIELD]: '🛡',
+        [StatusEffectType.RAGE]: '⚔',
+        [StatusEffectType.BLEED]: '▓',
+        [StatusEffectType.STUN]: '⚡',
+        [StatusEffectType.FREEZE]: '❄',
+        [StatusEffectType.PARALYSIS]: '💫',
+        [StatusEffectType.CONFUSION]: '🌀',
+        [StatusEffectType.BLIND]: '👁',
+        [StatusEffectType.SILENCE]: '🔇',
+        [StatusEffectType.VULNERABLE]: '💔',
+        [StatusEffectType.FRIGHTENED]: '😱',
+        [StatusEffectType.CHARMED]: '💕'
+    };
     return <span className="text-[8px] bg-black/80 rounded px-1">{icons[type] || '✨'}</span>;
 };
 

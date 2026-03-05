@@ -81,7 +81,7 @@ export const ActionResolver = {
 
     processStatusTick: (entity: Entity): { hpChange: number, popups: any[], updatedEffects: StatusEffect[] } => {
         let hpChange = 0;
-        const popups = [];
+        const popups: any[] = [];
         const updatedEffects: StatusEffect[] = [];
         if (!entity.stats.activeStatusEffects) return { hpChange: 0, popups: [], updatedEffects: [] };
 
@@ -89,16 +89,53 @@ export const ActionResolver = {
             let effectDamage = 0;
             let color = '#ffffff';
             let label = '';
+            
             switch (effect.type) {
-                case StatusEffectType.POISON: effectDamage = (effect.intensity || 1) * rollDice(4, 1); color = '#4ade80'; label = 'Poisoned'; break;
-                case StatusEffectType.BURN: effectDamage = (effect.intensity || 1) * rollDice(6, 1); color = '#fb923c'; label = 'Burning'; break;
-                case StatusEffectType.REGEN: effectDamage = -((effect.intensity || 1) * rollDice(4, 1)); color = '#22c55e'; break;
+                case StatusEffectType.POISON: 
+                    effectDamage = (effect.intensity || 1) * rollDice(4, 1); 
+                    color = '#4ade80'; 
+                    label = 'Poison'; 
+                    break;
+                case StatusEffectType.BURN: 
+                    effectDamage = (effect.intensity || 1) * rollDice(6, 1); 
+                    color = '#fb923c'; 
+                    label = 'Burning'; 
+                    break;
+                case StatusEffectType.REGEN: 
+                    effectDamage = -((effect.intensity || 1) * rollDice(4, 1)); 
+                    color = '#22c55e'; 
+                    label = 'Regen'; 
+                    break;
+                case StatusEffectType.BLEED:
+                    effectDamage = (effect.intensity || 1) * rollDice(4, 1);
+                    color = '#dc2626';
+                    label = 'Bleeding';
+                    break;
+                case StatusEffectType.FREEZE:
+                    color = '#60a5fa';
+                    label = 'Frozen';
+                    break;
+                case StatusEffectType.STUN:
+                    color = '#fbbf24';
+                    label = 'Stunned';
+                    break;
+                case StatusEffectType.PARALYSIS:
+                    color = '#a78bfa';
+                    label = 'Paralyzed';
+                    break;
             }
+            
             if (effectDamage !== 0) {
                 hpChange -= effectDamage;
                 popups.push({ amount: effectDamage > 0 ? effectDamage : `+${Math.abs(effectDamage)}`, color, isCrit: false, label });
+            } else if (label) {
+                popups.push({ amount: '', color, isCrit: false, label });
             }
+            
             if (effect.duration > 1) updatedEffects.push({ ...effect, duration: effect.duration - 1 });
+            else if (effect.duration === 1 && effect.type === StatusEffectType.REGEN) {
+                popups.push({ amount: '', color: '#22c55e', isCrit: false, label: 'Regen ended' });
+            }
         });
         return { hpChange, popups, updatedEffects };
     }

@@ -224,7 +224,7 @@ export const BattleScene = ({ entities, weather, terrainType, currentTurnEntityI
                     <CelestialBody dimension={dimension} />
                     <ActionLight />
                     
-                    <TerrainLayer mapData={battleMap} biome={terrainType} onTileClick={onTileClick} onTileHover={(x, z) => handleTileHover(x, z)} />
+                    <TerrainLayer mapData={battleMap} biome={terrainType} onTileClick={onTileClick} onTileHover={(x, z) => handleTileHover(x, z)} validMoves={validMoves} validTargets={validTargets} />
                     <DecorationLayer mapData={battleMap} dimension={dimension} terrain={terrainType} />
                     <BattleParticles dimension={dimension} terrain={terrainType} />
                     <BattleGlow terrain={terrainType} />
