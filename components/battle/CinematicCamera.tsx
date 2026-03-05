@@ -15,7 +15,8 @@ enum CameraMode {
     SELECT_TARGET = 'SELECT_TARGET',
     ACTION = 'ACTION',
     SPELL_EFFECT = 'SPELL_EFFECT',
-    INSPECT = 'INSPECT'
+    INSPECT = 'INSPECT',
+    AUTO_FOCUS = 'AUTO_FOCUS'
 }
 
 interface CameraState {
@@ -23,6 +24,7 @@ interface CameraState {
     targetFocus: THREE.Vector3;
     targetZoom: number;
     transitionSpeed: number;
+    isLocked: boolean;
 }
 
 export const CinematicCamera = () => {
@@ -32,18 +34,22 @@ export const CinematicCamera = () => {
         mode: CameraMode.IDLE,
         targetFocus: new THREE.Vector3(BATTLE_MAP_SIZE / 2, 0, BATTLE_MAP_SIZE / 2),
         targetZoom: 65,
-        transitionSpeed: 3
+        transitionSpeed: 3,
+        isLocked: false
     });
     
     const currentFocus = useRef(new THREE.Vector3(BATTLE_MAP_SIZE / 2, 0, BATTLE_MAP_SIZE / 2));
     const currentZoom = useRef(65);
     const shakeOffset = useRef(new THREE.Vector3());
     const shakeIntensity = useRef(0);
+    const isUserInteracting = useRef(false);
+    const interactionTimeout = useRef<NodeJS.Timeout | null>(null);
     
     const ZOOM_DEFAULT = 65;
-    const ZOOM_FAR = 50;
-    const ZOOM_NEAR = 75;
-    const ZOOM_ACTION = 60;
+    const ZOOM_FAR = 45;
+    const ZOOM_NEAR = 80;
+    const ZOOM_ACTION = 55;
+    const ZOOM_INSPECT = 90;
     
     useEffect(() => {
         if (camera && camera.isOrthographicCamera) {
@@ -53,18 +59,51 @@ export const CinematicCamera = () => {
     }, [camera]);
 
     useEffect(() => {
+        const handleInteractionStart = () => {
+            isUserInteracting.current = true;
+            cameraState.current.isLocked = false;
+            if (interactionTimeout.current) {
+                clearTimeout(interactionTimeout.current);
+            }
+        };
+        
+        const handleInteractionEnd = () => {
+            interactionTimeout.current = setTimeout(() => {
+                isUserInteracting.current = false;
+            }, 2000);
+        };
+        
         const handleWheel = (e: WheelEvent) => {
             e.preventDefault();
-            const delta = e.deltaY > 0 ? 2 : -2;
+            isUserInteracting.current = true;
+            
+            const delta = e.deltaY > 0 ? 3 : -3;
             cameraState.current.targetZoom = clamp(
                 cameraState.current.targetZoom + delta, 
                 ZOOM_FAR, 
                 ZOOM_NEAR
             );
+            
+            if (interactionTimeout.current) {
+                clearTimeout(interactionTimeout.current);
+            }
+            interactionTimeout.current = setTimeout(() => {
+                isUserInteracting.current = false;
+            }, 1500);
         };
         
+        window.addEventListener('pointerdown', handleInteractionStart);
+        window.addEventListener('pointerup', handleInteractionEnd);
         window.addEventListener('wheel', handleWheel, { passive: false });
-        return () => window.removeEventListener('wheel', handleWheel);
+        
+        return () => {
+            window.removeEventListener('pointerdown', handleInteractionStart);
+            window.removeEventListener('pointerup', handleInteractionEnd);
+            window.removeEventListener('wheel', handleWheel);
+            if (interactionTimeout.current) {
+                clearTimeout(interactionTimeout.current);
+            }
+        };
     }, []);
 
     const determineFocusPoint = (store: any) => {
@@ -81,13 +120,15 @@ export const CinematicCamera = () => {
         let focusPoint = new THREE.Vector3(BATTLE_MAP_SIZE / 2, 0, BATTLE_MAP_SIZE / 2);
         let zoom = ZOOM_DEFAULT;
         let mode = CameraMode.IDLE;
-        let transitionSpeed = 3;
+        let transitionSpeed = 2;
+        let isLocked = false;
         
         if (inspectedEntity?.position) {
             focusPoint.set(inspectedEntity.position.x, 0.5, inspectedEntity.position.y);
-            zoom = ZOOM_NEAR;
+            zoom = ZOOM_INSPECT;
             mode = CameraMode.INSPECT;
-            transitionSpeed = 4;
+            transitionSpeed = 5;
+            isLocked = true;
         }
         else if (activeSpellEffect) {
             const start = new THREE.Vector3(activeSpellEffect.startPos[0], 0, activeSpellEffect.startPos[2]);
@@ -96,13 +137,15 @@ export const CinematicCamera = () => {
             focusPoint.y = 0.5;
             zoom = ZOOM_DEFAULT;
             mode = CameraMode.SPELL_EFFECT;
-            transitionSpeed = 6;
+            transitionSpeed = 8;
+            isLocked = true;
         }
         else if (isActionAnimating && actor?.position) {
             focusPoint.set(actor.position.x, 0.5, actor.position.y);
             zoom = ZOOM_ACTION;
             mode = CameraMode.ACTION;
-            transitionSpeed = 8;
+            transitionSpeed = 10;
+            isLocked = true;
         }
         else if (selectedAction === 'MOVE' && validMoves && validMoves.length > 0) {
             const avgX = validMoves.reduce((sum, m) => sum + m.x, 0) / validMoves.length;
@@ -120,7 +163,7 @@ export const CinematicCamera = () => {
                 focusPoint.lerpVectors(
                     new THREE.Vector3(actor.position.x, 0, actor.position.y),
                     focusPoint,
-                    0.3
+                    0.25
                 );
             }
             zoom = ZOOM_ACTION;
@@ -130,16 +173,18 @@ export const CinematicCamera = () => {
         else if (selectedTile) {
             focusPoint.set(selectedTile.x, 0.3, selectedTile.y);
             zoom = ZOOM_DEFAULT;
-            transitionSpeed = 5;
+            transitionSpeed = 6;
         }
         else if (actor?.position) {
             focusPoint.set(actor.position.x, 0.3, actor.position.y);
             zoom = ZOOM_DEFAULT;
             mode = CameraMode.FOLLOW_ACTOR;
-            transitionSpeed = 3;
+            transitionSpeed = 2.5;
         }
         
-        return { focusPoint, zoom, mode, transitionSpeed, actor };
+        const shouldLock = isLocked || mode === CameraMode.ACTION || mode === CameraMode.SPELL_EFFECT || mode === CameraMode.INSPECT;
+        
+        return { focusPoint, zoom, mode, transitionSpeed, actor, shouldLock };
     };
 
     useFrame((state, delta) => {
@@ -150,20 +195,24 @@ export const CinematicCamera = () => {
         
         const dt = Math.min(delta, 0.1);
         
-        const { focusPoint, zoom, mode, transitionSpeed, actor } = determineFocusPoint(store);
+        const { focusPoint, zoom, mode, transitionSpeed, actor, shouldLock } = determineFocusPoint(store);
         
         cameraState.current.mode = mode;
         cameraState.current.targetFocus.copy(focusPoint);
         cameraState.current.targetZoom = zoom;
         cameraState.current.transitionSpeed = transitionSpeed;
         
+        if (shouldLock && !isUserInteracting.current) {
+            cameraState.current.isLocked = true;
+        }
+        
         const focusLerpFactor = 1 - Math.exp(-transitionSpeed * dt);
+        const zoomLerpFactor = 1 - Math.exp(-5 * dt);
         
         currentFocus.current.x = lerp(currentFocus.current.x, focusPoint.x, focusLerpFactor);
         currentFocus.current.y = lerp(currentFocus.current.y, focusPoint.y, focusLerpFactor);
         currentFocus.current.z = lerp(currentFocus.current.z, focusPoint.z, focusLerpFactor);
         
-        const zoomLerpFactor = 1 - Math.exp(-4 * dt);
         currentZoom.current = lerp(currentZoom.current, zoom, zoomLerpFactor);
         
         if (Math.abs(camera.zoom - currentZoom.current) > 0.1) {
@@ -172,7 +221,7 @@ export const CinematicCamera = () => {
         }
         
         if (isScreenShaking && shakeIntensity.current <= 0) {
-            shakeIntensity.current = 0.3;
+            shakeIntensity.current = 0.25;
         }
         
         if (shakeIntensity.current > 0) {
@@ -188,9 +237,14 @@ export const CinematicCamera = () => {
         
         const finalTarget = currentFocus.current.clone().add(shakeOffset.current);
         
-        controls.target.lerp(finalTarget, focusLerpFactor);
+        if (cameraState.current.isLocked || shouldLock) {
+            controls.target.lerp(finalTarget, focusLerpFactor * 1.5);
+        } else {
+            const userInfluence = isUserInteracting.current ? 0.3 : 0.7;
+            controls.target.lerp(finalTarget, focusLerpFactor * (1 - userInfluence));
+        }
         
-        const boundPadding = 1;
+        const boundPadding = 2;
         controls.target.x = clamp(controls.target.x, -boundPadding, BATTLE_MAP_SIZE + boundPadding);
         controls.target.z = clamp(controls.target.z, -boundPadding, BATTLE_MAP_SIZE + boundPadding);
         

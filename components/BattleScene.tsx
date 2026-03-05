@@ -200,18 +200,18 @@ export const BattleScene = ({ entities, weather, terrainType, currentTurnEntityI
                     
                     <OrbitControls 
                         enablePan={false}
-                        minPolarAngle={Math.PI / 4} 
-                        maxPolarAngle={Math.PI / 2.8}
-                        minAzimuthAngle={-Math.PI / 8}
-                        maxAzimuthAngle={Math.PI / 8}
+                        minPolarAngle={Math.PI / 4.5} 
+                        maxPolarAngle={Math.PI / 3}
+                        minAzimuthAngle={-Math.PI / 4}
+                        maxAzimuthAngle={Math.PI / 4}
                         target={[8, 0, 8]}
                         enableDamping={true}
-                        dampingFactor={0.08}
-                        rotateSpeed={0.3}
-                        zoomSpeed={0.5}
+                        dampingFactor={0.12}
+                        rotateSpeed={0.25}
+                        zoomSpeed={0.4}
                         panSpeed={0}
-                        minZoom={50}
-                        maxZoom={80}
+                        minZoom={40}
+                        maxZoom={90}
                         makeDefault
                         touches={{ ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_ROTATE }}
                     />
