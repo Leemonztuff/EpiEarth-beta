@@ -95,7 +95,10 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
         const enemies: Entity[] = [];
         const possibleEnemies = Object.values(content.enemies).length > 0 
             ? Object.values(content.enemies) 
-            : [{ id: 'goblin', name: 'Goblin', hp: 15, ac: 12, sprite: 'units/goblins/spearman.png', xpReward: 50 }];
+            : [
+                { id: 'goblin', name: 'Goblin', hp: 15, ac: 12, sprite: '/sprites/characters/enemy01.png', xpReward: 50, type: 'HUMANOID' as any },
+                { id: 'slime', name: 'Slime', hp: 10, ac: 8, sprite: '/sprites/characters/SLIME.png', xpReward: 30, type: 'BEAST' as any }
+              ];
         
         const count = 2 + Math.floor(Math.random() * 3);
         for(let i=0; i<count; i++) {

@@ -185,28 +185,28 @@ export const RARITY_COLORS: Record<ItemRarity, string> = { [ItemRarity.COMMON]: 
 export const SCHOOL_COLORS: Record<MagicSchool, string> = { [MagicSchool.ABJURATION]: '#60a5fa', [MagicSchool.CONJURATION]: '#f59e0b', [MagicSchool.DIVINATION]: '#a855f7', [MagicSchool.ENCHANTMENT]: '#ec4899', [MagicSchool.EVOCATION]: '#ef4444', [MagicSchool.ILLUSION]: '#8b5cf6', [MagicSchool.NECROMANCY]: '#4b5563', [MagicSchool.TRANSMUTATION]: '#10b981' };
 
 export const CLASS_CONFIG: Record<CharacterClass, any> = {
-    [CharacterClass.FIGHTER]: { icon: `units/human-loyalists/swordsman.png`, archetype: 'Guerrero' },
-    [CharacterClass.RANGER]: { icon: `units/human-loyalists/huntsman.png`, archetype: 'Explorador' },
-    [CharacterClass.WIZARD]: { icon: `units/human-magi/red-mage.png`, archetype: 'Mago Arcano' },
-    [CharacterClass.CLERIC]: { icon: `units/human-magi/white-mage.png`, archetype: 'Clérigo' },
-    [CharacterClass.ROGUE]: { icon: `units/human-outlaws/thief.png`, archetype: 'Pícaro' },
-    [CharacterClass.BARBARIAN]: { icon: `units/human-outlaws/thug.png`, archetype: 'Bárbaro' },
-    [CharacterClass.PALADIN]: { icon: `units/human-loyalists/paladin.png`, archetype: 'Paladín' },
-    [CharacterClass.SORCERER]: { icon: `units/human-magi/silver-mage.png`, archetype: 'Hechicero' },
-    [CharacterClass.WARLOCK]: { icon: `units/human-magi/dark-adept.png`, archetype: 'Brujo' },
-    [CharacterClass.DRUID]: { icon: `units/elves-wood/shaman.png`, archetype: 'Druida' },
-    [CharacterClass.BARD]: { icon: `units/human-loyalists/fencer.png`, archetype: 'Bardo' }
+    [CharacterClass.FIGHTER]: { icon: `/sprites/characters/sprite__000.png`, archetype: 'Guerrero' },
+    [CharacterClass.RANGER]: { icon: `/sprites/characters/sprite__001.png`, archetype: 'Explorador' },
+    [CharacterClass.WIZARD]: { icon: `/sprites/characters/sprite__002.png`, archetype: 'Mago Arcano' },
+    [CharacterClass.CLERIC]: { icon: `/sprites/characters/sprite__003.png`, archetype: 'Clérigo' },
+    [CharacterClass.ROGUE]: { icon: `/sprites/characters/sprite__004.png`, archetype: 'Pícaro' },
+    [CharacterClass.BARBARIAN]: { icon: `/sprites/characters/sprite__005.png`, archetype: 'Bárbaro' },
+    [CharacterClass.PALADIN]: { icon: `/sprites/characters/sprite__006.png`, archetype: 'Paladín' },
+    [CharacterClass.SORCERER]: { icon: `/sprites/characters/sprite__007.png`, archetype: 'Hechicero' },
+    [CharacterClass.WARLOCK]: { icon: `/sprites/characters/sprite__008.png`, archetype: 'Brujo' },
+    [CharacterClass.DRUID]: { icon: `/sprites/characters/sprite__009.png`, archetype: 'Druida' },
+    [CharacterClass.BARD]: { icon: `/sprites/characters/sprite__010.png`, archetype: 'Bardo' }
 };
 
 export const RACE_ICONS: Record<string, string> = { 
-  [CharacterRace.HUMAN]: `units/human-loyalists/lieutenant.png`, 
-  [CharacterRace.ELF]: `units/elves-wood/hero.png`, 
-  [CharacterRace.DWARF]: `units/dwarves/fighter.png`, 
-  [CharacterRace.HALFLING]: `units/human-outlaws/footpad.png`, 
-  [CharacterRace.DRAGONBORN]: `units/drakes/fighter.png`, 
-  [CharacterRace.GNOME]: `units/human-magi/white-mage.png`, 
-  [CharacterRace.TIEFLING]: `units/human-magi/dark-adept.png`, 
-  [CharacterRace.HALF_ORC]: `units/orcs/warrior.png` 
+  [CharacterRace.HUMAN]: `/sprites/characters/sprite__000.png`, 
+  [CharacterRace.ELF]: `/sprites/characters/sprite__001.png`, 
+  [CharacterRace.DWARF]: `/sprites/characters/sprite__000.png`, 
+  [CharacterRace.HALFLING]: `/sprites/characters/sprite__004.png`, 
+  [CharacterRace.DRAGONBORN]: `/sprites/characters/sprite__005.png`, 
+  [CharacterRace.GNOME]: `/sprites/characters/sprite__002.png`, 
+  [CharacterRace.TIEFLING]: `/sprites/characters/sprite__008.png`, 
+  [CharacterRace.HALF_ORC]: `/sprites/characters/sprite__005.png` 
 };
 
 export const getSprite = (race: CharacterRace, cls: CharacterClass): string => {
