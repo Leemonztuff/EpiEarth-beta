@@ -28,6 +28,11 @@ export const AssetManager = {
             cleanPath = cleanPath.substring(1);
         }
         
+        // Handle local sprites in public/ folder
+        if (cleanPath.startsWith('sprites/')) {
+            return `/${cleanPath}`;
+        }
+        
         const wesnothDirs = [
             'units/', 'terrain/', 'scenery/', 'attacks/', 
             'projectiles/', 'items/', 'halo/', 'weather/'
