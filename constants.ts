@@ -185,7 +185,7 @@ export const RARITY_COLORS: Record<ItemRarity, string> = { [ItemRarity.COMMON]: 
 export const SCHOOL_COLORS: Record<MagicSchool, string> = { [MagicSchool.ABJURATION]: '#60a5fa', [MagicSchool.CONJURATION]: '#f59e0b', [MagicSchool.DIVINATION]: '#a855f7', [MagicSchool.ENCHANTMENT]: '#ec4899', [MagicSchool.EVOCATION]: '#ef4444', [MagicSchool.ILLUSION]: '#8b5cf6', [MagicSchool.NECROMANCY]: '#4b5563', [MagicSchool.TRANSMUTATION]: '#10b981' };
 
 export const CLASS_CONFIG: Record<CharacterClass, any> = {
-    [CharacterClass.NOVICE]: { icon: `/sprites/characters/novice_01.png`, archetype: 'Aprendiz', branch: null },
+    [CharacterClass.NOVICE]: { icon: `/sprites/characters/bard_01.png`, archetype: 'Aprendiz', branch: null },
     [CharacterClass.FIGHTER]: { icon: `/sprites/characters/fighter_01.png`, archetype: 'Guerrero', branch: ClassBranch.WARRIOR },
     [CharacterClass.RANGER]: { icon: `/sprites/characters/ranger_01.png`, archetype: 'Explorador', branch: ClassBranch.ROGUE },
     [CharacterClass.WIZARD]: { icon: `/sprites/characters/wizard_01.png`, archetype: 'Mago Arcano', branch: ClassBranch.MAGE },
@@ -200,7 +200,7 @@ export const CLASS_CONFIG: Record<CharacterClass, any> = {
 };
 
 export const CLASS_SPRITES: Record<CharacterClass, string> = {
-    [CharacterClass.NOVICE]: `/sprites/characters/novice_01.png`,
+    [CharacterClass.NOVICE]: `/sprites/characters/bard_01.png`,
     [CharacterClass.FIGHTER]: `/sprites/characters/fighter_01.png`,
     [CharacterClass.RANGER]: `/sprites/characters/ranger_01.png`,
     [CharacterClass.WIZARD]: `/sprites/characters/wizard_01.png`,

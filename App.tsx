@@ -26,6 +26,8 @@ const PartyManager = lazy(() => import('./components/PartyManager').then(m => ({
 const DialogueOverlay = lazy(() => import('./components/DialogueOverlay').then(m => ({ default: m.DialogueOverlay })));
 const InspectionPanel = lazy(() => import('./components/InspectionPanel').then(m => ({ default: m.InspectionPanel })));
 const AdminDashboard = lazy(() => import('./components/admin/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
+const Exploration3DScene = lazy(() => import('./components/Exploration3DScene').then(m => ({ default: m.Exploration3DScene })));
+const VersusBattleScene = lazy(() => import('./components/VersusBattleScene').then(m => ({ default: m.VersusBattleScene })));
 
 const LoadingFallback = () => (
   <div className="fixed inset-0 flex items-center justify-center bg-slate-950 z-[9999]">
@@ -73,6 +75,17 @@ const App = () => {
   const restartBattle = useGameStore(s => s.restartBattle);
   const quitToMenu = useGameStore(s => s.quitToMenu);
   const setUserSession = useGameStore(s => s.setUserSession);
+  const setGameState = useGameStore(s => s.setGameState);
+  
+  const explorationState = useGameStore(s => s.explorationState);
+  const versusState = useGameStore(s => s.versusState);
+  const placeTrap = useGameStore(s => s.placeTrap);
+  const triggerTrap = useGameStore(s => s.triggerTrap);
+  const startEncounter = useGameStore(s => s.startEncounter);
+  const executeBattleAction = useGameStore(s => s.executeBattleAction);
+  const endVersusBattle = useGameStore(s => s.endVersusBattle);
+  const fleeFromBattle = useGameStore(s => s.fleeFromBattle);
+  const party = useGameStore(s => s.party);
 
   const fetchContentFromCloud = useContentStore(s => s.fetchContentFromCloud);
 
@@ -133,6 +146,50 @@ const App = () => {
                   terrainType={battleTerrain} 
                   currentTurnEntityId={turnOrder[currentTurnIndex]} 
                   onTileClick={handleTileInteraction} 
+              />
+            )}
+
+            {/* EXPLORACIÓN 3D CON TRAMPAS */}
+            {gameState === GameState.EXPLORATION_3D && (
+              <Exploration3DScene 
+                onEncounter={() => {
+                  const player = party[0];
+                  if (player) {
+                    const dummyEnemy = {
+                      id: 'wild_goblin',
+                      name: 'Goblin Salvaje',
+                      type: 'BEAST' as any,
+                      sprite: '/sprites/enemies/goblin.png',
+                      hp: 50,
+                      ac: 12,
+                      initiativeBonus: 2,
+                      xpReward: 100,
+                      resistances: [],
+                      vulnerabilities: [],
+                      immunities: []
+                    };
+                    startEncounter(player, dummyEnemy);
+                  }
+                }}
+                onTrapTrigger={(trapId) => {
+                  const result = triggerTrap(trapId, 'player');
+                  console.log(result.message, result.damage);
+                }}
+              />
+            )}
+
+            {/* BATALLA VERSUS (ESTILO POKEMON) */}
+            {gameState === GameState.BATTLE_VERSUS && versusState.isActive && versusState.playerEntity && versusState.enemyEntity && (
+              <VersusBattleScene
+                playerSprite={versusState.playerEntity.visual.spriteUrl}
+                enemySprite={versusState.enemyEntity.visual.spriteUrl}
+                playerName={versusState.playerEntity.name}
+                enemyName={versusState.enemyEntity.name}
+                playerMaxHp={versusState.playerEntity.stats.hp}
+                enemyMaxHp={versusState.enemyEntity.stats.hp}
+                onVictory={() => endVersusBattle(true)}
+                onDefeat={() => endVersusBattle(false)}
+                onFlee={() => fleeFromBattle()}
               />
             )}
 

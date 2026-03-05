@@ -157,7 +157,7 @@ export type CameraEffect =
     'PARALLAX_LEFT' | 'PARALLAX_RIGHT' | 'ROTATE' | 'PULSE';
 
 export enum BattleAction {
-    MOVE = 'MOVE', ATTACK = 'ATTACK', WAIT = 'WAIT', ITEM = 'ITEM', SPELL = 'SPELL', SKILL = 'SKILL'
+    MOVE = 'MOVE', ATTACK = 'ATTACK', WAIT = 'WAIT', ITEM = 'ITEM', SPELL = 'SPELL', SKILL = 'SKILL', FLEE = 'FLEE'
 }
 
 export enum TileEffectType {

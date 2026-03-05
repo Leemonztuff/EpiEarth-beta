@@ -6,9 +6,10 @@ import { createInventorySlice, InventorySlice } from './slices/inventorySlice';
 import { createOverworldSlice, OverworldSlice } from './slices/overworldSlice';
 import { createBattleSlice, BattleSlice } from './slices/battleSlice';
 import { createCommonSlice, CommonSlice } from './slices/commonSlice';
+import { createExplorationSlice, ExplorationSlice } from './slices/explorationSlice';
 
 // Compose the store type from all slices
-export type GameStore = PlayerSlice & InventorySlice & OverworldSlice & BattleSlice & CommonSlice & GameStateData;
+export type GameStore = PlayerSlice & InventorySlice & OverworldSlice & BattleSlice & CommonSlice & ExplorationSlice & GameStateData;
 
 export const useGameStore = create<GameStore>((set, get, api) => {
     const common = createCommonSlice(set, get, api);
@@ -16,6 +17,7 @@ export const useGameStore = create<GameStore>((set, get, api) => {
     const inventory = createInventorySlice(set, get, api);
     const overworld = createOverworldSlice(set, get, api);
     const battle = createBattleSlice(set, get, api);
+    const exploration = createExplorationSlice(set, get, api);
 
     return {
         ...common,
@@ -23,6 +25,7 @@ export const useGameStore = create<GameStore>((set, get, api) => {
         ...inventory,
         ...overworld,
         ...battle,
+        ...exploration,
         // Explicitly ensuring GameStateData compliance if any field is missing in creators
         gameState: GameState.TITLE,
         dimension: Dimension.NORMAL,
@@ -52,6 +55,21 @@ export const useGameStore = create<GameStore>((set, get, api) => {
         activeNarrativeEvent: null,
         activeIncursion: null,
         standingOnPort: false,
-        inspectedEntityId: null
+        inspectedEntityId: null,
+        explorationState: {
+            traps: [],
+            maxTraps: 5,
+            currentBiome: 'forest',
+            encounterRate: 0.15
+        },
+        versusState: {
+            isActive: false,
+            playerEntity: null,
+            enemyEntity: null,
+            playerCurrentHp: 0,
+            enemyCurrentHp: 0,
+            turn: 'PLAYER',
+            battleLog: []
+        }
     };
 });
