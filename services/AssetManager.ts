@@ -12,13 +12,13 @@ export const AssetManager = {
     
     // Pixels de seguridad para evitar crashes de GPU
     EMPTY_PIXEL: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
-    // Sprite de emergencia garantizado (Lieutenant de Wesnoth)
-    FALLBACK_SPRITE: "units/human-loyalists/lieutenant.png",
-    FALLBACK_URL: `${WESNOTH_CDN_URL}/units/human-loyalists/lieutenant.png`,
+    // Sprite de emergencia usando sprite local
+    FALLBACK_SPRITE: "/sprites/characters/fighter_01.png",
+    FALLBACK_URL: "/sprites/characters/fighter_01.png",
 
     getSafeSprite(path: string | undefined): string {
         if (!path || typeof path !== 'string' || path === 'undefined') {
-            return `${WESNOTH_CDN_URL}/${this.FALLBACK_SPRITE}`;
+            return this.FALLBACK_URL;
         }
         
         if (path.startsWith('data:') || path.startsWith('http')) return path;
@@ -29,10 +29,16 @@ export const AssetManager = {
         }
         
         // Handle local sprites in public/ folder
-        if (cleanPath.startsWith('sprites/')) {
+        if (cleanPath.startsWith('sprites/') || cleanPath.startsWith('assets/')) {
             return `/${cleanPath}`;
         }
         
+        // For battle sprites, use local paths
+        if (cleanPath.includes('characters/') || cleanPath.includes('classicon/')) {
+            return `/${cleanPath}`;
+        }
+        
+        // For Wesnoth paths, try local first, fallback to CDN (may fail)
         const wesnothDirs = [
             'units/', 'terrain/', 'scenery/', 'attacks/', 
             'projectiles/', 'items/', 'halo/', 'weather/'
@@ -41,7 +47,8 @@ export const AssetManager = {
         const isWesnothCore = wesnothDirs.some(dir => cleanPath.startsWith(dir));
 
         if (isWesnothCore) {
-            return `${WESNOTH_CDN_URL}/${cleanPath}`;
+            // Use fallback for Wesnoth since CDN may fail
+            return this.FALLBACK_URL;
         }
         
         const baseUrl = WESNOTH_BASE_URL.endsWith('/') ? WESNOTH_BASE_URL.slice(0, -1) : WESNOTH_BASE_URL;

@@ -23,7 +23,6 @@ import { BattleItemMenu } from './battle/BattleItemMenu';
 import { BattleSpellMenu } from './battle/BattleSpellMenu';
 import { AttackEffect } from './battle/AttackEffect';
 import { BattleControlsHelp } from './battle/BattleControlsHelp';
-import { PixelPostProcess } from './battle/PixelPostProcess';
 
 const TurnAnnouncement = () => {
     const text = useGameStore(s => s.turnAnnouncement);
@@ -258,16 +257,6 @@ export const BattleScene = ({ entities, weather, terrainType, currentTurnEntityI
                     <TurnTransitionEffect />
                     <DamagePopupManager />
                     <Preload all />
-                    <PixelPostProcess 
-                        pixelSize={8}
-                        colorDepth={5}
-                        ditherIntensity={0.8}
-                        outlineThickness={1.2}
-                        outlineColor="#1a1a2e"
-                        enableOutline={true}
-                        enableDither={true}
-                        enablePalette={false}
-                    />
                 </Suspense>
             </Canvas>
 
