@@ -24,6 +24,7 @@ uniform float time;
 
 varying vec2 vUv;
 
+// Bayer matrix para dithering
 float bayer4x4(vec2 p) {
     int x = int(mod(p.x, 4.0));
     int y = int(mod(p.y, 4.0));
@@ -34,60 +35,31 @@ float bayer4x4(vec2 p) {
         3.0, 11.0, 1.0, 9.0,
         15.0, 7.0, 13.0, 5.0
     );
-    return bayer[index] / 16.0;
-}
-
-vec3 quantizeColor(vec3 color, float levels, float dither, vec2 pixel) {
-    float d = bayer4x4(pixel) * dither * 0.1;
-    return floor(color * levels) / levels;
-}
-
-vec3 applyPalette(vec3 color) {
-    vec3 palette[8];
-    palette[0] = vec3(0.05, 0.05, 0.1);
-    palette[1] = vec3(0.2, 0.2, 0.3);
-    palette[2] = vec3(0.4, 0.4, 0.5);
-    palette[3] = vec3(0.35, 0.25, 0.25);
-    palette[4] = vec3(0.55, 0.4, 0.35);
-    palette[5] = vec3(0.7, 0.6, 0.5);
-    palette[6] = vec3(0.25, 0.4, 0.25);
-    palette[7] = vec3(0.95, 0.9, 0.8);
-    
-    float bestDist = 999.0;
-    vec3 bestColor = color;
-    
-    for(int i = 0; i < 8; i++) {
-        float dist = distance(color, palette[i]);
-        if(dist < bestDist) {
-            bestDist = dist;
-            bestColor = palette[i];
-        }
-    }
-    
-    return bestColor;
+    return (bayer[index] / 16.0) - 0.5;
 }
 
 void main() {
-    // Calcular el centro del píxel
-    vec2 pixelCenter = floor(gl_FragCoord.xy / pixelSize + 0.5) * pixelSize;
-    vec2 uv = pixelCenter / resolution;
+    // Crear coordenadas de píxel nítidas - sin interpolación
+    vec2 pixelCoord = floor(gl_FragCoord.xy / pixelSize);
     
-    // Samplear desde el centro del píxel
+    // Convertir de vuelta a espacio de pantalla para el muestreo
+    vec2 samplePos = (pixelCoord + 0.5) * pixelSize;
+    vec2 uv = samplePos / resolution;
+    
+    // Asegurar que estamos dentro de bounds
+    uv = clamp(uv, 0.0, 1.0);
+    
+    // Muestrear el color
     vec3 color = texture2D(tDiffuse, uv).rgb;
     
-    // Cuantizar el color basado en la profundidad
-    float levels = colorDepth;
+    // Cuantizar el color a niveles limitados
+    float levels = max(colorDepth, 2.0);
     color = floor(color * levels) / levels;
     
-    // Aplicar dithering si está habilitado
+    // Aplicar dithering para suavizar gradientes
     if(ditherIntensity > 0.01) {
-        vec2 pixelCoord = pixelCenter / pixelSize;
-        float dither = bayer4x4(pixelCoord) * ditherIntensity * 0.05;
-        color = color + dither;
-    }
-    
-    if(enablePalette > 0.5) {
-        color = applyPalette(color);
+        float dither = bayer4x4(pixelCoord) * ditherIntensity;
+        color = clamp(color + dither * (1.0 / levels), 0.0, 1.0);
     }
     
     gl_FragColor = vec4(color, 1.0);
@@ -96,9 +68,9 @@ void main() {
 
 export const PixelPostProcess = ({ 
     enabled = true,
-    pixelSize = 6, 
-    colorDepth = 8, 
-    ditherIntensity = 0.6,
+    pixelSize = 8, 
+    colorDepth = 5, 
+    ditherIntensity = 0.8,
     enablePalette = false,
     outlineThickness = 1.2,
     outlineColor = '#1a1a2e',
@@ -119,7 +91,7 @@ export const PixelPostProcess = ({
     const composerRef = useRef<any>(null);
     
     const renderTarget = useMemo(() => {
-        return new THREE.WebGLRenderTarget(
+        const target = new THREE.WebGLRenderTarget(
             Math.floor(size.width / pixelSize),
             Math.floor(size.height / pixelSize),
             {
@@ -127,9 +99,12 @@ export const PixelPostProcess = ({
                 magFilter: THREE.NearestFilter,
                 format: THREE.RGBAFormat,
                 stencilBuffer: false,
-                depthBuffer: true
+                depthBuffer: true,
+                type: THREE.UnsignedByteType
             }
         );
+        target.texture.generateMipmaps = false;
+        return target;
     }, [size.width, size.height, pixelSize]);
     
     const postScene = useMemo(() => new THREE.Scene(), []);
@@ -184,16 +159,19 @@ export const PixelPostProcess = ({
         if (!enabled) return;
         
         material.uniforms.time.value = state.clock.elapsedTime;
-        
-        const currentTarget = gl.getRenderTarget();
-        
-        gl.setRenderTarget(renderTarget);
-        gl.render(scene, camera);
-        
-        gl.setRenderTarget(currentTarget);
-        
         material.uniforms.tDiffuse.value = renderTarget.texture;
         
+        const currentTarget = gl.getRenderTarget();
+        const currentClearColor = gl.getClearColor();
+        const currentClearAlpha = gl.getClearAlpha();
+        
+        // Renderizar escena a renderTarget
+        gl.setRenderTarget(renderTarget);
+        gl.clear();
+        gl.render(scene, camera);
+        
+        // Restaurar estado y renderizar post-processing al canvas
+        gl.setRenderTarget(currentTarget);
         gl.render(postScene, postCamera);
     }, 1);
     
