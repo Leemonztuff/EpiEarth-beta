@@ -96,8 +96,14 @@ export const createBattleSlice: StateCreator<any, [], [], BattleSlice> = (set, g
         const possibleEnemies = Object.values(content.enemies).length > 0 
             ? Object.values(content.enemies) 
             : [
-                { id: 'goblin', name: 'Goblin', hp: 15, ac: 12, sprite: '/sprites/characters/enemy01.png', xpReward: 50, type: 'HUMANOID' as any },
-                { id: 'slime', name: 'Slime', hp: 10, ac: 8, sprite: '/sprites/characters/SLIME.png', xpReward: 30, type: 'BEAST' as any }
+                { id: 'orc', name: 'Orco', hp: 30, ac: 12, sprite: '/sprites/characters/orc_01.png', xpReward: 50, type: 'HUMANOID' as any },
+                { id: 'undead', name: 'No Muerto', hp: 25, ac: 10, sprite: '/sprites/characters/undead_01.png', xpReward: 40, type: 'UNDEAD' as any },
+                { id: 'dark_elf', name: 'Elfo Oscuro', hp: 20, ac: 14, sprite: '/sprites/characters/dark_elf_01.png', xpReward: 45, type: 'HUMANOID' as any },
+                { id: 'demon', name: 'Demonio', hp: 40, ac: 8, sprite: '/sprites/characters/demon_01.png', xpReward: 80, type: 'FIEND' as any },
+                { id: 'skeleton', name: 'Esqueleto', hp: 15, ac: 12, sprite: '/sprites/characters/skeleton_01.png', xpReward: 30, type: 'UNDEAD' as any },
+                { id: 'vampire', name: 'Vampiro', hp: 35, ac: 15, sprite: '/sprites/characters/vampire_01.png', xpReward: 70, type: 'UNDEAD' as any },
+                { id: 'necromancer', name: 'Nigromante', hp: 25, ac: 10, sprite: '/sprites/characters/necromancer_01.png', xpReward: 60, type: 'HUMANOID' as any },
+                { id: 'ogre', name: 'Ogro', hp: 45, ac: 8, sprite: '/sprites/characters/ogre_01.png', xpReward: 75, type: 'GIANT' as any }
               ];
         
         const count = 2 + Math.floor(Math.random() * 3);

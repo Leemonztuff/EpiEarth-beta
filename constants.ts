@@ -185,32 +185,46 @@ export const RARITY_COLORS: Record<ItemRarity, string> = { [ItemRarity.COMMON]: 
 export const SCHOOL_COLORS: Record<MagicSchool, string> = { [MagicSchool.ABJURATION]: '#60a5fa', [MagicSchool.CONJURATION]: '#f59e0b', [MagicSchool.DIVINATION]: '#a855f7', [MagicSchool.ENCHANTMENT]: '#ec4899', [MagicSchool.EVOCATION]: '#ef4444', [MagicSchool.ILLUSION]: '#8b5cf6', [MagicSchool.NECROMANCY]: '#4b5563', [MagicSchool.TRANSMUTATION]: '#10b981' };
 
 export const CLASS_CONFIG: Record<CharacterClass, any> = {
-    [CharacterClass.FIGHTER]: { icon: `/sprites/characters/sprite__000.png`, archetype: 'Guerrero' },
-    [CharacterClass.RANGER]: { icon: `/sprites/characters/sprite__001.png`, archetype: 'Explorador' },
-    [CharacterClass.WIZARD]: { icon: `/sprites/characters/sprite__002.png`, archetype: 'Mago Arcano' },
-    [CharacterClass.CLERIC]: { icon: `/sprites/characters/sprite__003.png`, archetype: 'Clérigo' },
-    [CharacterClass.ROGUE]: { icon: `/sprites/characters/sprite__004.png`, archetype: 'Pícaro' },
-    [CharacterClass.BARBARIAN]: { icon: `/sprites/characters/sprite__005.png`, archetype: 'Bárbaro' },
-    [CharacterClass.PALADIN]: { icon: `/sprites/characters/sprite__006.png`, archetype: 'Paladín' },
-    [CharacterClass.SORCERER]: { icon: `/sprites/characters/sprite__007.png`, archetype: 'Hechicero' },
-    [CharacterClass.WARLOCK]: { icon: `/sprites/characters/sprite__008.png`, archetype: 'Brujo' },
-    [CharacterClass.DRUID]: { icon: `/sprites/characters/sprite__009.png`, archetype: 'Druida' },
-    [CharacterClass.BARD]: { icon: `/sprites/characters/sprite__010.png`, archetype: 'Bardo' }
+    [CharacterClass.FIGHTER]: { icon: `/sprites/characters/fighter_01.png`, archetype: 'Guerrero' },
+    [CharacterClass.RANGER]: { icon: `/sprites/characters/ranger_01.png`, archetype: 'Explorador' },
+    [CharacterClass.WIZARD]: { icon: `/sprites/characters/wizard_01.png`, archetype: 'Mago Arcano' },
+    [CharacterClass.CLERIC]: { icon: `/sprites/characters/cleric_01.png`, archetype: 'Clérigo' },
+    [CharacterClass.ROGUE]: { icon: `/sprites/characters/rogue_01.png`, archetype: 'Pícaro' },
+    [CharacterClass.BARBARIAN]: { icon: `/sprites/characters/barbarian_01.png`, archetype: 'Bárbaro' },
+    [CharacterClass.PALADIN]: { icon: `/sprites/characters/paladin_01.png`, archetype: 'Paladín' },
+    [CharacterClass.SORCERER]: { icon: `/sprites/characters/sorcerer_01.png`, archetype: 'Hechicero' },
+    [CharacterClass.WARLOCK]: { icon: `/sprites/characters/warlock_01.png`, archetype: 'Brujo' },
+    [CharacterClass.DRUID]: { icon: `/sprites/characters/druid_01.png`, archetype: 'Druida' },
+    [CharacterClass.BARD]: { icon: `/sprites/characters/bard_01.png`, archetype: 'Bardo' }
+};
+
+export const CLASS_SPRITES: Record<CharacterClass, string> = {
+    [CharacterClass.FIGHTER]: `/sprites/characters/fighter_01.png`,
+    [CharacterClass.RANGER]: `/sprites/characters/ranger_01.png`,
+    [CharacterClass.WIZARD]: `/sprites/characters/wizard_01.png`,
+    [CharacterClass.CLERIC]: `/sprites/characters/cleric_01.png`,
+    [CharacterClass.ROGUE]: `/sprites/characters/rogue_01.png`,
+    [CharacterClass.BARBARIAN]: `/sprites/characters/barbarian_01.png`,
+    [CharacterClass.PALADIN]: `/sprites/characters/paladin_01.png`,
+    [CharacterClass.SORCERER]: `/sprites/characters/sorcerer_01.png`,
+    [CharacterClass.WARLOCK]: `/sprites/characters/warlock_01.png`,
+    [CharacterClass.DRUID]: `/sprites/characters/druid_01.png`,
+    [CharacterClass.BARD]: `/sprites/characters/bard_01.png`
 };
 
 export const RACE_ICONS: Record<string, string> = { 
-  [CharacterRace.HUMAN]: `/sprites/characters/sprite__000.png`, 
-  [CharacterRace.ELF]: `/sprites/characters/sprite__001.png`, 
-  [CharacterRace.DWARF]: `/sprites/characters/sprite__000.png`, 
-  [CharacterRace.HALFLING]: `/sprites/characters/sprite__004.png`, 
-  [CharacterRace.DRAGONBORN]: `/sprites/characters/sprite__005.png`, 
-  [CharacterRace.GNOME]: `/sprites/characters/sprite__002.png`, 
-  [CharacterRace.TIEFLING]: `/sprites/characters/sprite__008.png`, 
-  [CharacterRace.HALF_ORC]: `/sprites/characters/sprite__005.png` 
+  [CharacterRace.HUMAN]: `/sprites/characters/human_male_01.png`, 
+  [CharacterRace.ELF]: `/sprites/characters/elf_01.png`, 
+  [CharacterRace.DWARF]: `/sprites/characters/dwarf_01.png`, 
+  [CharacterRace.HALFLING]: `/sprites/characters/halfling_01.png`, 
+  [CharacterRace.DRAGONBORN]: `/sprites/characters/dragonborn_01.png`, 
+  [CharacterRace.GNOME]: `/sprites/characters/gnome_01.png`, 
+  [CharacterRace.TIEFLING]: `/sprites/characters/tiefling_01.png`, 
+  [CharacterRace.HALF_ORC]: `/sprites/characters/half_orc_01.png` 
 };
 
 export const getSprite = (race: CharacterRace, cls: CharacterClass): string => {
-    return CLASS_CONFIG[cls]?.icon || RACE_ICONS[race] || `units/human-loyalists/lieutenant.png`;
+    return CLASS_SPRITES[cls] || RACE_ICONS[race] || `units/human-loyalists/lieutenant.png`;
 };
 
 export const XP_TABLE: Record<number, number> = { 1: 300, 2: 900, 3: 2700, 4: 6500, 5: 14000, 6: 23000, 7: 34000, 8: 48000, 9: 64000, 10: 85000 };
