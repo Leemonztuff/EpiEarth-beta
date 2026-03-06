@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { useGameStore } from '../store/gameStore';
 import { TrapMarker } from './TrapMarker';
 import { Exploration3DMinimap } from './Exploration3DMinimap';
+import { AssetManager } from '../services/AssetManager';
 import { GameState } from '../types';
 
 interface MapCell {
@@ -101,11 +102,19 @@ const SafeSprite3D: React.FC<{ url?: string }> = ({ url }) => {
     useEffect(() => {
         if (!url) return;
         const loader = new THREE.TextureLoader();
-        loader.load(AssetManager.getSafeSprite(url), (t) => {
-            t.magFilter = THREE.NearestFilter;
-            t.minFilter = THREE.NearestFilter;
-            setTex(t);
-        });
+        const safeUrl = AssetManager.getSafeSprite(url);
+        loader.load(
+            safeUrl,
+            (t) => {
+                t.magFilter = THREE.NearestFilter;
+                t.minFilter = THREE.NearestFilter;
+                setTex(t);
+            },
+            undefined,
+            () => {
+                console.warn('[SafeSprite3D] Failed to load sprite:', url);
+            }
+        );
     }, [url]);
     if (!tex) return null;
     return <spriteMaterial map={tex} transparent alphaTest={0.5} />;
@@ -150,7 +159,7 @@ const ExplorationMap: React.FC<{
     playerHp: number;
     playerMaxHp: number;
     playerSpriteUrl?: string;
-    enemies: { id: string; x: number; z: number; type: string; isDefeated: boolean }[];
+    enemies: { id: string; x: number; z: number; spriteUrl?: string; isDefeated: boolean }[];
     traps: { id: string; x: number; z: number; type: string; isArmed: boolean }[];
 }> = ({ map, playerPos, playerHp, playerMaxHp, playerSpriteUrl, enemies, traps }) => (
     <group>
@@ -165,7 +174,7 @@ const ExplorationMap: React.FC<{
         }))}
         <PlayerCharacter position={[playerPos.x - MAP_SIZE / 2, 0, playerPos.z - MAP_SIZE / 2]} hp={playerHp} maxHp={playerMaxHp} spriteUrl={playerSpriteUrl} />
         {enemies.map(enemy => (
-            <EnemyCharacter key={enemy.id} position={[enemy.x - MAP_SIZE / 2, 0, enemy.z - MAP_SIZE / 2]} type={enemy.type} isDefeated={enemy.isDefeated} />
+            <EnemyCharacter key={enemy.id} position={[enemy.x - MAP_SIZE / 2, 0, enemy.z - MAP_SIZE / 2]} spriteUrl={enemy.spriteUrl} isDefeated={enemy.isDefeated} />
         ))}
         {traps.map(trap => trap.isArmed && (
             <TrapMarker key={trap.id} position={[trap.x - MAP_SIZE / 2, 0.1, trap.z - MAP_SIZE / 2]} trapType={trap.type} isArmed={trap.isArmed} />
@@ -431,7 +440,7 @@ export const Exploration3DScene: React.FC = () => {
             <Exploration3DMinimap 
                 mapSize={MAP_SIZE}
                 playerPos={playerPos}
-                enemies={enemies.map(e => ({ ...e, type: 'default', isDefeated: e.isDefeated }))}
+                enemies={enemies.map(e => ({ ...e, type: 'enemy', isDefeated: e.isDefeated }))}
                 traps={traps}
                 targetPos={targetPos}
             />
