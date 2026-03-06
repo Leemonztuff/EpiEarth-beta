@@ -64,7 +64,8 @@ export const useGameStore = create<GameStore>((set, get, api) => {
             zoneEnemies: [],
             currentEnemyId: null,
             zoneCompleted: false,
-            zoneName: 'Bosque Encantado'
+            zoneName: 'Bosque Encantado',
+            wasZoneCompletedBeforeLevelUp: false
         },
         versusState: {
             isActive: false,

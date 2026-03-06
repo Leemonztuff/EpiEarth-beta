@@ -96,6 +96,7 @@ export const UIOverlay: React.FC<{ onOpenTownService: any, activeService?: strin
         usePortal, enterSettlement, enterDungeon, exitSettlement, camp,
         party, townMapData, currentSettlementName, eternumShards
     } = useGameStore();
+    const initZone = useGameStore(s => s.initZone);
 
     const isBattle = gameState === GameState.BATTLE_TACTICAL || gameState === GameState.BATTLE_INIT;
     const isExploring = gameState === GameState.OVERWORLD || gameState === GameState.TOWN_EXPLORATION || gameState === GameState.DUNGEON;
@@ -116,6 +117,7 @@ export const UIOverlay: React.FC<{ onOpenTownService: any, activeService?: strin
         if (gameState === GameState.EXPLORATION_3D) {
             setGameState(GameState.OVERWORLD);
         } else if (gameState === GameState.OVERWORLD) {
+            initZone('forest');
             setGameState(GameState.EXPLORATION_3D);
         }
     };
@@ -155,11 +157,11 @@ export const UIOverlay: React.FC<{ onOpenTownService: any, activeService?: strin
                             className={`border text-xs font-black uppercase tracking-widest px-3 py-2 rounded-xl shadow-xl flex items-center gap-2 active:scale-90 transition-all
                                 ${isExploration3D 
                                     ? 'bg-gradient-to-r from-amber-600 to-amber-800 border-amber-500 text-white' 
-                                    : 'bg-gradient-to-r from-slate-800 to-slate-900 border-white/10 text-slate-400 hover:text-white'
+                                    : 'bg-gradient-to-r from-red-600 to-red-800 border-red-500 text-white'
                                 }
                             `}
                         >
-                            {isExploration3D ? '🎯 Caza' : '🗺️ Mapa'}
+                            {isExploration3D ? '← Volver' : '⚔️ Caza'}
                         </button>
                         <button 
                             onClick={() => handleButtonPress(toggleInventory)} 
@@ -225,16 +227,6 @@ export const UIOverlay: React.FC<{ onOpenTownService: any, activeService?: strin
                         className="bg-gradient-to-r from-slate-700 to-slate-900 px-10 py-5 md:px-8 md:py-4 rounded-2xl font-black text-white shadow-2xl border-2 border-slate-500 text-sm md:text-xs uppercase tracking-widest active:scale-95 hover:from-slate-600 transition-all"
                     >
                         💀 Explorar Cripta
-                    </button>
-                )}
-
-                {/* Zona de Caza Button - Entra a exploración 3D */}
-                {!isTown && !isDungeon && (
-                    <button 
-                        onClick={() => handleButtonPress(() => setGameState(GameState.EXPLORATION_3D))} 
-                        className="bg-gradient-to-r from-red-600 to-red-800 px-10 py-5 md:px-8 md:py-4 rounded-2xl font-black text-white shadow-[0_0_30px_rgba(220,38,38,0.5)] border-2 border-red-400 animate-pulse text-sm md:text-xs uppercase tracking-widest active:scale-95 hover:from-red-500 transition-all"
-                    >
-                        ⚔️ Zona de Caza
                     </button>
                 )}
 

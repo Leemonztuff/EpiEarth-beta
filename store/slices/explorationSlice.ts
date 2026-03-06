@@ -23,6 +23,7 @@ interface ExplorationState {
     currentEnemyId: string | null;
     zoneCompleted: boolean;
     zoneName: string;
+    wasZoneCompletedBeforeLevelUp: boolean;
 }
 
 interface VersusState {
@@ -102,7 +103,8 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
         zoneEnemies: [],
         currentEnemyId: null,
         zoneCompleted: false,
-        zoneName: 'Bosque Encantado'
+        zoneName: 'Bosque Encantado',
+        wasZoneCompletedBeforeLevelUp: false
     },
     versusState: {
         isActive: false,
@@ -369,6 +371,32 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
                     )
                 });
             }
+            
+            const nextAliveIndex = party.findIndex((p, i) => i > versusState.playerIndex && p.stats.hp > 0);
+            if (nextAliveIndex !== -1) {
+                const nextPlayer = party[nextAliveIndex];
+                const enemy = explorationState.zoneEnemies.find(e => e.id === explorationState.currentEnemyId);
+                
+                set({
+                    versusState: {
+                        ...versusState,
+                        playerIndex: nextAliveIndex,
+                        playerCurrentHp: nextPlayer.stats.hp,
+                        playerMaxHp: nextPlayer.stats.maxHp,
+                        battleLog: [...versusState.battleLog, `¡${nextPlayer.name} entra en combate!`],
+                        isPlayerTurn: true,
+                        turn: 'PLAYER'
+                    }
+                });
+                return;
+            }
+            
+            set({
+                versusState: {
+                    ...versusState,
+                    battleLog: [...versusState.battleLog, '¡Todo el party ha sido derrotado!']
+                }
+            });
         }
         
         const aliveEnemies = explorationState.zoneEnemies.filter(e => !e.isDefeated);
@@ -379,7 +407,15 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
                 explorationState: {
                     ...explorationState,
                     zoneCompleted: true,
-                    currentEnemyId: null
+                    currentEnemyId: null,
+                    wasZoneCompletedBeforeLevelUp: true
+                }
+            });
+        } else {
+            set({
+                explorationState: {
+                    ...explorationState,
+                    wasZoneCompletedBeforeLevelUp: false
                 }
             });
         }

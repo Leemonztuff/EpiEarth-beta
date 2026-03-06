@@ -23,7 +23,7 @@ const SchoolSeal = ({ school }: { school: MagicSchool }) => {
 };
 
 export const LevelUpScreen = () => {
-    const { party, applyLevelUp, setGameState } = useGameStore();
+    const { party, applyLevelUp, setGameState, explorationState } = useGameStore();
     const { spells, skills } = useContentStore();
     
     const [characterIndex, setCharacterIndex] = useState(0);
@@ -108,8 +108,13 @@ export const LevelUpScreen = () => {
         setPhase('ATTRIBUTES');
 
         const nextEligible = party.findIndex((p, idx) => idx > characterIndex && p.stats.xp >= p.stats.xpToNextLevel);
-        if (nextEligible !== -1) setCharacterIndex(nextEligible);
-        else setGameState(GameState.OVERWORLD);
+        if (nextEligible !== -1) {
+            setCharacterIndex(nextEligible);
+        } else if (explorationState.wasZoneCompletedBeforeLevelUp) {
+            setGameState(GameState.OVERWORLD);
+        } else {
+            setGameState(GameState.EXPLORATION_3D);
+        }
     };
 
     const toggleChoice = (id: string) => {
