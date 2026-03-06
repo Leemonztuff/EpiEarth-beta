@@ -58,10 +58,8 @@ export const OverworldMap = ({ playerPos, onMove, dimension = 'MORTAL' }: any) =
     const townMapData = useGameStore(s => s.townMapData);
     const isAssetsLoaded = useGameStore(s => s.isAssetsLoaded);
     const overworldEnemies = useGameStore(s => s.enemies);
-    const overworldEnemies = useGameStore(s => s.enemies);
-    
-    const safeDimension = dimension || 'MORTAL';
-    
+
+    const safeDimension = dimension || 'MORTAL';    
     const isLocal = (gameState || '') === GameState.TOWN_EXPLORATION || (gameState || '') === GameState.DUNGEON;
     const hours = Math.floor((worldTime || 480) / 60);
     const isNight = hours < 6 || hours >= 22;
