@@ -84,7 +84,7 @@ export class WorldGenerator {
             movementType: MovementType.WALK,
             feature,
             featureSprite,
-            enemies
+            enemies: []
         };
     }
 
