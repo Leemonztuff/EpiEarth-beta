@@ -23,7 +23,6 @@ const generateExplorationMap = (): MapCell[][] => {
         for (let z = 0; z < MAP_SIZE; z++) {
             let cellType: MapCell['type'] = 'FLOOR';
             let height = 0;
-            
             if (x === 0 || x === MAP_SIZE - 1 || z === 0 || z === MAP_SIZE - 1) {
                 cellType = 'WALL';
                 height = 2;
@@ -37,7 +36,6 @@ const generateExplorationMap = (): MapCell[][] => {
                 cellType = 'WATER';
                 height = -0.5;
             }
-            
             map[x][z] = { x, z, type: cellType, height };
         }
     }
@@ -96,12 +94,11 @@ const Water: React.FC<{ position: [number, number, number] }> = ({ position }) =
     );
 };
 
-const PlayerCharacter: React.FC<{ position: [number, number, number]; direction: number; hp: number; maxHp: number }> = ({ position, direction, hp, maxHp }) => {
+const PlayerCharacter: React.FC<{ position: [number, number, number]; hp: number; maxHp: number }> = ({ position, hp, maxHp }) => {
     const hpPercent = hp / maxHp;
     const hpColor = hpPercent > 0.5 ? '#22c55e' : hpPercent > 0.25 ? '#eab308' : '#ef4444';
-    
     return (
-        <group position={position} rotation={[0, direction, 0]}>
+        <group position={position}>
             <mesh position={[0, 0.5, 0]} castShadow>
                 <boxGeometry args={[0.4, 0.8, 0.4]} />
                 <meshStandardMaterial color="#3b82f6" />
@@ -120,16 +117,7 @@ const PlayerCharacter: React.FC<{ position: [number, number, number]; direction:
 
 const EnemyCharacter: React.FC<{ position: [number, number, number]; type: string; isDefeated: boolean }> = ({ position, type, isDefeated }) => {
     if (isDefeated) return null;
-    
-    const colors: Record<string, string> = {
-        goblin: '#22c55e',
-        slime: '#06b6d4',
-        skeleton: '#e5e7eb',
-        orc: '#84cc16',
-        wolf: '#a3a3a3',
-        default: '#ef4444'
-    };
-    
+    const colors: Record<string, string> = { goblin: '#22c55e', slime: '#06b6d4', skeleton: '#e5e7eb', orc: '#84cc16', wolf: '#a3a3a3', default: '#ef4444' };
     return (
         <group position={position}>
             <mesh position={[0, 0.5, 0]} castShadow>
@@ -147,72 +135,150 @@ const EnemyCharacter: React.FC<{ position: [number, number, number]; type: strin
 const ExplorationMap: React.FC<{
     map: MapCell[][];
     playerPos: { x: number; z: number };
-    playerDirection: number;
     playerHp: number;
     playerMaxHp: number;
     enemies: { id: string; x: number; z: number; type: string; isDefeated: boolean }[];
     traps: { id: string; x: number; z: number; type: string; isArmed: boolean }[];
-}> = ({ map, playerPos, playerDirection, playerHp, playerMaxHp, enemies, traps }) => {
+}> = ({ map, playerPos, playerHp, playerMaxHp, enemies, traps }) => (
+    <group>
+        {map.map((row, x) => row.map((cell, z) => {
+            const pos: [number, number, number] = [x - MAP_SIZE / 2, cell.height * 0.1, z - MAP_SIZE / 2];
+            if (cell.type === 'FLOOR') return <FloorTile key={`floor-${x}-${z}`} position={pos} />;
+            if (cell.type === 'WALL') return <Wall key={`wall-${x}-${z}`} position={pos} height={cell.height} />;
+            if (cell.type === 'TREE') return <Tree key={`tree-${x}-${z}`} position={pos} />;
+            if (cell.type === 'ROCK') return <Rock key={`rock-${x}-${z}`} position={pos} />;
+            if (cell.type === 'WATER') return <Water key={`water-${x}-${z}`} position={pos} />;
+            return null;
+        }))}
+        <PlayerCharacter position={[playerPos.x - MAP_SIZE / 2, 0, playerPos.z - MAP_SIZE / 2]} hp={playerHp} maxHp={playerMaxHp} />
+        {enemies.map(enemy => (
+            <EnemyCharacter key={enemy.id} position={[enemy.x - MAP_SIZE / 2, 0, enemy.z - MAP_SIZE / 2]} type={enemy.type} isDefeated={enemy.isDefeated} />
+        ))}
+        {traps.map(trap => trap.isArmed && (
+            <TrapMarker key={trap.id} position={[trap.x - MAP_SIZE / 2, 0.1, trap.z - MAP_SIZE / 2]} trapType={trap.type} isArmed={trap.isArmed} />
+        ))}
+    </group>
+);
+
+const VirtualJoystick: React.FC<{
+    onMove: (dx: number, dy: number) => void;
+    onRelease: () => void;
+}> = ({ onMove, onRelease }) => {
+    const [isDragging, setIsDragging] = useState(false);
+    const [startPos, setStartPos] = useState({ x: 0, y: 0 });
+    const [currentPos, setCurrentPos] = useState({ x: 0, y: 0 });
+    const baseSize = 120;
+    const maxDistance = 40;
+
+    const handleStart = (e: React.TouchEvent) => {
+        const touch = e.touches[0];
+        setStartPos({ x: touch.clientX, y: touch.clientY });
+        setCurrentPos({ x: touch.clientX, y: touch.clientY });
+        setIsDragging(true);
+    };
+
+    const handleMove = (e: React.TouchEvent) => {
+        if (!isDragging) return;
+        const touch = e.touches[0];
+        setCurrentPos({ x: touch.clientX, y: touch.clientY });
+        
+        const dx = Math.max(-1, Math.min(1, (touch.clientX - startPos.x) / maxDistance));
+        const dy = Math.max(-1, Math.min(1, (touch.clientY - startPos.y) / maxDistance));
+        onMove(dx, dy);
+    };
+
+    const handleEnd = () => {
+        setIsDragging(false);
+        setCurrentPos(startPos);
+        onRelease();
+    };
+
+    const distance = Math.sqrt(Math.pow(currentPos.x - startPos.x, 2) + Math.pow(currentPos.y - startPos.y, 2));
+    const clampedDistance = Math.min(distance, maxDistance);
+    const angle = Math.atan2(currentPos.y - startPos.y, currentPos.x - startPos.x);
+    const knobX = Math.cos(angle) * clampedDistance;
+    const knobY = Math.sin(angle) * clampedDistance;
+
     return (
-        <group>
-            {map.map((row, x) =>
-                row.map((cell, z) => {
-                    const pos: [number, number, number] = [x - MAP_SIZE / 2, cell.height * 0.1, z - MAP_SIZE / 2];
-                    
-                    if (cell.type === 'FLOOR') {
-                        return <FloorTile key={`floor-${x}-${z}`} position={pos} />;
-                    } else if (cell.type === 'WALL') {
-                        return <Wall key={`wall-${x}-${z}`} position={pos} height={cell.height} />;
-                    } else if (cell.type === 'TREE') {
-                        return <Tree key={`tree-${x}-${z}`} position={pos} />;
-                    } else if (cell.type === 'ROCK') {
-                        return <Rock key={`rock-${x}-${z}`} position={pos} />;
-                    } else if (cell.type === 'WATER') {
-                        return <Water key={`water-${x}-${z}`} position={pos} />;
-                    }
-                    return null;
-                })
-            )}
-            
-            <PlayerCharacter 
-                position={[playerPos.x - MAP_SIZE / 2, 0, playerPos.z - MAP_SIZE / 2]} 
-                direction={playerDirection}
-                hp={playerHp}
-                maxHp={playerMaxHp}
-            />
-            
-            {enemies.map(enemy => (
-                <EnemyCharacter 
-                    key={enemy.id}
-                    position={[enemy.x - MAP_SIZE / 2, 0, enemy.z - MAP_SIZE / 2]}
-                    type={enemy.type}
-                    isDefeated={enemy.isDefeated}
+        <div 
+            className="absolute bottom-32 left-8 touch-none select-none"
+            onTouchStart={handleStart}
+            onTouchMove={handleMove}
+            onTouchEnd={handleEnd}
+        >
+            <div 
+                className="w-28 h-28 rounded-full bg-black/40 border-4 border-white/20 flex items-center justify-center"
+                style={{ width: baseSize, height: baseSize }}
+            >
+                <div 
+                    className="w-12 h-12 rounded-full bg-white/30 border-2 border-white/50 transition-transform"
+                    style={{ 
+                        transform: `translate(${knobX}px, ${knobY}px)`,
+                        backgroundColor: isDragging ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.3)'
+                    }}
                 />
-            ))}
-            
-            {traps.map(trap => (
-                trap.isArmed && (
-                    <TrapMarker 
-                        key={trap.id}
-                        position={[trap.x - MAP_SIZE / 2, 0.1, trap.z - MAP_SIZE / 2]}
-                        trapType={trap.type}
-                        isArmed={trap.isArmed}
-                    />
-                )
-            ))}
-        </group>
+            </div>
+        </div>
     );
 };
 
-const CameraController: React.FC<{ playerPos: { x: number; z: number } }> = ({ playerPos }) => {
-    return null;
+const TrapButton: React.FC<{
+    type: string;
+    index: number;
+    isSelected: boolean;
+    onSelect: () => void;
+    onPlace: () => void;
+}> = ({ type, index, isSelected, onSelect, onPlace }) => {
+    const [isLongPressing, setIsLongPressing] = useState(false);
+    const longPressTimer = useRef<number | null>(null);
+    
+    const handleTouchStart = () => {
+        longPressTimer.current = window.setTimeout(() => {
+            setIsLongPressing(true);
+            onPlace();
+        }, 500);
+    };
+    
+    const handleTouchEnd = () => {
+        if (longPressTimer.current) {
+            clearTimeout(longPressTimer.current);
+            longPressTimer.current = null;
+        }
+        setIsLongPressing(false);
+    };
+    
+    const trapColors: Record<string, string> = {
+        SPIKE: 'bg-gray-400',
+        FIRE: 'bg-orange-500',
+        ICE: 'bg-cyan-400',
+        POISON: 'bg-purple-500',
+        EXPLOSIVE: 'bg-red-500',
+        STUN: 'bg-yellow-400'
+    };
+    
+    return (
+        <button
+            onClick={onSelect}
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+            className={`w-14 h-14 rounded-xl font-bold text-xs transition-all active:scale-90 flex flex-col items-center justify-center ${
+                isSelected 
+                    ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/50' 
+                    : `${trapColors[type] || 'bg-black/60'} text-white/80 border border-white/20`
+            } ${isLongPressing ? 'animate-pulse ring-4 ring-white' : ''}`}
+        >
+            <span>{index + 1}</span>
+            <span className="text-[8px]">{type.charAt(0) + type.slice(1).toLowerCase()}</span>
+        </button>
+    );
 };
 
 export const Exploration3DScene: React.FC = () => {
     const map = useMemo(() => generateExplorationMap(), []);
     const [playerPos, setPlayerPos] = useState({ x: Math.floor(MAP_SIZE / 2), z: Math.floor(MAP_SIZE / 2) });
-    const [playerDirection, setPlayerDirection] = useState(0);
     const [selectedTrap, setSelectedTrap] = useState<string | null>(null);
+    const [isMoving, setIsMoving] = useState(false);
+    const moveIntervalRef = useRef<number | null>(null);
     
     const gameState = useGameStore(s => s.gameState);
     const party = useGameStore(s => s.party);
@@ -221,7 +287,6 @@ export const Exploration3DScene: React.FC = () => {
     const initZone = useGameStore(s => s.initZone);
     const movePlayer = useGameStore(s => s.movePlayer);
     const placeTrap = useGameStore(s => s.placeTrap);
-    const exploration = useGameStore(s => s.explorationState);
     
     useEffect(() => {
         if (gameState === GameState.EXPLORATION_3D && explorationState.zoneEnemies.length === 0) {
@@ -234,9 +299,7 @@ export const Exploration3DScene: React.FC = () => {
     const playerMaxHp = currentPlayer?.stats.maxHp || 1;
     
     const enemies = explorationState.zoneEnemies.map(e => ({
-        id: e.id,
-        x: e.x,
-        z: e.z,
+        id: e.id, x: e.x, z: e.z,
         type: e.name.toLowerCase().includes('goblin') ? 'goblin' : 
               e.name.toLowerCase().includes('slime') ? 'slime' :
               e.name.toLowerCase().includes('skeleton') ? 'skeleton' :
@@ -245,11 +308,7 @@ export const Exploration3DScene: React.FC = () => {
     }));
     
     const traps = explorationState.traps.map(t => ({
-        id: t.id,
-        x: t.position.x,
-        z: t.position.z,
-        type: t.type,
-        isArmed: t.isArmed
+        id: t.id, x: t.position.x, z: t.position.z, type: t.type, isArmed: t.isArmed
     }));
     
     const aliveEnemies = explorationState.zoneEnemies.filter(e => !e.isDefeated).length;
@@ -257,149 +316,113 @@ export const Exploration3DScene: React.FC = () => {
         ? `${explorationState.zoneEnemies.length - aliveEnemies}/${explorationState.zoneEnemies.length}`
         : '0/0';
     
-    const handleKeyDown = useCallback((e: KeyboardEvent) => {
-        if (gameState !== GameState.EXPLORATION_3D) return;
+    const handleJoystickMove = useCallback((dx: number, dy: number) => {
+        if (dx === 0 && dy === 0) return;
         
-        const speed = 1;
         let newX = playerPos.x;
         let newZ = playerPos.z;
-        let newDir = playerDirection;
         
-        switch (e.key) {
-            case 'w':
-            case 'ArrowUp':
-                newZ -= speed;
-                newDir = Math.PI;
-                break;
-            case 's':
-            case 'ArrowDown':
-                newZ += speed;
-                newDir = 0;
-                break;
-            case 'a':
-            case 'ArrowLeft':
-                newX -= speed;
-                newDir = -Math.PI / 2;
-                break;
-            case 'd':
-            case 'ArrowRight':
-                newX += speed;
-                newDir = Math.PI / 2;
-                break;
-            case ' ':
-                if (selectedTrap && map[newX]?.[newZ]?.type === 'FLOOR') {
-                    placeTrap(selectedTrap as any, newX, newZ);
-                }
-                break;
-            case '1': setSelectedTrap('SPIKE'); break;
-            case '2': setSelectedTrap('FIRE'); break;
-            case '3': setSelectedTrap('ICE'); break;
-            case '4': setSelectedTrap('POISON'); break;
-            case '5': setSelectedTrap('EXPLOSIVE'); break;
-            case '6': setSelectedTrap('STUN'); break;
-            default:
-                return;
-        }
+        if (dy < -0.3) newZ -= 1;
+        if (dy > 0.3) newZ += 1;
+        if (dx < -0.3) newX -= 1;
+        if (dx > 0.3) newX += 1;
         
         if (newX >= 0 && newX < MAP_SIZE && newZ >= 0 && newZ < MAP_SIZE) {
             const cell = map[newX][newZ];
             if (cell.type === 'FLOOR') {
                 setPlayerPos({ x: newX, z: newZ });
-                setPlayerDirection(newDir);
                 movePlayer(newX, newZ);
             }
         }
-    }, [playerPos, playerDirection, selectedTrap, map, placeTrap, movePlayer, gameState]);
+    }, [playerPos, map, movePlayer]);
     
-    useEffect(() => {
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [handleKeyDown]);
+    const handleJoystickRelease = useCallback(() => {
+        setIsMoving(false);
+    }, []);
     
+    const handleTrapPlace = () => {
+        if (selectedTrap) {
+            placeTrap(selectedTrap as any, playerPos.x, playerPos.z);
+        }
+    };
+
     if (gameState !== GameState.EXPLORATION_3D) return null;
-    
+
     return (
-        <div className="w-full h-full relative">
+        <div className="w-full h-full relative bg-black">
             <Canvas shadows camera={{ position: [10, 15, 10], fov: 50 }}>
                 <color attach="background" args={['#1e293b']} />
                 <ambientLight intensity={0.4} />
                 <directionalLight position={[10, 20, 10]} intensity={1} castShadow shadow-mapSize={[2048, 2048]} />
                 <fog attach="fog" args={['#1e293b', 10, 30]} />
-                <ExplorationMap 
-                    map={map}
-                    playerPos={playerPos}
-                    playerDirection={playerDirection}
-                    playerHp={playerHp}
-                    playerMaxHp={playerMaxHp}
-                    enemies={enemies}
-                    traps={traps}
-                />
-                <CameraController playerPos={playerPos} />
+                <ExplorationMap map={map} playerPos={playerPos} playerHp={playerHp} playerMaxHp={playerMaxHp} enemies={enemies} traps={traps} />
                 <OrbitControls enableZoom={true} enablePan={false} maxPolarAngle={Math.PI / 2.5} />
             </Canvas>
             
-            <div className="absolute top-4 left-4 bg-slate-900/90 p-4 rounded-xl border border-slate-700">
-                <button 
-                    onClick={() => setGameState(GameState.OVERWORLD)}
-                    className="bg-gradient-to-r from-blue-600 to-blue-800 px-4 py-2 rounded-lg font-black text-white text-xs uppercase tracking-widest border border-blue-400 hover:from-blue-500 transition-all"
-                >
-                    ← Volver
-                </button>
-                <h3 className="text-amber-500 font-black uppercase text-xs mt-2">📍 {explorationState.zoneName}</h3>
-                <div className="flex items-center gap-2 text-xs text-slate-300">
-                    <span>Enemigos:</span>
-                    <span className="text-emerald-500 font-bold">{zoneProgress}</span>
-                </div>
-                {explorationState.zoneCompleted && (
-                    <div className="mt-2 text-amber-500 font-bold text-sm animate-pulse">
-                        ¡ZONA COMPLETADA!
+            {/* Top Bar */}
+            <div className="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/80 to-transparent">
+                <div className="flex justify-between items-center">
+                    <button 
+                        onClick={() => setGameState(GameState.OVERWORLD)}
+                        className="bg-blue-600/80 hover:bg-blue-500 px-4 py-2 rounded-xl font-bold text-white text-sm"
+                    >
+                        ← Volver
+                    </button>
+                    <div className="text-center">
+                        <div className="text-amber-400 font-bold text-sm">{explorationState.zoneName}</div>
+                        <div className="text-white/70 text-xs">Enemigos: {zoneProgress}</div>
                     </div>
+                    <div className="bg-black/60 px-3 py-1 rounded-lg">
+                        <div className="text-emerald-400 font-bold text-sm">HP</div>
+                        <div className="w-20 h-2 bg-gray-700 rounded-full overflow-hidden">
+                            <div className="h-full bg-emerald-500" style={{ width: `${(playerHp / playerMaxHp) * 100}%` }} />
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            {/* Virtual Joystick */}
+            <VirtualJoystick onMove={handleJoystickMove} onRelease={handleJoystickRelease} />
+            
+            {/* Trap Buttons - Bottom Right */}
+            <div className="absolute bottom-4 right-4">
+                <div className="grid grid-cols-3 gap-2">
+                    {['SPIKE', 'FIRE', 'ICE', 'POISON', 'EXPLOSIVE', 'STUN'].map((type, i) => (
+                        <TrapButton
+                            key={type}
+                            type={type}
+                            index={i}
+                            isSelected={selectedTrap === type}
+                            onSelect={() => setSelectedTrap(selectedTrap === type ? null : type)}
+                            onPlace={handleTrapPlace}
+                        />
+                    ))}
+                </div>
+                {selectedTrap && (
+                    <button 
+                        onClick={handleTrapPlace}
+                        className="mt-2 w-full bg-emerald-600 hover:bg-emerald-500 py-3 rounded-xl font-bold text-white text-sm active:scale-95"
+                    >
+                        Colocar Trampa
+                    </button>
                 )}
             </div>
             
-            <div className="absolute bottom-4 left-4 bg-slate-900/90 p-4 rounded-xl border border-slate-700">
-                <h3 className="text-amber-500 font-black uppercase text-xs mb-2">Controles</h3>
-                <div className="text-slate-300 text-xs space-y-1">
-                    <p>WASD / Flechas: Moverse</p>
-                    <p>1-6: Seleccionar trampa</p>
-                    <p>Espacio: Colocar trampa</p>
-                </div>
-            </div>
-            
-            <div className="absolute top-4 right-4 bg-slate-900/90 p-4 rounded-xl border border-slate-700">
-                <h3 className="text-amber-500 font-black uppercase text-xs mb-2">Trampas ({traps.filter(t => t.isArmed).length}/{explorationState.maxTraps})</h3>
-                <div className="flex gap-1 flex-wrap">
-                    {['SPIKE', 'FIRE', 'ICE', 'POISON', 'EXPLOSIVE', 'STUN'].map((type, i) => (
-                        <button
-                            key={type}
-                            onClick={() => setSelectedTrap(selectedTrap === type ? null : type)}
-                            className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-all ${
-                                selectedTrap === type 
-                                    ? 'bg-amber-600 text-white' 
-                                    : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                            }`}
+            {/* Zone Complete Banner */}
+            {explorationState.zoneCompleted && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/70">
+                    <div className="bg-gradient-to-r from-amber-500 to-amber-700 p-8 rounded-2xl text-center animate-bounce">
+                        <div className="text-3xl mb-2">🎉</div>
+                        <div className="text-2xl font-black text-white">¡ZONA COMPLETADA!</div>
+                        <button 
+                            onClick={() => setGameState(GameState.OVERWORLD)}
+                            className="mt-4 bg-white text-amber-700 px-6 py-3 rounded-xl font-bold"
                         >
-                            {i + 1}. {type}
+                            Continuar →
                         </button>
-                    ))}
-                </div>
-            </div>
-            
-            <div className="absolute bottom-4 right-4 bg-slate-900/90 p-4 rounded-xl border border-slate-700 min-w-[200px]">
-                <h3 className="text-amber-500 font-black uppercase text-xs mb-2">🎭 {currentPlayer?.name || 'Jugador'}</h3>
-                <div className="flex items-center gap-2">
-                    <div className="flex-1 h-4 bg-slate-800 rounded-full overflow-hidden border border-slate-600">
-                        <div 
-                            className={`h-full transition-all ${
-                                playerHp > playerMaxHp * 0.5 ? 'bg-emerald-500' : 
-                                playerHp > playerMaxHp * 0.25 ? 'bg-amber-500' : 'bg-red-500'
-                            }`}
-                            style={{ width: `${(playerHp / playerMaxHp) * 100}%` }}
-                        />
                     </div>
-                    <span className="text-xs font-mono text-white">{playerHp}/{playerMaxHp}</span>
                 </div>
-            </div>
+            )}
         </div>
     );
 };
