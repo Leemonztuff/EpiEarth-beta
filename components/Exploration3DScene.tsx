@@ -169,6 +169,22 @@ const VirtualJoystick: React.FC<{
     const [currentPos, setCurrentPos] = useState({ x: 0, y: 0 });
     const baseSize = 120;
     const maxDistance = 40;
+    const moveIntervalRef = useRef<number | null>(null);
+
+    const startMoving = (dx: number, dy: number) => {
+        onMove(dx, dy);
+        moveIntervalRef.current = window.setInterval(() => {
+            onMove(dx, dy);
+        }, 200);
+    };
+
+    const stopMoving = () => {
+        if (moveIntervalRef.current) {
+            clearInterval(moveIntervalRef.current);
+            moveIntervalRef.current = null;
+        }
+        onRelease();
+    };
 
     const handleStart = (e: React.TouchEvent) => {
         const touch = e.touches[0];
@@ -179,18 +195,24 @@ const VirtualJoystick: React.FC<{
 
     const handleMove = (e: React.TouchEvent) => {
         if (!isDragging) return;
+        e.preventDefault();
         const touch = e.touches[0];
         setCurrentPos({ x: touch.clientX, y: touch.clientY });
         
         const dx = Math.max(-1, Math.min(1, (touch.clientX - startPos.x) / maxDistance));
         const dy = Math.max(-1, Math.min(1, (touch.clientY - startPos.y) / maxDistance));
-        onMove(dx, dy);
+        
+        if (Math.abs(dx) > 0.3 || Math.abs(dy) > 0.3) {
+            if (!moveIntervalRef.current) {
+                startMoving(dx, dy);
+            }
+        }
     };
 
     const handleEnd = () => {
         setIsDragging(false);
         setCurrentPos(startPos);
-        onRelease();
+        stopMoving();
     };
 
     const distance = Math.sqrt(Math.pow(currentPos.x - startPos.x, 2) + Math.pow(currentPos.y - startPos.y, 2));
@@ -278,6 +300,7 @@ export const Exploration3DScene: React.FC = () => {
     const [playerPos, setPlayerPos] = useState({ x: Math.floor(MAP_SIZE / 2), z: Math.floor(MAP_SIZE / 2) });
     const [selectedTrap, setSelectedTrap] = useState<string | null>(null);
     const [isMoving, setIsMoving] = useState(false);
+    const [canMove, setCanMove] = useState(true);
     const moveIntervalRef = useRef<number | null>(null);
     
     const gameState = useGameStore(s => s.gameState);
@@ -317,7 +340,7 @@ export const Exploration3DScene: React.FC = () => {
         : '0/0';
     
     const handleJoystickMove = useCallback((dx: number, dy: number) => {
-        if (dx === 0 && dy === 0) return;
+        if (dx === 0 && dy === 0 || !canMove) return;
         
         let newX = playerPos.x;
         let newZ = playerPos.z;
@@ -332,9 +355,11 @@ export const Exploration3DScene: React.FC = () => {
             if (cell.type === 'FLOOR') {
                 setPlayerPos({ x: newX, z: newZ });
                 movePlayer(newX, newZ);
+                setCanMove(false);
+                setTimeout(() => setCanMove(true), 150);
             }
         }
-    }, [playerPos, map, movePlayer]);
+    }, [playerPos, map, movePlayer, canMove]);
     
     const handleJoystickRelease = useCallback(() => {
         setIsMoving(false);
