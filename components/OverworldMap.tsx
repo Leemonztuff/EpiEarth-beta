@@ -10,6 +10,8 @@ import { AssetManager } from '../services/AssetManager';
 import { wesnothAtlas } from '../services/WesnothAtlas';
 import { hexTileRenderer } from '../services/HexTileRenderer';
 
+import { inputManager, InputType } from '../services/input/InputManager';
+
 const HEX_HEIGHT = Math.sqrt(3) * HEX_SIZE;
 const HORIZ_DIST = HEX_SIZE * 1.5;
 const VERT_DIST = HEX_HEIGHT;
@@ -139,22 +141,26 @@ export const OverworldMap = ({ playerPos, onMove, dimension = 'MORTAL' }: any) =
             }).filter(Boolean);
             
             tilesArray.forEach(tile => {
+                if (!tile) return;
                 hexTileRenderer.setTerrain(tile.q, tile.r, tile.terrain);
             });
 
-        // add enemies to store so they can be rendered and cleared later
-        const spawnEnemy = useGameStore.getState().spawnEnemy;
-        const existing = useGameStore.getState().enemies || [];
-        tilesArray.forEach(tile => {
-            if (!tile) return;
-            const key = `${tile.q},${tile.r}`;
-            if (tile.hasEncounter && !useGameStore.getState().clearedEncounters.has(key)) {
-                const found = existing.find(e => `${e.q},${e.r}` === key);
-                if (!found) {
-                    spawnEnemy({ id: key, q: tile.q, r: tile.r, spriteUrl: AssetManager.FALLBACK_SPRITE });
+            const spawnEnemy = useGameStore.getState().spawnEnemy;
+            const existing = useGameStore.getState().enemies || [];
+
+            tilesArray.forEach(tile => {
+                if (!tile) return;
+                const { x: tx, y: ty } = hexToPixel(tile.q, tile.r);
+                hexTileRenderer.drawTile(ctx, tile.q, tile.r, tx, ty, HEX_SIZE, tile.feature);
+
+                const key = `${tile.q},${tile.r}`;
+                if (tile.hasEncounter && !useGameStore.getState().clearedEncounters.has(key)) {
+                    const found = existing.find(e => `${e.q},${e.r}` === key);
+                    if (!found) {
+                        spawnEnemy({ id: key, q: tile.q, r: tile.r, spriteUrl: AssetManager.FALLBACK_SPRITE });
+                    }
                 }
-            }
-        });
+            });
         }
 
         const drawLoop = (tiles: any[]) => {
@@ -451,9 +457,15 @@ export const OverworldMap = ({ playerPos, onMove, dimension = 'MORTAL' }: any) =
                     const mx = (e.clientX - rect.left) / zoom - ((canvas.width / (2 * dpr * zoom)) - px);
                     const my = (e.clientY - rect.top) / zoom - ((canvas.height / (2 * dpr * zoom)) - py);
                     const { q, r } = pixelToAxial(mx, my);
-                    
+
+                    inputManager.emit({
+                        type: InputType.MOVE_TO,
+                        q, r,
+                        originalEvent: e
+                    });
+
                     const targetTile = WorldGenerator.getTile(q, r, safeDimension);
-                    
+
                     if (targetTile?.hasEncounter && !isLocal) {
                         const initZone = useGameStore.getState().initZone;
                         const setGameState = useGameStore.getState().setGameState;

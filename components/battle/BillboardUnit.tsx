@@ -32,7 +32,7 @@ const StatusBadge = ({ type }: { type: StatusEffectType }) => {
 };
 
 // Componente interno para cargar la textura con seguridad extrema
-const SafeSprite = ({ url, isHit }: { url: string, isHit: boolean }) => {
+const SafeSprite = ({ url, isHit, onTextureLoaded }: { url: string, isHit: boolean, onTextureLoaded: (tex: THREE.Texture) => void }) => {
     const [tex, setTex] = useState<THREE.Texture | null>(null);
     const [hasError, setHasError] = useState(false);
 
@@ -48,6 +48,7 @@ const SafeSprite = ({ url, isHit }: { url: string, isHit: boolean }) => {
                 loadedTex.magFilter = THREE.NearestFilter;
                 loadedTex.minFilter = THREE.NearestFilter;
                 setTex(loadedTex);
+                onTextureLoaded(loadedTex);
             },
             undefined,
             () => {
@@ -56,7 +57,10 @@ const SafeSprite = ({ url, isHit }: { url: string, isHit: boolean }) => {
                 setHasError(true);
                 // Cargar el sprite de seguridad si el original falla
                 loader.load(AssetManager.getSafeSprite(AssetManager.FALLBACK_SPRITE), (fbTex) => {
-                    if (active) setTex(fbTex);
+                    if (active) {
+                        setTex(fbTex);
+                        onTextureLoaded(fbTex);
+                    }
                 });
             }
         );
@@ -84,8 +88,19 @@ export const BillboardUnit = React.memo(({
   const groupRef = useRef<THREE.Group>(null);
   const [shouldShake, setShouldShake] = useState(false);
   const [attackPhase, setAttackPhase] = useState(0);
+  const [spriteScale, setSpriteScale] = useState<[number, number, number]>([2.0, 2.0, 1]);
   const lastHp = useRef(hp);
   const lastIsActing = useRef(isActing);
+  
+  const handleTextureLoaded = useCallback((tex: THREE.Texture) => {
+      const img = tex.image;
+      if (img) {
+          const aspect = img.width / img.height;
+          // Estandarizar base a altura 2.2 unidades de mundo
+          const baseHeight = 2.2;
+          setSpriteScale([baseHeight * aspect, baseHeight, 1]);
+      }
+  }, []);
   
   const { isUnitMenuOpen, setUnitMenuOpen, selectAction, hasMoved, hasActed, executeWait } = useGameStore();
 
@@ -165,8 +180,8 @@ export const BillboardUnit = React.memo(({
             />
         )}
         
-        <sprite scale={[2.0, 2.0, 1]} position={[0, 1.0, 0]}>
-            <SafeSprite url={spriteUrl} isHit={shouldShake} />
+        <sprite scale={spriteScale} position={[0, 1.1, 0]}>
+            <SafeSprite url={spriteUrl} isHit={shouldShake} onTextureLoaded={handleTextureLoaded} />
         </sprite>
 
         <Html position={[0, 2.3, 0]} center style={{ pointerEvents: 'none' }}>

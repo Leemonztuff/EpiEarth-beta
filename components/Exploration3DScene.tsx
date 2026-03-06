@@ -9,6 +9,8 @@ import { Exploration3DMinimap } from './Exploration3DMinimap';
 import { AssetManager } from '../services/AssetManager';
 import { GameState } from '../types';
 
+import { inputManager, InputType } from '../services/input/InputManager';
+
 interface MapCell {
     x: number;
     z: number;
@@ -97,7 +99,7 @@ const Water: React.FC<{ position: [number, number, number] }> = ({ position }) =
 };
 
 // small helper to safely load a texture into a sprite material
-const SafeSprite3D: React.FC<{ url?: string }> = ({ url }) => {
+const SafeSprite3D: React.FC<{ url?: string; onLoaded?: (tex: THREE.Texture) => void }> = ({ url, onLoaded }) => {
     const [tex, setTex] = useState<THREE.Texture | null>(null);
     useEffect(() => {
         if (!url) return;
@@ -109,10 +111,16 @@ const SafeSprite3D: React.FC<{ url?: string }> = ({ url }) => {
                 t.magFilter = THREE.NearestFilter;
                 t.minFilter = THREE.NearestFilter;
                 setTex(t);
+                if (onLoaded) onLoaded(t);
             },
             undefined,
             () => {
                 console.warn('[SafeSprite3D] Failed to load sprite:', url);
+                // Try fallback
+                loader.load(AssetManager.getSafeSprite(AssetManager.FALLBACK_SPRITE), (fbTex) => {
+                    setTex(fbTex);
+                    if (onLoaded) onLoaded(fbTex);
+                });
             }
         );
     }, [url]);
@@ -123,11 +131,21 @@ const SafeSprite3D: React.FC<{ url?: string }> = ({ url }) => {
 const PlayerCharacter: React.FC<{ position: [number, number, number]; hp: number; maxHp: number; spriteUrl?: string }> = ({ position, hp, maxHp, spriteUrl }) => {
     const hpPercent = hp / maxHp;
     const hpColor = hpPercent > 0.5 ? '#22c55e' : hpPercent > 0.25 ? '#eab308' : '#ef4444';
+    const [scale, setScale] = useState<[number, number, number]>([1.2, 1.8, 1]);
+
+    const handleLoaded = useCallback((tex: THREE.Texture) => {
+        if (tex.image) {
+            const aspect = tex.image.width / tex.image.height;
+            const height = 1.8;
+            setScale([height * aspect, height, 1]);
+        }
+    }, []);
+
     return (
         <group position={position}>
             {spriteUrl ? (
-                <sprite scale={[1.2, 1.8, 1]} position={[0, 0.9, 0]}>
-                    <SafeSprite3D url={spriteUrl} />
+                <sprite scale={scale} position={[0, 0.9, 0]}>
+                    <SafeSprite3D url={spriteUrl} onLoaded={handleLoaded} />
                 </sprite>
             ) : null}
             <mesh position={[0, 1.5, 0]}>
@@ -140,12 +158,22 @@ const PlayerCharacter: React.FC<{ position: [number, number, number]; hp: number
 
 
 const EnemyCharacter: React.FC<{ position: [number, number, number]; spriteUrl?: string; isDefeated: boolean }> = ({ position, spriteUrl, isDefeated }) => {
+    const [scale, setScale] = useState<[number, number, number]>([1.3, 1.3, 1]);
+
+    const handleLoaded = useCallback((tex: THREE.Texture) => {
+        if (tex.image) {
+            const aspect = tex.image.width / tex.image.height;
+            const height = 1.6;
+            setScale([height * aspect, height, 1]);
+        }
+    }, []);
+
     if (isDefeated) return null;
     return (
         <group position={position}>
             {spriteUrl && (
-                <sprite scale={[1.3, 1.3, 1]} position={[0, 0.8, 0]}>
-                    <SafeSprite3D url={spriteUrl} />
+                <sprite scale={scale} position={[0, 0.8, 0]}>
+                    <SafeSprite3D url={spriteUrl} onLoaded={handleLoaded} />
                 </sprite>
             )}
         </group>
@@ -382,6 +410,15 @@ export const Exploration3DScene: React.FC = () => {
     
     const handleJoystickRelease = useCallback(() => {
         setIsMoving(false);
+    }, []);
+    
+    useEffect(() => {
+        const unsubscribe = inputManager.subscribe((event) => {
+            if (event.type === InputType.MOVE_TO && event.x !== undefined && event.z !== undefined) {
+                // handle direct move if needed for PC controls later
+            }
+        });
+        return () => { unsubscribe(); };
     }, []);
     
     const handleTrapPlace = () => {

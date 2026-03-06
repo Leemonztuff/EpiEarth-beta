@@ -61,8 +61,8 @@ export class HexTileRenderer {
         this.spriteCache.clear();
     }
 
-    getTileSprites(q: number, r: number): TerrainTransition[] {
-        const cacheKey = `${q},${r}`;
+    getTileSprites(q: number, r: number, feature?: string): TerrainTransition[] {
+        const cacheKey = `${q},${r}-${feature || ''}`;
         
         // Return cached sprites if available
         if (this.spriteCache.has(cacheKey)) {
@@ -87,9 +87,13 @@ export class HexTileRenderer {
                 const candidates = wesnothAtlas.getSpritesByCategory(currentCategory);
                 const found = candidates.find(s => s.includes(fallbackBase));
                 if (found) return found;
+                
+                // second level fallback: just use the category base flat
+                if (wesnothAtlas.hasSprite(`flat/${currentCategory}`)) return `flat/${currentCategory}`;
+                if (wesnothAtlas.hasSprite(currentCategory)) return currentCategory;
             }
-            console.warn('[HexTileRenderer] missing sprite', name);
-            return null;
+            // final fallback: basic grass
+            return 'grass/green';
         };
 
         // base layer
@@ -120,13 +124,29 @@ export class HexTileRenderer {
             }
         }
 
+        // Feature layer (Overlays)
+        if (feature) {
+            // map features to wesnoth scenery or internal names
+            const featureMap: Record<string, string> = {
+                'tree': 'scenery/tree-varied',
+                'forest': 'terrain/forest/deciduous-summer-tile',
+                'village': 'terrain/village/human-cottage',
+                'city': 'terrain/village/human-city-tile',
+                'ruins': 'terrain/castle/ruin-tile'
+            };
+            const mappedFeature = featureMap[feature] || feature;
+            if (wesnothAtlas.hasSprite(mappedFeature)) {
+                transitions.push({ spriteName: mappedFeature, layer: 10 });
+            }
+        }
+
         // Cache the computed transitions
         this.spriteCache.set(cacheKey, transitions);
         return transitions;
     }
 
-    drawTile(ctx: CanvasRenderingContext2D, q: number, r: number, cx: number, cy: number, hexSize: number): void {
-        const sprites = this.getTileSprites(q, r);
+    drawTile(ctx: CanvasRenderingContext2D, q: number, r: number, cx: number, cy: number, hexSize: number, feature?: string): void {
+        const sprites = this.getTileSprites(q, r, feature);
         
         if (sprites.length === 0) {
             return;
