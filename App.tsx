@@ -122,8 +122,8 @@ const App = () => {
           <Suspense fallback={<LoadingFallback />}>
             {gameState === GameState.TITLE && <TitleScreen onComplete={(name, race, cls, stats, difficulty, evolutionStage) => {
                 createCharacter(name, race, cls, stats, difficulty, evolutionStage);
-                // Ir directamente al modo de exploración 3D
-                setGameState(GameState.EXPLORATION_3D);
+                // Va al OVERWORLD normal primero
+                setGameState(GameState.OVERWORLD);
             }} />}
             {gameState === GameState.GAME_WON && <EndingScreen />}
             

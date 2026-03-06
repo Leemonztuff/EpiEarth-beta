@@ -339,7 +339,13 @@ export const Exploration3DScene: React.FC = () => {
             </Canvas>
             
             <div className="absolute top-4 left-4 bg-slate-900/90 p-4 rounded-xl border border-slate-700">
-                <h3 className="text-amber-500 font-black uppercase text-xs mb-2">📍 {explorationState.zoneName}</h3>
+                <button 
+                    onClick={() => setGameState(GameState.OVERWORLD)}
+                    className="bg-gradient-to-r from-blue-600 to-blue-800 px-4 py-2 rounded-lg font-black text-white text-xs uppercase tracking-widest border border-blue-400 hover:from-blue-500 transition-all"
+                >
+                    ← Volver
+                </button>
+                <h3 className="text-amber-500 font-black uppercase text-xs mt-2">📍 {explorationState.zoneName}</h3>
                 <div className="flex items-center gap-2 text-xs text-slate-300">
                     <span>Enemigos:</span>
                     <span className="text-emerald-500 font-bold">{zoneProgress}</span>

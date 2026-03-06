@@ -228,6 +228,16 @@ export const UIOverlay: React.FC<{ onOpenTownService: any, activeService?: strin
                     </button>
                 )}
 
+                {/* Zona de Caza Button - Entra a exploración 3D */}
+                {!isTown && !isDungeon && (
+                    <button 
+                        onClick={() => handleButtonPress(() => setGameState(GameState.EXPLORATION_3D))} 
+                        className="bg-gradient-to-r from-red-600 to-red-800 px-10 py-5 md:px-8 md:py-4 rounded-2xl font-black text-white shadow-[0_0_30px_rgba(220,38,38,0.5)] border-2 border-red-400 animate-pulse text-sm md:text-xs uppercase tracking-widest active:scale-95 hover:from-red-500 transition-all"
+                    >
+                        ⚔️ Zona de Caza
+                    </button>
+                )}
+
                 {/* Town Services */}
                 {(isTown || isDungeon) && (
                     <div className="flex gap-2 md:gap-3 bg-black/60 p-3 md:p-2 rounded-3xl backdrop-blur-xl border border-white/10 shadow-2xl">
