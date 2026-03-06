@@ -96,14 +96,10 @@ export const UIOverlay: React.FC<{ onOpenTownService: any, activeService?: strin
         usePortal, enterSettlement, enterDungeon, exitSettlement, camp,
         party, townMapData, currentSettlementName, eternumShards
     } = useGameStore();
-    const initZone = useGameStore(s => s.initZone);
 
-    const isBattle = gameState === GameState.BATTLE_TACTICAL || gameState === GameState.BATTLE_INIT;
     const isExploring = gameState === GameState.OVERWORLD || gameState === GameState.TOWN_EXPLORATION || gameState === GameState.DUNGEON;
-    const isExploration3D = gameState === GameState.EXPLORATION_3D;
     const isTown = gameState === GameState.TOWN_EXPLORATION;
     const isDungeon = gameState === GameState.DUNGEON;
-    const isVersusBattle = gameState === GameState.BATTLE_VERSUS;
 
     const partyNeedsRest = party?.some(p => p.stats.hp < p.stats.maxHp * 0.8) || fatigue > 25;
     const canCamp = gameState === GameState.OVERWORLD && partyNeedsRest;
@@ -114,25 +110,18 @@ export const UIOverlay: React.FC<{ onOpenTownService: any, activeService?: strin
         
     const hasNPC = currentTile?.npcs && currentTile.npcs.length > 0;
   
-    const toggleExplorationMode = () => {
-        if (gameState === GameState.EXPLORATION_3D) {
-            setGameState(GameState.OVERWORLD);
-        }
-    };
-    
     const handleButtonPress = (callback: () => void) => {
         HapticFeedback.medium();
         callback();
     };
 
     if (gameState === GameState.TITLE || activeService !== 'NONE') return null;
-    
-    if (isExploration3D || isVersusBattle) return null;
+    if (gameState === GameState.EXPLORATION_3D || gameState === GameState.BATTLE_VERSUS) return null;
 
     return (
         <div className="fixed inset-0 pointer-events-none z-[100] flex flex-col">
             {/* Top Bar */}
-            {(isExploring || isExploration3D) && (
+            {isExploring && (
                 <div className="p-4 flex justify-between items-start pointer-events-auto">
                     <div className="flex gap-3 items-center">
                         <SolarClock time={worldTime} />
@@ -141,28 +130,17 @@ export const UIOverlay: React.FC<{ onOpenTownService: any, activeService?: strin
                                 text-xs font-black uppercase tracking-widest px-3 py-1.5 rounded-xl border
                                 ${isTown 
                                     ? 'bg-gradient-to-r from-emerald-600/80 to-emerald-800/80 text-emerald-300 border-emerald-500/50' 
-                                    : isExploration3D
-                                    ? 'bg-gradient-to-r from-blue-600/80 to-purple-800/80 text-blue-300 border-blue-500/50'
+                                    : isDungeon
+                                    ? 'bg-gradient-to-r from-slate-600/80 to-slate-800/80 text-slate-300 border-slate-500/50'
                                     : 'bg-black/60 text-slate-400 border-white/5'
                                 }
                             `}>
-                                {isTown ? currentSettlementName : isDungeon ? 'Cripta Ancestral' : isExploration3D ? 'Zona de Caza' : `${dimension} Realm`}
+                                {isTown ? currentSettlementName : isDungeon ? 'Cripta Ancestral' : `${dimension} Realm`}
                             </span>
                             <ExpeditionStats fatigue={fatigue} supplies={supplies} shards={eternumShards} />
                         </div>
                     </div>
                     <div className="flex gap-2">
-                        <button 
-                            onClick={() => handleButtonPress(toggleExplorationMode)} 
-                            className={`border text-xs font-black uppercase tracking-widest px-3 py-2 rounded-xl shadow-xl flex items-center gap-2 active:scale-90 transition-all
-                                ${isExploration3D 
-                                    ? 'bg-gradient-to-r from-amber-600 to-amber-800 border-amber-500 text-white' 
-                                    : 'bg-gradient-to-r from-red-600 to-red-800 border-red-500 text-white'
-                                }
-                            `}
-                        >
-                            {isExploration3D ? '← Volver' : '⚔️ Caza'}
-                        </button>
                         <button 
                             onClick={() => handleButtonPress(toggleInventory)} 
                             className="bg-gradient-to-br from-slate-800 to-slate-900 border border-white/10 to-white/20 text-white w-14 h-14 md:w-12 md:h-12 rounded-2xl shadow-xl flex items-center justify-center text-2xl active:scale-90 hover:from-slate-700 transition-all"
@@ -190,7 +168,7 @@ export const UIOverlay: React.FC<{ onOpenTownService: any, activeService?: strin
             )}
 
             {/* Party - Left Side */}
-            {(isExploring || isBattle) && party && (
+            {isExploring && party && (
                 <div className="absolute left-2 md:left-4 top-1/2 -translate-y-1/2 flex flex-col gap-3 md:gap-4 pointer-events-auto">
                     {party.map((member) => (
                         <PartyMember key={member.id} member={member} />
