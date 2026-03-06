@@ -1,25 +1,16 @@
 
 import React, { useRef, useEffect, useMemo, useState, useCallback } from 'react';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { OrbitControls, useTexture, Box, Plane, Instance, Instances } from '@react-three/drei';
+import { Canvas, useFrame } from '@react-three/fiber';
+import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
-import { TerrainType } from '../types';
 import { useGameStore } from '../store/gameStore';
-import { TerrainLayer } from './battle/TerrainLayer';
-import { LightingSystem } from './battle/LightingSystem';
-import { FogController } from './battle/FogController';
-import { EntityRenderer } from './battle/EntityRenderer';
 import { TrapMarker } from './TrapMarker';
-
-interface ExplorationSceneProps {
-    onEncounter?: () => void;
-    onTrapTrigger?: (trapId: string) => void;
-}
+import { GameState } from '../types';
 
 interface MapCell {
     x: number;
     z: number;
-    type: 'FLOOR' | 'WALL' | 'TREE' | 'ROCK' | 'WATER' | 'TRAP';
+    type: 'FLOOR' | 'WALL' | 'TREE' | 'ROCK' | 'WATER';
     height: number;
 }
 
@@ -36,13 +27,13 @@ const generateExplorationMap = (): MapCell[][] => {
             if (x === 0 || x === MAP_SIZE - 1 || z === 0 || z === MAP_SIZE - 1) {
                 cellType = 'WALL';
                 height = 2;
-            } else if (Math.random() < 0.15) {
+            } else if (Math.random() < 0.12) {
                 cellType = 'TREE';
                 height = 3 + Math.random() * 2;
-            } else if (Math.random() < 0.05) {
+            } else if (Math.random() < 0.04) {
                 cellType = 'ROCK';
                 height = 1 + Math.random();
-            } else if (Math.random() < 0.03) {
+            } else if (Math.random() < 0.02) {
                 cellType = 'WATER';
                 height = -0.5;
             }
@@ -54,59 +45,49 @@ const generateExplorationMap = (): MapCell[][] => {
     return map;
 };
 
-const FloorTile: React.FC<{ position: [number, number, number]; color: string }> = ({ position, color }) => {
-    return (
-        <mesh position={position} receiveShadow>
-            <boxGeometry args={[0.95, 0.1, 0.95]} />
-            <meshStandardMaterial color={color} roughness={0.8} />
+const FloorTile: React.FC<{ position: [number, number, number] }> = ({ position }) => (
+    <mesh position={position} receiveShadow>
+        <boxGeometry args={[0.95, 0.1, 0.95]} />
+        <meshStandardMaterial color="#4ade80" roughness={0.8} />
+    </mesh>
+);
+
+const Wall: React.FC<{ position: [number, number, number]; height: number }> = ({ position, height }) => (
+    <group position={position}>
+        <mesh position={[0, height / 2, 0]} castShadow receiveShadow>
+            <boxGeometry args={[1, height, 1]} />
+            <meshStandardMaterial color="#57534e" roughness={0.9} />
         </mesh>
-    );
-};
+    </group>
+);
 
-const Wall: React.FC<{ position: [number, number, number]; height: number }> = ({ position, height }) => {
-    return (
-        <group position={position}>
-            <mesh position={[0, height / 2, 0]} castShadow receiveShadow>
-                <boxGeometry args={[1, height, 1]} />
-                <meshStandardMaterial color="#57534e" roughness={0.9} />
-            </mesh>
-        </group>
-    );
-};
-
-const Tree: React.FC<{ position: [number, number, number] }> = ({ position }) => {
-    return (
-        <group position={position}>
-            <mesh position={[0, 1, 0]} castShadow>
-                <cylinderGeometry args={[0.2, 0.3, 2, 8]} />
-                <meshStandardMaterial color="#78350f" />
-            </mesh>
-            <mesh position={[0, 2.5, 0]} castShadow>
-                <coneGeometry args={[1, 2, 8]} />
-                <meshStandardMaterial color="#166534" />
-            </mesh>
-        </group>
-    );
-};
-
-const Rock: React.FC<{ position: [number, number, number] }> = ({ position }) => {
-    return (
-        <mesh position={[position[0], position[1] + 0.3, position[2]]} castShadow>
-            <dodecahedronGeometry args={[0.4]} />
-            <meshStandardMaterial color="#6b7280" roughness={1} />
+const Tree: React.FC<{ position: [number, number, number] }> = ({ position }) => (
+    <group position={position}>
+        <mesh position={[0, 1, 0]} castShadow>
+            <cylinderGeometry args={[0.2, 0.3, 2, 8]} />
+            <meshStandardMaterial color="#78350f" />
         </mesh>
-    );
-};
+        <mesh position={[0, 2.5, 0]} castShadow>
+            <coneGeometry args={[1, 2, 8]} />
+            <meshStandardMaterial color="#166534" />
+        </mesh>
+    </group>
+);
+
+const Rock: React.FC<{ position: [number, number, number] }> = ({ position }) => (
+    <mesh position={[position[0], position[1] + 0.3, position[2]]} castShadow>
+        <dodecahedronGeometry args={[0.4]} />
+        <meshStandardMaterial color="#6b7280" roughness={1} />
+    </mesh>
+);
 
 const Water: React.FC<{ position: [number, number, number] }> = ({ position }) => {
     const meshRef = useRef<THREE.Mesh>(null);
-    
     useFrame(({ clock }) => {
         if (meshRef.current) {
             meshRef.current.position.y = position[1] + Math.sin(clock.getElapsedTime() * 2) * 0.05;
         }
     });
-    
     return (
         <mesh ref={meshRef} position={position}>
             <boxGeometry args={[0.95, 0.1, 0.95]} />
@@ -115,11 +96,12 @@ const Water: React.FC<{ position: [number, number, number] }> = ({ position }) =
     );
 };
 
-const PlayerCharacter: React.FC<{ position: [number, number, number]; direction: number }> = ({ position, direction }) => {
-    const groupRef = useRef<THREE.Group>(null);
+const PlayerCharacter: React.FC<{ position: [number, number, number]; direction: number; hp: number; maxHp: number }> = ({ position, direction, hp, maxHp }) => {
+    const hpPercent = hp / maxHp;
+    const hpColor = hpPercent > 0.5 ? '#22c55e' : hpPercent > 0.25 ? '#eab308' : '#ef4444';
     
     return (
-        <group ref={groupRef} position={position} rotation={[0, direction, 0]}>
+        <group position={position} rotation={[0, direction, 0]}>
             <mesh position={[0, 0.5, 0]} castShadow>
                 <boxGeometry args={[0.4, 0.8, 0.4]} />
                 <meshStandardMaterial color="#3b82f6" />
@@ -128,28 +110,35 @@ const PlayerCharacter: React.FC<{ position: [number, number, number]; direction:
                 <sphereGeometry args={[0.25, 8, 8]} />
                 <meshStandardMaterial color="#fbbf24" />
             </mesh>
+            <mesh position={[0, 1.5, 0]}>
+                <sphereGeometry args={[0.15, 8, 8]} />
+                <meshBasicMaterial color={hpColor} />
+            </mesh>
         </group>
     );
 };
 
-const EnemyCharacter: React.FC<{ position: [number, number, number]; direction: number; type: string }> = ({ position, direction, type }) => {
+const EnemyCharacter: React.FC<{ position: [number, number, number]; type: string; isDefeated: boolean }> = ({ position, type, isDefeated }) => {
+    if (isDefeated) return null;
+    
     const colors: Record<string, string> = {
-        'goblin': '#22c55e',
-        'skeleton': '#e5e7eb',
-        'slime': '#06b6d4',
-        'orc': '#84cc16',
-        'dragon': '#dc2626'
+        goblin: '#22c55e',
+        slime: '#06b6d4',
+        skeleton: '#e5e7eb',
+        orc: '#84cc16',
+        wolf: '#a3a3a3',
+        default: '#ef4444'
     };
     
     return (
-        <group position={position} rotation={[0, direction, 0]}>
+        <group position={position}>
             <mesh position={[0, 0.5, 0]} castShadow>
                 <boxGeometry args={[0.5, 0.9, 0.5]} />
-                <meshStandardMaterial color={colors[type] || '#ef4444'} />
+                <meshStandardMaterial color={colors[type] || colors.default} />
             </mesh>
             <mesh position={[0, 1.1, 0]} castShadow>
                 <sphereGeometry args={[0.3, 8, 8]} />
-                <meshStandardMaterial color={colors[type] || '#ef4444'} emissive={colors[type] || '#ef4444'} emissiveIntensity={0.3} />
+                <meshStandardMaterial color={colors[type] || colors.default} emissive={colors[type] || colors.default} emissiveIntensity={0.3} />
             </mesh>
         </group>
     );
@@ -159,20 +148,19 @@ const ExplorationMap: React.FC<{
     map: MapCell[][];
     playerPos: { x: number; z: number };
     playerDirection: number;
-    enemies: { id: string; x: number; z: number; type: string; direction: number }[];
+    playerHp: number;
+    playerMaxHp: number;
+    enemies: { id: string; x: number; z: number; type: string; isDefeated: boolean }[];
     traps: { id: string; x: number; z: number; type: string; isArmed: boolean }[];
-    onPlayerClick?: (x: number, z: number) => void;
-}> = ({ map, playerPos, playerDirection, enemies, traps, onPlayerClick }) => {
-    const floorColor = '#4ade80';
-    
+}> = ({ map, playerPos, playerDirection, playerHp, playerMaxHp, enemies, traps }) => {
     return (
         <group>
             {map.map((row, x) =>
                 row.map((cell, z) => {
                     const pos: [number, number, number] = [x - MAP_SIZE / 2, cell.height * 0.1, z - MAP_SIZE / 2];
                     
-                    if (cell.type === 'FLOOR' || cell.type === 'TRAP') {
-                        return <FloorTile key={`floor-${x}-${z}`} position={pos} color={floorColor} />;
+                    if (cell.type === 'FLOOR') {
+                        return <FloorTile key={`floor-${x}-${z}`} position={pos} />;
                     } else if (cell.type === 'WALL') {
                         return <Wall key={`wall-${x}-${z}`} position={pos} height={cell.height} />;
                     } else if (cell.type === 'TREE') {
@@ -188,63 +176,90 @@ const ExplorationMap: React.FC<{
             
             <PlayerCharacter 
                 position={[playerPos.x - MAP_SIZE / 2, 0, playerPos.z - MAP_SIZE / 2]} 
-                direction={playerDirection} 
+                direction={playerDirection}
+                hp={playerHp}
+                maxHp={playerMaxHp}
             />
             
             {enemies.map(enemy => (
                 <EnemyCharacter 
                     key={enemy.id}
                     position={[enemy.x - MAP_SIZE / 2, 0, enemy.z - MAP_SIZE / 2]}
-                    direction={enemy.direction}
                     type={enemy.type}
+                    isDefeated={enemy.isDefeated}
                 />
             ))}
             
             {traps.map(trap => (
-                <TrapMarker 
-                    key={trap.id}
-                    position={[trap.x - MAP_SIZE / 2, 0.1, trap.z - MAP_SIZE / 2]}
-                    trapType={trap.type}
-                    isArmed={trap.isArmed}
-                />
+                trap.isArmed && (
+                    <TrapMarker 
+                        key={trap.id}
+                        position={[trap.x - MAP_SIZE / 2, 0.1, trap.z - MAP_SIZE / 2]}
+                        trapType={trap.type}
+                        isArmed={trap.isArmed}
+                    />
+                )
             ))}
         </group>
     );
 };
 
 const CameraController: React.FC<{ playerPos: { x: number; z: number } }> = ({ playerPos }) => {
-    const { camera } = useThree();
-    
-    useEffect(() => {
-        camera.position.set(
-            playerPos.x - MAP_SIZE / 2 + 8,
-            12,
-            playerPos.z - MAP_SIZE / 2 + 8
-        );
-        camera.lookAt(
-            playerPos.x - MAP_SIZE / 2,
-            0,
-            playerPos.z - MAP_SIZE / 2
-        );
-    }, [playerPos, camera]);
-    
     return null;
 };
 
-export const Exploration3DScene: React.FC<ExplorationSceneProps> = ({ onEncounter, onTrapTrigger }) => {
+export const Exploration3DScene: React.FC = () => {
     const map = useMemo(() => generateExplorationMap(), []);
     const [playerPos, setPlayerPos] = useState({ x: Math.floor(MAP_SIZE / 2), z: Math.floor(MAP_SIZE / 2) });
     const [playerDirection, setPlayerDirection] = useState(0);
-    const [enemies, setEnemies] = useState<{ id: string; x: number; z: number; type: string; direction: number }[]>([
-        { id: 'e1', x: 5, z: 5, type: 'goblin', direction: Math.PI },
-        { id: 'e2', x: 15, z: 10, type: 'skeleton', direction: Math.PI },
-        { id: 'e3', x: 10, z: 15, type: 'orc', direction: Math.PI },
-    ]);
-    const [traps, setTraps] = useState<{ id: string; x: number; z: number; type: string; isArmed: boolean }[]>([]);
     const [selectedTrap, setSelectedTrap] = useState<string | null>(null);
+    
     const gameState = useGameStore(s => s.gameState);
+    const party = useGameStore(s => s.party);
+    const explorationState = useGameStore(s => s.explorationState);
+    const setGameState = useGameStore(s => s.setGameState);
+    const initZone = useGameStore(s => s.initZone);
+    const movePlayer = useGameStore(s => s.movePlayer);
+    const placeTrap = useGameStore(s => s.placeTrap);
+    const exploration = useGameStore(s => s.explorationState);
+    
+    useEffect(() => {
+        if (gameState === GameState.EXPLORATION_3D && explorationState.zoneEnemies.length === 0) {
+            initZone('forest');
+        }
+    }, [gameState]);
+    
+    const currentPlayer = party[0];
+    const playerHp = currentPlayer?.stats.hp || 1;
+    const playerMaxHp = currentPlayer?.stats.maxHp || 1;
+    
+    const enemies = explorationState.zoneEnemies.map(e => ({
+        id: e.id,
+        x: e.x,
+        z: e.z,
+        type: e.name.toLowerCase().includes('goblin') ? 'goblin' : 
+              e.name.toLowerCase().includes('slime') ? 'slime' :
+              e.name.toLowerCase().includes('skeleton') ? 'skeleton' :
+              e.name.toLowerCase().includes('orco') ? 'orc' : 'wolf',
+        isDefeated: e.isDefeated
+    }));
+    
+    const traps = explorationState.traps.map(t => ({
+        id: t.id,
+        x: t.position.x,
+        z: t.position.z,
+        type: t.type,
+        isArmed: t.isArmed
+    }));
+    
+    const aliveEnemies = explorationState.zoneEnemies.filter(e => !e.isDefeated).length;
+    const zoneProgress = explorationState.zoneEnemies.length > 0 
+        ? `${explorationState.zoneEnemies.length - aliveEnemies}/${explorationState.zoneEnemies.length}`
+        : '0/0';
     
     const handleKeyDown = useCallback((e: KeyboardEvent) => {
+        if (gameState !== GameState.EXPLORATION_3D) return;
+        
         const speed = 1;
         let newX = playerPos.x;
         let newZ = playerPos.z;
@@ -273,87 +288,49 @@ export const Exploration3DScene: React.FC<ExplorationSceneProps> = ({ onEncounte
                 break;
             case ' ':
                 if (selectedTrap && map[newX]?.[newZ]?.type === 'FLOOR') {
-                    setTraps(prev => [...prev, { 
-                        id: `trap_${Date.now()}`, 
-                        x: newX, 
-                        z: newZ, 
-                        type: selectedTrap, 
-                        isArmed: true 
-                    }]);
+                    placeTrap(selectedTrap as any, newX, newZ);
                 }
                 break;
+            case '1': setSelectedTrap('SPIKE'); break;
+            case '2': setSelectedTrap('FIRE'); break;
+            case '3': setSelectedTrap('ICE'); break;
+            case '4': setSelectedTrap('POISON'); break;
+            case '5': setSelectedTrap('EXPLOSIVE'); break;
+            case '6': setSelectedTrap('STUN'); break;
             default:
                 return;
         }
         
         if (newX >= 0 && newX < MAP_SIZE && newZ >= 0 && newZ < MAP_SIZE) {
             const cell = map[newX][newZ];
-            if (cell.type === 'FLOOR' || cell.type === 'TRAP') {
+            if (cell.type === 'FLOOR') {
                 setPlayerPos({ x: newX, z: newZ });
                 setPlayerDirection(newDir);
-                
-                const enemyAtPos = enemies.find(e => e.x === newX && e.z === newZ);
-                if (enemyAtPos && onEncounter) {
-                    onEncounter();
-                }
-                
-                const trapAtPos = traps.find(t => t.x === newX && t.z === newZ && t.isArmed);
-                if (trapAtPos && onTrapTrigger) {
-                    onTrapTrigger(trapAtPos.id);
-                    setTraps(prev => prev.map(t => 
-                        t.id === trapAtPos.id ? { ...t, isArmed: false } : t
-                    ));
-                }
+                movePlayer(newX, newZ);
             }
         }
-    }, [playerPos, playerDirection, selectedTrap, map, enemies, traps, onEncounter, onTrapTrigger]);
+    }, [playerPos, playerDirection, selectedTrap, map, placeTrap, movePlayer, gameState]);
     
     useEffect(() => {
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [handleKeyDown]);
     
-    const moveEnemy = useCallback(() => {
-        setEnemies(prev => prev.map(enemy => {
-            if (Math.random() < 0.3) {
-                const dir = Math.random() * Math.PI * 2;
-                const dx = Math.round(Math.cos(dir));
-                const dz = Math.round(Math.sin(dir));
-                const newX = enemy.x + dx;
-                const newZ = enemy.z + dz;
-                
-                if (newX >= 0 && newX < MAP_SIZE && newZ >= 0 && newZ < MAP_SIZE) {
-                    const cell = map[newX][newZ];
-                    if (cell.type === 'FLOOR' || cell.type === 'TRAP') {
-                        return { ...enemy, x: newX, z: newZ, direction: dir };
-                    }
-                }
-            }
-            return enemy;
-        }));
-    }, [map]);
-    
-    useEffect(() => {
-        const interval = setInterval(moveEnemy, 2000);
-        return () => clearInterval(interval);
-    }, [moveEnemy]);
+    if (gameState !== GameState.EXPLORATION_3D) return null;
     
     return (
         <div className="w-full h-full relative">
             <Canvas shadows camera={{ position: [10, 15, 10], fov: 50 }}>
                 <color attach="background" args={['#1e293b']} />
                 <ambientLight intensity={0.4} />
-                <directionalLight 
-                    position={[10, 20, 10]} 
-                    intensity={1} 
-                    castShadow 
-                    shadow-mapSize={[2048, 2048]}
-                />
-                <FogController />
+                <directionalLight position={[10, 20, 10]} intensity={1} castShadow shadow-mapSize={[2048, 2048]} />
+                <fog attach="fog" args={['#1e293b', 10, 30]} />
                 <ExplorationMap 
                     map={map}
                     playerPos={playerPos}
                     playerDirection={playerDirection}
+                    playerHp={playerHp}
+                    playerMaxHp={playerMaxHp}
                     enemies={enemies}
                     traps={traps}
                 />
@@ -361,32 +338,61 @@ export const Exploration3DScene: React.FC<ExplorationSceneProps> = ({ onEncounte
                 <OrbitControls enableZoom={true} enablePan={false} maxPolarAngle={Math.PI / 2.5} />
             </Canvas>
             
+            <div className="absolute top-4 left-4 bg-slate-900/90 p-4 rounded-xl border border-slate-700">
+                <h3 className="text-amber-500 font-black uppercase text-xs mb-2">📍 {explorationState.zoneName}</h3>
+                <div className="flex items-center gap-2 text-xs text-slate-300">
+                    <span>Enemigos:</span>
+                    <span className="text-emerald-500 font-bold">{zoneProgress}</span>
+                </div>
+                {explorationState.zoneCompleted && (
+                    <div className="mt-2 text-amber-500 font-bold text-sm animate-pulse">
+                        ¡ZONA COMPLETADA!
+                    </div>
+                )}
+            </div>
+            
             <div className="absolute bottom-4 left-4 bg-slate-900/90 p-4 rounded-xl border border-slate-700">
                 <h3 className="text-amber-500 font-black uppercase text-xs mb-2">Controles</h3>
                 <div className="text-slate-300 text-xs space-y-1">
                     <p>WASD / Flechas: Moverse</p>
+                    <p>1-6: Seleccionar trampa</p>
                     <p>Espacio: Colocar trampa</p>
                 </div>
             </div>
             
             <div className="absolute top-4 right-4 bg-slate-900/90 p-4 rounded-xl border border-slate-700">
-                <h3 className="text-amber-500 font-black uppercase text-xs mb-2">Trampas</h3>
-                <div className="flex gap-2">
-                    {['SPIKE', 'FIRE', 'ICE', 'POISON', 'EXPLOSIVE', 'STUN'].map(type => (
+                <h3 className="text-amber-500 font-black uppercase text-xs mb-2">Trampas ({traps.filter(t => t.isArmed).length}/{explorationState.maxTraps})</h3>
+                <div className="flex gap-1 flex-wrap">
+                    {['SPIKE', 'FIRE', 'ICE', 'POISON', 'EXPLOSIVE', 'STUN'].map((type, i) => (
                         <button
                             key={type}
-                            onClick={() => setSelectedTrap(type === selectedTrap ? null : type)}
-                            className={`px-3 py-2 rounded text-xs font-bold uppercase transition-all ${
+                            onClick={() => setSelectedTrap(selectedTrap === type ? null : type)}
+                            className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-all ${
                                 selectedTrap === type 
                                     ? 'bg-amber-600 text-white' 
                                     : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
                             }`}
                         >
-                            {type}
+                            {i + 1}. {type}
                         </button>
                     ))}
                 </div>
-                <p className="text-slate-500 text-xs mt-2">{traps.length}/5 trampas</p>
+            </div>
+            
+            <div className="absolute bottom-4 right-4 bg-slate-900/90 p-4 rounded-xl border border-slate-700 min-w-[200px]">
+                <h3 className="text-amber-500 font-black uppercase text-xs mb-2">🎭 {currentPlayer?.name || 'Jugador'}</h3>
+                <div className="flex items-center gap-2">
+                    <div className="flex-1 h-4 bg-slate-800 rounded-full overflow-hidden border border-slate-600">
+                        <div 
+                            className={`h-full transition-all ${
+                                playerHp > playerMaxHp * 0.5 ? 'bg-emerald-500' : 
+                                playerHp > playerMaxHp * 0.25 ? 'bg-amber-500' : 'bg-red-500'
+                            }`}
+                            style={{ width: `${(playerHp / playerMaxHp) * 100}%` }}
+                        />
+                    </div>
+                    <span className="text-xs font-mono text-white">{playerHp}/{playerMaxHp}</span>
+                </div>
             </div>
         </div>
     );

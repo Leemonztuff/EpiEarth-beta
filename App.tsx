@@ -155,45 +155,24 @@ const App = () => {
 
             {/* EXPLORACIÓN 3D CON TRAMPAS */}
             {gameState === GameState.EXPLORATION_3D && (
-              <Exploration3DScene 
-                onEncounter={() => {
-                  const player = party[0];
-                  if (player) {
-                    const dummyEnemy = {
-                      id: 'wild_goblin',
-                      name: 'Goblin Salvaje',
-                      type: 'BEAST' as any,
-                      sprite: '/sprites/enemies/goblin.png',
-                      hp: 50,
-                      ac: 12,
-                      initiativeBonus: 2,
-                      xpReward: 100,
-                      resistances: [],
-                      vulnerabilities: [],
-                      immunities: []
-                    };
-                    startEncounter(player, dummyEnemy);
-                  }
-                }}
-                onTrapTrigger={(trapId) => {
-                  const result = triggerTrap(trapId, 'player');
-                  console.log(result.message, result.damage);
-                }}
-              />
+              <Exploration3DScene />
             )}
 
             {/* BATALLA VERSUS (ESTILO POKEMON) */}
-            {gameState === GameState.BATTLE_VERSUS && versusState.isActive && versusState.playerEntity && versusState.enemyEntity && (
+            {gameState === GameState.BATTLE_VERSUS && versusState.isActive && (
               <VersusBattleScene
-                playerSprite={versusState.playerEntity.visual.spriteUrl}
-                enemySprite={versusState.enemyEntity.visual.spriteUrl}
-                playerName={versusState.playerEntity.name}
-                enemyName={versusState.enemyEntity.name}
-                playerMaxHp={versusState.playerEntity.stats.hp}
-                enemyMaxHp={versusState.enemyEntity.stats.hp}
+                playerName={party[versusState.playerIndex]?.name || 'Heroe'}
+                enemyName={explorationState.zoneEnemies.find(e => e.id === explorationState.currentEnemyId)?.name || 'Enemigo'}
+                playerHp={versusState.playerCurrentHp}
+                playerMaxHp={versusState.playerMaxHp}
+                enemyHp={versusState.enemyCurrentHp}
+                enemyMaxHp={versusState.enemyMaxHp}
+                turn={versusState.turn}
+                battleLog={versusState.battleLog}
+                onAction={(action) => executeBattleAction(action)}
+                onFlee={() => fleeFromBattle()}
                 onVictory={() => endVersusBattle(true)}
                 onDefeat={() => endVersusBattle(false)}
-                onFlee={() => fleeFromBattle()}
               />
             )}
 

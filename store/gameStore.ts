@@ -60,16 +60,22 @@ export const useGameStore = create<GameStore>((set, get, api) => {
             traps: [],
             maxTraps: 5,
             currentBiome: 'forest',
-            encounterRate: 0.15
+            encounterRate: 0.15,
+            zoneEnemies: [],
+            currentEnemyId: null,
+            zoneCompleted: false,
+            zoneName: 'Bosque Encantado'
         },
         versusState: {
             isActive: false,
-            playerEntity: null,
-            enemyEntity: null,
+            playerIndex: 0,
             playerCurrentHp: 0,
+            playerMaxHp: 0,
             enemyCurrentHp: 0,
+            enemyMaxHp: 0,
             turn: 'PLAYER',
-            battleLog: []
+            battleLog: [],
+            isPlayerTurn: true
         }
     };
 });

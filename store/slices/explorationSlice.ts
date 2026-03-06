@@ -1,51 +1,144 @@
 
 import { StateCreator } from 'zustand';
-import { GameState, Trap, TrapType, BattleAction, EnemyDefinition, Entity } from '../../types';
+import { GameState, Trap, TrapType, BattleAction, Entity } from '../../types';
 import { TRAP_DATA, PLAYER_TRAP_LIMIT } from '../../data/trapsData';
 
+interface ZoneEnemy {
+    id: string;
+    name: string;
+    sprite: string;
+    hp: number;
+    maxHp: number;
+    x: number;
+    z: number;
+    isDefeated: boolean;
+}
+
+interface ExplorationState {
+    traps: Trap[];
+    maxTraps: number;
+    currentBiome: string;
+    encounterRate: number;
+    zoneEnemies: ZoneEnemy[];
+    currentEnemyId: string | null;
+    zoneCompleted: boolean;
+    zoneName: string;
+}
+
+interface VersusState {
+    isActive: boolean;
+    playerIndex: number;
+    playerCurrentHp: number;
+    playerMaxHp: number;
+    enemyCurrentHp: number;
+    enemyMaxHp: number;
+    turn: 'PLAYER' | 'ENEMY';
+    battleLog: string[];
+    isPlayerTurn: boolean;
+}
+
 export interface ExplorationSlice {
-    explorationState: {
-        traps: Trap[];
-        maxTraps: number;
-        currentBiome: string;
-        encounterRate: number;
-    };
-    versusState: {
-        isActive: boolean;
-        playerEntity: Entity | null;
-        enemyEntity: Entity | null;
-        playerCurrentHp: number;
-        enemyCurrentHp: number;
-        turn: 'PLAYER' | 'ENEMY';
-        battleLog: string[];
-    };
+    explorationState: ExplorationState;
+    versusState: VersusState;
     
+    initZone: (biome?: string) => void;
     placeTrap: (type: TrapType, x: number, z: number) => boolean;
     removeTrap: (trapId: string) => void;
-    triggerTrap: (trapId: string, targetId: string) => { damage: number; message: string };
-    disarmTrap: (trapId: string) => void;
+    triggerTrap: (trapId: string) => { damage: number; message: string };
     
-    startEncounter: (player: Entity, enemy: EnemyDefinition) => void;
+    movePlayer: (newX: number, newZ: number) => void;
+    startEncounter: (enemyId: string) => void;
     executeBattleAction: (action: BattleAction, skillId?: string) => void;
     endVersusBattle: (victory: boolean) => void;
     fleeFromBattle: () => void;
+    nextCharacterTurn: () => void;
 }
+
+const ENEMY_TEMPLATES = [
+    { name: 'Goblin', sprite: '/sprites/characters/goblin_01.png', hp: 30, xp: 50 },
+    { name: 'Slime', sprite: '/sprites/characters/slime_01.png', hp: 20, xp: 30 },
+    { name: 'Skeleton', sprite: '/sprites/characters/skeleton_01.png', hp: 40, xp: 80 },
+    { name: 'Orco', sprite: '/sprites/characters/orc_01.png', hp: 50, xp: 100 },
+    { name: 'Wolf', sprite: '/sprites/characters/werewolf_01.png', hp: 35, xp: 60 },
+];
+
+const generateZoneEnemies = (count: number = 5): ZoneEnemy[] => {
+    const enemies: ZoneEnemy[] = [];
+    const usedPositions = new Set<string>();
+    
+    for (let i = 0; i < count; i++) {
+        let x: number, z: number, key: string;
+        do {
+            x = Math.floor(Math.random() * 16) + 2;
+            z = Math.floor(Math.random() * 16) + 2;
+            key = `${x},${z}`;
+        } while (usedPositions.has(key));
+        
+        usedPositions.add(key);
+        const template = ENEMY_TEMPLATES[Math.floor(Math.random() * ENEMY_TEMPLATES.length)];
+        const level = Math.floor(Math.random() * 3) + 1;
+        
+        enemies.push({
+            id: `enemy_${i}`,
+            name: `${template.name} Nv.${level}`,
+            sprite: template.sprite,
+            hp: template.hp * level,
+            maxHp: template.hp * level,
+            x,
+            z,
+            isDefeated: false
+        });
+    }
+    
+    return enemies;
+};
 
 export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice> = (set, get) => ({
     explorationState: {
         traps: [],
         maxTraps: PLAYER_TRAP_LIMIT,
         currentBiome: 'forest',
-        encounterRate: 0.15
+        encounterRate: 0.15,
+        zoneEnemies: [],
+        currentEnemyId: null,
+        zoneCompleted: false,
+        zoneName: 'Bosque Encantado'
     },
     versusState: {
         isActive: false,
-        playerEntity: null,
-        enemyEntity: null,
+        playerIndex: 0,
         playerCurrentHp: 0,
+        playerMaxHp: 0,
         enemyCurrentHp: 0,
+        enemyMaxHp: 0,
         turn: 'PLAYER',
-        battleLog: []
+        battleLog: [],
+        isPlayerTurn: true
+    },
+    
+    initZone: (biome = 'forest') => {
+        const zoneNames: Record<string, string> = {
+            forest: 'Bosque Encantado',
+            desert: 'Desierto del Eternum',
+            mountains: 'Montañas Oscuras',
+            swamp: 'Ciénaga Maldita'
+        };
+        
+        const enemies = generateZoneEnemies(5 + Math.floor(Math.random() * 5));
+        
+        set({
+            explorationState: {
+                traps: [],
+                maxTraps: PLAYER_TRAP_LIMIT,
+                currentBiome: biome,
+                encounterRate: 0.2,
+                zoneEnemies: enemies,
+                currentEnemyId: null,
+                zoneCompleted: false,
+                zoneName: zoneNames[biome] || 'Zona Desconocida'
+            },
+            gameState: GameState.EXPLORATION_3D
+        });
     },
     
     placeTrap: (type, x, z) => {
@@ -86,7 +179,7 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
         });
     },
     
-    triggerTrap: (trapId, targetId) => {
+    triggerTrap: (trapId) => {
         const { explorationState } = get();
         const trap = explorationState.traps.find(t => t.id === trapId);
         
@@ -111,83 +204,93 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
         };
     },
     
-    disarmTrap: (trapId) => {
-        const { explorationState } = get();
+    movePlayer: (newX, newZ) => {
+        const { explorationState, party } = get();
+        
+        const enemyAtPos = explorationState.zoneEnemies.find(
+            e => e.x === newX && e.z === newZ && !e.isDefeated
+        );
+        
+        if (enemyAtPos) {
+            get().startEncounter(enemyAtPos.id);
+            return;
+        }
+        
+        const trapAtPos = explorationState.traps.find(
+            t => t.position.x === newX && t.position.z === newZ && t.isArmed
+        );
+        
+        if (trapAtPos) {
+            const result = get().triggerTrap(trapAtPos.id);
+            if (result.damage > 0 && party[0]) {
+                const currentHp = party[0].stats.hp - result.damage;
+                if (currentHp <= 0) {
+                    get().endVersusBattle(false);
+                }
+            }
+        }
+    },
+    
+    startEncounter: (enemyId) => {
+        const { explorationState, party } = get();
+        
+        const enemy = explorationState.zoneEnemies.find(e => e.id === enemyId);
+        if (!enemy || enemy.isDefeated) return;
+        
+        let playerIndex = 0;
+        while (playerIndex < party.length && party[playerIndex].stats.hp <= 0) {
+            playerIndex++;
+        }
+        
+        if (playerIndex >= party.length) {
+            return;
+        }
+        
+        const player = party[playerIndex];
+        
         set({
             explorationState: {
                 ...explorationState,
-                traps: explorationState.traps.map(t =>
-                    t.id === trapId ? { ...t, isArmed: false } : t
-                )
-            }
-        });
-    },
-    
-    startEncounter: (player, enemy) => {
-        set({
+                currentEnemyId: enemyId
+            },
             versusState: {
                 isActive: true,
-                playerEntity: player,
-                enemyEntity: {
-                    id: enemy.id,
-                    name: enemy.name,
-                    type: 'ENEMY',
-                    stats: {
-                        level: 1,
-                        class: 'FIGHTER' as any,
-                        hp: enemy.hp,
-                        maxHp: enemy.hp,
-                        xp: enemy.xpReward,
-                        xpToNextLevel: 1000,
-                        stamina: 20,
-                        maxStamina: 20,
-                        ac: enemy.ac,
-                        initiativeBonus: enemy.initiativeBonus,
-                        speed: 30,
-                        movementType: 'WALK' as any,
-                        attributes: { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 },
-                        baseAttributes: { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 },
-                        spellSlots: { current: 0, max: 0 },
-                        activeCooldowns: {},
-                        activeStatusEffects: [],
-                        resistances: enemy.resistances || [],
-                        vulnerabilities: enemy.vulnerabilities || [],
-                        immunities: enemy.immunities || [],
-                        creatureType: enemy.type
-                    },
-                    visual: { color: '#ef4444', modelType: 'billboard', spriteUrl: enemy.sprite },
-                    equipment: {}
-                } as Entity,
+                playerIndex,
                 playerCurrentHp: player.stats.hp,
+                playerMaxHp: player.stats.maxHp,
                 enemyCurrentHp: enemy.hp,
+                enemyMaxHp: enemy.maxHp,
                 turn: 'PLAYER',
-                battleLog: [`¡Un ${enemy.name} aparece!`]
+                battleLog: [`¡Un ${enemy.name} aparece!`, `¡${player.name} responde al llamado!`],
+                isPlayerTurn: true
             },
             gameState: GameState.BATTLE_VERSUS
         });
     },
     
     executeBattleAction: (action, skillId) => {
-        const { versusState } = get();
-        if (!versusState.isActive || versusState.turn !== 'PLAYER') return;
+        const { versusState, explorationState, party } = get();
+        if (!versusState.isActive || !versusState.isPlayerTurn) return;
         
         let newLog = [...versusState.battleLog];
         let newEnemyHp = versusState.enemyCurrentHp;
         
         if (action === BattleAction.ATTACK) {
-            const damage = Math.floor(Math.random() * 20) + 10;
+            const player = party[versusState.playerIndex];
+            const damage = Math.floor(Math.random() * 15) + 10 + (player?.stats.attributes?.STR || 10);
             newEnemyHp = Math.max(0, versusState.enemyCurrentHp - damage);
             newLog.push(`¡Atacas! -${damage} HP`);
         } else if (action === BattleAction.SKILL && skillId) {
-            const damage = Math.floor(Math.random() * 30) + 15;
+            const damage = Math.floor(Math.random() * 25) + 15;
             newEnemyHp = Math.max(0, versusState.enemyCurrentHp - damage);
-            newLog.push(`¡Usas ${skillId}! -${damage} HP`);
+            newLog.push(`¡Usas ${skillId}! -${damage} HP!`);
         }
         
         if (newEnemyHp <= 0) {
             set({
                 versusState: {
                     ...versusState,
+                    enemyCurrentHp: 0,
                     battleLog: [...newLog, '¡Has vencido al enemigo!']
                 }
             });
@@ -200,27 +303,28 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
                 ...versusState,
                 enemyCurrentHp: newEnemyHp,
                 turn: 'ENEMY',
+                isPlayerTurn: false,
                 battleLog: newLog
             }
         });
         
         setTimeout(() => {
-            const enemyDamage = Math.floor(Math.random() * 15) + 5;
+            const enemyDamage = Math.floor(Math.random() * 12) + 5;
             const newPlayerHp = Math.max(0, versusState.playerCurrentHp - enemyDamage);
             
             let finalLog = [...newLog];
-            finalLog.push(`¡El enemigo ataca! -${enemyDamage} HP`);
+            finalLog.push(`¡${explorationState.zoneEnemies.find(e => e.id === explorationState.currentEnemyId)?.name || 'Enemigo'} ataca! -${enemyDamage} HP`);
             
             if (newPlayerHp <= 0) {
-                finalLog.push('¡Has sido derrotado!');
+                finalLog.push(`¡${party[versusState.playerIndex]?.name || 'Personaje'} ha sido derrotado!`);
                 set({
                     versusState: {
                         ...versusState,
-                        playerCurrentHp: newPlayerHp,
+                        playerCurrentHp: 0,
                         battleLog: finalLog
                     }
                 });
-                setTimeout(() => get().endVersusBattle(false), 1500);
+                setTimeout(() => get().endVersusBattle(false), 2000);
                 return;
             }
             
@@ -229,38 +333,76 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
                     ...versusState,
                     playerCurrentHp: newPlayerHp,
                     turn: 'PLAYER',
+                    isPlayerTurn: true,
                     battleLog: finalLog
                 }
             });
-        }, 1500);
+        }, 1200);
     },
     
     endVersusBattle: (victory) => {
-        const { party } = get();
-        const { versusState } = get();
+        const { explorationState, party, versusState } = get();
         
-        if (victory && versusState.enemyEntity) {
-            const xpReward = versusState.enemyEntity.stats.xp || 100;
-            get().addPartyXp(xpReward);
+        if (victory && explorationState.currentEnemyId) {
+            const enemy = explorationState.zoneEnemies.find(e => e.id === explorationState.currentEnemyId);
+            if (enemy) {
+                const xpReward = Math.floor(enemy.maxHp / 2);
+                get().addPartyXp(xpReward);
+            }
+            
+            set({
+                explorationState: {
+                    ...explorationState,
+                    zoneEnemies: explorationState.zoneEnemies.map(e =>
+                        e.id === explorationState.currentEnemyId ? { ...e, isDefeated: true, x: -1, z: -1 } : e
+                    ),
+                    currentEnemyId: null
+                }
+            });
+        } else {
+            if (party[versusState.playerIndex]) {
+                set({
+                    party: party.map((p, i) =>
+                        i === versusState.playerIndex
+                            ? { ...p, stats: { ...p.stats, hp: 0 } }
+                            : p
+                    )
+                });
+            }
+        }
+        
+        const aliveEnemies = explorationState.zoneEnemies.filter(e => !e.isDefeated);
+        const zoneCompleted = aliveEnemies.length === 0;
+        
+        if (zoneCompleted) {
+            set({
+                explorationState: {
+                    ...explorationState,
+                    zoneCompleted: true,
+                    currentEnemyId: null
+                }
+            });
         }
         
         set({
             versusState: {
                 isActive: false,
-                playerEntity: null,
-                enemyEntity: null,
+                playerIndex: 0,
                 playerCurrentHp: 0,
+                playerMaxHp: 0,
                 enemyCurrentHp: 0,
+                enemyMaxHp: 0,
                 turn: 'PLAYER',
-                battleLog: []
+                battleLog: [],
+                isPlayerTurn: true
             },
-            gameState: GameState.EXPLORATION_3D
+            gameState: zoneCompleted ? GameState.LEVEL_UP : GameState.EXPLORATION_3D
         });
     },
     
     fleeFromBattle: () => {
-        const { versusState } = get();
-        const success = Math.random() < 0.5;
+        const { versusState, explorationState } = get();
+        const success = Math.random() < 0.4;
         
         if (success) {
             set({
@@ -269,7 +411,16 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
                     battleLog: [...versusState.battleLog, '¡Escapas exitosamente!']
                 }
             });
-            setTimeout(() => get().fleeFromBattle(), 1000);
+            setTimeout(() => {
+                set({
+                    versusState: {
+                        ...versusState,
+                        isActive: false,
+                        battleLog: []
+                    },
+                    gameState: GameState.EXPLORATION_3D
+                });
+            }, 1000);
         } else {
             set({
                 versusState: {
@@ -279,18 +430,56 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             });
             
             setTimeout(() => {
-                const enemyDamage = Math.floor(Math.random() * 15) + 5;
+                const enemyDamage = Math.floor(Math.random() * 15) + 8;
                 const newPlayerHp = Math.max(0, versusState.playerCurrentHp - enemyDamage);
                 
-                set({
-                    versusState: {
-                        ...versusState,
-                        playerCurrentHp: newPlayerHp,
-                        turn: 'PLAYER',
-                        battleLog: [...versusState.battleLog, `¡El enemigo ataca! -${enemyDamage} HP`]
-                    }
-                });
+                if (newPlayerHp <= 0) {
+                    set({
+                        versusState: {
+                            ...versusState,
+                            playerCurrentHp: 0,
+                            battleLog: [...versusState.battleLog, `¡El enemigo ataca! -${enemyDamage} HP`, '¡Derrotado!']
+                        }
+                    });
+                    setTimeout(() => get().endVersusBattle(false), 1500);
+                } else {
+                    set({
+                        versusState: {
+                            ...versusState,
+                            playerCurrentHp: newPlayerHp,
+                            turn: 'PLAYER',
+                            isPlayerTurn: true,
+                            battleLog: [...versusState.battleLog, `¡El enemigo ataca! -${enemyDamage} HP`]
+                        }
+                    });
+                }
             }, 1000);
         }
+    },
+    
+    nextCharacterTurn: () => {
+        const { versusState, party, explorationState } = get();
+        
+        let nextIndex = versusState.playerIndex + 1;
+        while (nextIndex < party.length && party[nextIndex].stats.hp <= 0) {
+            nextIndex++;
+        }
+        
+        if (nextIndex >= party.length) {
+            get().endVersusBattle(false);
+            return;
+        }
+        
+        const nextPlayer = party[nextIndex];
+        
+        set({
+            versusState: {
+                ...versusState,
+                playerIndex: nextIndex,
+                playerCurrentHp: nextPlayer.stats.hp,
+                playerMaxHp: nextPlayer.stats.maxHp,
+                battleLog: [...versusState.battleLog, `¡${nextPlayer.name} entra en combate!`]
+            }
+        });
     }
 });
