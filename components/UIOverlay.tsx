@@ -103,6 +103,7 @@ export const UIOverlay: React.FC<{ onOpenTownService: any, activeService?: strin
     const isExploration3D = gameState === GameState.EXPLORATION_3D;
     const isTown = gameState === GameState.TOWN_EXPLORATION;
     const isDungeon = gameState === GameState.DUNGEON;
+    const isVersusBattle = gameState === GameState.BATTLE_VERSUS;
 
     const partyNeedsRest = party?.some(p => p.stats.hp < p.stats.maxHp * 0.8) || fatigue > 25;
     const canCamp = gameState === GameState.OVERWORLD && partyNeedsRest;
@@ -116,9 +117,6 @@ export const UIOverlay: React.FC<{ onOpenTownService: any, activeService?: strin
     const toggleExplorationMode = () => {
         if (gameState === GameState.EXPLORATION_3D) {
             setGameState(GameState.OVERWORLD);
-        } else if (gameState === GameState.OVERWORLD) {
-            initZone('forest');
-            setGameState(GameState.EXPLORATION_3D);
         }
     };
     
@@ -128,6 +126,8 @@ export const UIOverlay: React.FC<{ onOpenTownService: any, activeService?: strin
     };
 
     if (gameState === GameState.TITLE || activeService !== 'NONE') return null;
+    
+    if (isExploration3D || isVersusBattle) return null;
 
     return (
         <div className="fixed inset-0 pointer-events-none z-[100] flex flex-col">
