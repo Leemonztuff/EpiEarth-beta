@@ -412,22 +412,25 @@ export const Exploration3DScene: React.FC = () => {
         setIsMoving(false);
     }, []);
     
-    useEffect(() => {
-        const unsubscribe = inputManager.subscribe((event) => {
-            if (event.type === InputType.MOVE_TO && event.x !== undefined && event.z !== undefined) {
-                // handle direct move if needed for PC controls later
-            }
-        });
-        return () => { unsubscribe(); };
-    }, []);
-    
-    const handleTrapPlace = () => {
+    const handleTrapPlace = useCallback(() => {
         if (selectedTrap) {
             placeTrap(selectedTrap as any, playerPos.x, playerPos.z);
         }
-    };
+    }, [selectedTrap, playerPos, placeTrap]);
+
+    useEffect(() => {
+        const unsubscribe = inputManager.subscribe((event) => {
+            if (event.type === InputType.MOVE_UP) handleJoystickMove(0, -1);
+            else if (event.type === InputType.MOVE_DOWN) handleJoystickMove(0, 1);
+            else if (event.type === InputType.MOVE_LEFT) handleJoystickMove(-1, 0);
+            else if (event.type === InputType.MOVE_RIGHT) handleJoystickMove(1, 0);
+            else if (event.type === InputType.ACTION_1) handleTrapPlace();
+        });
+        return () => { unsubscribe(); };
+    }, [handleJoystickMove, handleTrapPlace]);
 
     if (gameState !== GameState.EXPLORATION_3D) return null;
+    const isMobile = inputManager.getIsMobile();
 
     return (
         <div className="w-full h-full relative bg-black">
@@ -459,19 +462,18 @@ export const Exploration3DScene: React.FC = () => {
                             <div className="h-full bg-emerald-500" style={{ width: `${(playerHp / playerMaxHp) * 100}%` }} />
                         </div>
                     </div>
-                    <div className="bg-black/60 px-3 py-1 rounded-lg">
-                        <div className="text-orange-400 font-bold text-sm">Fatiga</div>
-                        <div className="text-xs text-white">{fatigue || 0} / 100</div>
-                    </div>
-                    <div className="bg-black/60 px-3 py-1 rounded-lg">
-                        <div className="text-blue-400 font-bold text-sm">Suministros</div>
-                        <div className="text-xs text-white">{(supplies || 0).toFixed(1)}</div>
-                    </div>
+                    {!isMobile && (
+                        <div className="bg-black/60 px-3 py-1 rounded-lg border border-white/10">
+                            <div className="text-white/40 text-[10px] uppercase font-bold">Controles PC</div>
+                            <div className="text-[10px] text-white/80">WASD: Mover | 1: Colocar</div>
+                        </div>
+                    )}
                 </div>
             </div>
             
-            {/* Virtual Joystick */}
-            <VirtualJoystick onMove={handleJoystickMove} onRelease={handleJoystickRelease} />
+            {/* Virtual Joystick - Only on mobile */}
+            {isMobile && <VirtualJoystick onMove={handleJoystickMove} onRelease={handleJoystickRelease} />}
+            
             
             {/* Minimap */}
             <Exploration3DMinimap 

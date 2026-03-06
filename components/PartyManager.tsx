@@ -4,6 +4,7 @@ import { useGameStore } from '../store/gameStore';
 import { GameState, Entity } from '../types';
 import { sfx } from '../services/SoundSystem';
 import { CLASS_CONFIG, NOISE_TEXTURE_URL, getSprite } from '../constants';
+import { Sprite } from './ui/Sprite';
 
 interface CharacterCardProps {
     entity: Entity;
@@ -34,7 +35,7 @@ const CharacterCard: React.FC<CharacterCardProps> = ({ entity, onClick, isSelect
                 w-12 h-12 md:w-16 md:h-16 rounded-lg bg-black/50 overflow-hidden border shrink-0 flex items-center justify-center transition-colors
                 ${isSelected ? 'border-purple-400' : 'border-slate-600 group-hover:border-slate-500'}
             `}>
-                <img src={entity.visual.spriteUrl} className="w-10 h-10 md:w-12 md:h-12 object-contain pixelated" alt={entity.name} />
+                <Sprite src={entity.visual.spriteUrl} className="h-10 md:h-12" alt={entity.name} />
             </div>
 
             {/* Info */}

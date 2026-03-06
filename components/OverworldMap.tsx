@@ -157,7 +157,7 @@ export const OverworldMap = ({ playerPos, onMove, dimension = 'MORTAL' }: any) =
                 if (tile.hasEncounter && !useGameStore.getState().clearedEncounters.has(key)) {
                     const found = existing.find(e => `${e.q},${e.r}` === key);
                     if (!found) {
-                        spawnEnemy({ id: key, q: tile.q, r: tile.r, spriteUrl: AssetManager.FALLBACK_SPRITE });
+                        spawnEnemy({ id: key, q: tile.q, r: tile.r, spriteUrl: 'units/undead/ghoul.png' });
                     }
                 }
             });
@@ -403,11 +403,13 @@ export const OverworldMap = ({ playerPos, onMove, dimension = 'MORTAL' }: any) =
         const playerImg = AssetManager.getAsset(leader.visual.spriteUrl);
         if (playerImg) {
             ctx.save();
-            const s = HEX_SIZE * 2;
+            const aspect = playerImg.width / playerImg.height;
+            const h = HEX_SIZE * 1.8;
+            const w = h * aspect;
             const bounce = Math.sin(Date.now() / 250) * 3;
             ctx.shadowBlur = 12;
             ctx.shadowColor = 'rgba(0,0,0,0.6)';
-            ctx.drawImage(playerImg, px - s/2, py - s + 5 + bounce, s, s);
+            ctx.drawImage(playerImg, px - w/2, py - h + 5 + bounce, w, h);
             ctx.restore();
         }
 
@@ -418,11 +420,13 @@ export const OverworldMap = ({ playerPos, onMove, dimension = 'MORTAL' }: any) =
                 const img = AssetManager.getAsset(enemy.spriteUrl);
                 if (img) {
                     ctx.save();
-                    const s2 = HEX_SIZE * 2;
+                    const aspect = img.width / img.height;
+                    const h = HEX_SIZE * 1.8;
+                    const w = h * aspect;
                     const bounce2 = Math.sin(Date.now() / 250 + parseInt(enemy.id.replace(/\D/g,'')||'0')) * 3;
                     ctx.shadowBlur = 8;
                     ctx.shadowColor = 'rgba(0,0,0,0.6)';
-                    ctx.drawImage(img, ex - s2/2, ey - s2 + 5 + bounce2, s2, s2);
+                    ctx.drawImage(img, ex - w/2, ey - h + 5 + bounce2, w, h);
                     ctx.restore();
                 }
             });
