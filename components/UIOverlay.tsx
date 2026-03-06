@@ -99,6 +99,7 @@ export const UIOverlay: React.FC<{ onOpenTownService: any, activeService?: strin
 
     const isBattle = gameState === GameState.BATTLE_TACTICAL || gameState === GameState.BATTLE_INIT;
     const isExploring = gameState === GameState.OVERWORLD || gameState === GameState.TOWN_EXPLORATION || gameState === GameState.DUNGEON;
+    const isExploration3D = gameState === GameState.EXPLORATION_3D;
     const isTown = gameState === GameState.TOWN_EXPLORATION;
     const isDungeon = gameState === GameState.DUNGEON;
 
@@ -110,7 +111,15 @@ export const UIOverlay: React.FC<{ onOpenTownService: any, activeService?: strin
         : WorldGenerator.getTile(playerPos.x, playerPos.y, dimension);
         
     const hasNPC = currentTile?.npcs && currentTile.npcs.length > 0;
-
+  
+    const toggleExplorationMode = () => {
+        if (gameState === GameState.EXPLORATION_3D) {
+            setGameState(GameState.OVERWORLD);
+        } else if (gameState === GameState.OVERWORLD) {
+            setGameState(GameState.EXPLORATION_3D);
+        }
+    };
+    
     const handleButtonPress = (callback: () => void) => {
         HapticFeedback.medium();
         callback();
@@ -121,7 +130,7 @@ export const UIOverlay: React.FC<{ onOpenTownService: any, activeService?: strin
     return (
         <div className="fixed inset-0 pointer-events-none z-[100] flex flex-col">
             {/* Top Bar */}
-            {isExploring && (
+            {(isExploring || isExploration3D) && (
                 <div className="p-4 flex justify-between items-start pointer-events-auto">
                     <div className="flex gap-3 items-center">
                         <SolarClock time={worldTime} />
@@ -130,15 +139,28 @@ export const UIOverlay: React.FC<{ onOpenTownService: any, activeService?: strin
                                 text-xs font-black uppercase tracking-widest px-3 py-1.5 rounded-xl border
                                 ${isTown 
                                     ? 'bg-gradient-to-r from-emerald-600/80 to-emerald-800/80 text-emerald-300 border-emerald-500/50' 
+                                    : isExploration3D
+                                    ? 'bg-gradient-to-r from-blue-600/80 to-purple-800/80 text-blue-300 border-blue-500/50'
                                     : 'bg-black/60 text-slate-400 border-white/5'
                                 }
                             `}>
-                                {isTown ? currentSettlementName : isDungeon ? 'Cripta Ancestral' : `${dimension} Realm`}
+                                {isTown ? currentSettlementName : isDungeon ? 'Cripta Ancestral' : isExploration3D ? 'Zona de Caza' : `${dimension} Realm`}
                             </span>
                             <ExpeditionStats fatigue={fatigue} supplies={supplies} shards={eternumShards} />
                         </div>
                     </div>
                     <div className="flex gap-2">
+                        <button 
+                            onClick={() => handleButtonPress(toggleExplorationMode)} 
+                            className={`border text-xs font-black uppercase tracking-widest px-3 py-2 rounded-xl shadow-xl flex items-center gap-2 active:scale-90 transition-all
+                                ${isExploration3D 
+                                    ? 'bg-gradient-to-r from-amber-600 to-amber-800 border-amber-500 text-white' 
+                                    : 'bg-gradient-to-r from-slate-800 to-slate-900 border-white/10 text-slate-400 hover:text-white'
+                                }
+                            `}
+                        >
+                            {isExploration3D ? '🎯 Caza' : '🗺️ Mapa'}
+                        </button>
                         <button 
                             onClick={() => handleButtonPress(toggleInventory)} 
                             className="bg-gradient-to-br from-slate-800 to-slate-900 border border-white/10 to-white/20 text-white w-14 h-14 md:w-12 md:h-12 rounded-2xl shadow-xl flex items-center justify-center text-2xl active:scale-90 hover:from-slate-700 transition-all"

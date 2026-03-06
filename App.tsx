@@ -120,7 +120,11 @@ const App = () => {
           <div className={`fixed inset-0 z-[998] bg-black transition-opacity duration-1000 pointer-events-none ${isSleeping ? 'opacity-100' : 'opacity-0'}`} />
           
           <Suspense fallback={<LoadingFallback />}>
-            {gameState === GameState.TITLE && <TitleScreen onComplete={createCharacter} />}
+            {gameState === GameState.TITLE && <TitleScreen onComplete={(name, race, cls, stats, difficulty, evolutionStage) => {
+                createCharacter(name, race, cls, stats, difficulty, evolutionStage);
+                // Ir directamente al modo de exploración 3D
+                setGameState(GameState.EXPLORATION_3D);
+            }} />}
             {gameState === GameState.GAME_WON && <EndingScreen />}
             
             {/* OVERWORLD MAP */}
