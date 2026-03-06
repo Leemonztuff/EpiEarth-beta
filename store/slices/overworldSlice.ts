@@ -7,6 +7,7 @@ import { findPath } from '../../services/pathfinding';
 import { calculateVisionRange } from '../../services/dndRules';
 import { sfx } from '../../services/SoundSystem';
 import { TERRAIN_MOVEMENT_COST, ITEMS } from '../../constants';
+import { useGameStore } from '../gameStore';
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
@@ -136,10 +137,12 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
 
     if (!tile) return false;
 
-    // EVENTO DE COMBATE (CALAVERAS)
+    // EVENTO DE COMBATE (CALAVERAS) - Entrar a Zona de Caza 3D
     if (!isLocal && tile.hasEncounter) {
-        set({ isPlayerMoving: false, isAmbushed: Math.random() > 0.75 });
-        get().startBattle(tile.terrain, tile.weather);
+        const { initZone, setGameState } = useGameStore.getState();
+        initZone('forest');
+        setGameState(GameState.EXPLORATION_3D);
+        set({ isPlayerMoving: false });
         return true; 
     }
 

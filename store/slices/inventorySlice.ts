@@ -189,30 +189,11 @@ export const createInventorySlice: StateCreator<any, [], [], InventorySlice> = (
     
     const item = state.inventory[slotIndex].item;
     
-    // BUG FIX: Verificar que party no esté vacío
+    // Find target in party
     let targetId = characterId || state.activeInventoryCharacterId || (state.party[0]?.id || null);
     if (!targetId) return; // No hay objetivo válido
     
-    // Auto-target in battle context
-    if (state.gameState === GameState.BATTLE_TACTICAL) {
-         const turnId = state.turnOrder[state.currentTurnIndex];
-         const turnEntity = state.battleEntities.find(e => e.id === turnId);
-         if (turnEntity && turnEntity.type === 'PLAYER') {
-             targetId = turnId;
-         }
-    }
-
-    // Find the Entity (Battle or Party)
-    let entity: any = null;
-    let isBattleEntity = false;
-
-    if (state.gameState === GameState.BATTLE_TACTICAL) {
-        entity = state.battleEntities.find(e => e.id === targetId);
-        isBattleEntity = true;
-    } else {
-        entity = state.party.find(p => p.id === targetId);
-    }
-
+    const entity = state.party.find(p => p.id === targetId);
     if (!entity) return;
 
     // --- EXECUTE STRATEGY ---
@@ -233,51 +214,21 @@ export const createInventorySlice: StateCreator<any, [], [], InventorySlice> = (
 
     if (!result.success) {
         get().addLog(`${entity.name}: ${result.message}`, "info");
-        if (isBattleEntity) {
-             const popups = [...state.damagePopups, { 
-                id: generateId(), 
-                position: [entity.position.x, 0, entity.position.y], 
-                amount: result.message, 
-                color: result.popupColor || '#94a3b8', 
-                isCrit: false, 
-                timestamp: Date.now() 
-            }];
-            set({ damagePopups: popups });
-        }
         return; 
     }
 
     // --- UPDATE STATE ---
     // Recalculate stats wrapper to ensure derived values (like maxHP modifiers) are consistent
-    // Note: We need to pass the full entity structure to recalculateStats
     const tempEntity = { ...entity, stats: result.newStats };
     const finalStats = get().recalculateStats(tempEntity);
     
     // Ensure HP cap check post-recalculation
     finalStats.hp = Math.min(finalStats.hp, finalStats.maxHp); 
 
-    if (isBattleEntity) {
-        const newEntities = state.battleEntities.map(e => e.id === targetId ? { ...e, stats: finalStats } : e);
-        const popups = [...state.damagePopups, { 
-            id: generateId(), 
-            position: [entity.position.x, 0, entity.position.y], 
-            amount: result.message, 
-            color: result.popupColor || '#22c55e', 
-            isCrit: false, 
-            timestamp: Date.now() 
-        }];
-        
-        set({ 
-            battleEntities: newEntities, 
-            hasActed: true, 
-            isInventoryOpen: false, 
-            damagePopups: popups 
-        });
-    } else {
-        const newParty = state.party.map(p => p.id === targetId ? { ...p, stats: finalStats } : p);
-        set({ party: newParty });
-        get().addLog(`${entity.name} used ${item.name}. ${result.message}`, "roll");
-    }
+    // Update party member
+    const newParty = state.party.map(p => p.id === targetId ? { ...p, stats: finalStats } : p);
+    set({ party: newParty });
+    get().addLog(`${entity.name} used ${item.name}. ${result.message}`, "roll");
 
     // --- CONSUME ITEM ---
     if (result.shouldConsume) {
