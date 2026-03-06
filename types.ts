@@ -244,12 +244,18 @@ export interface SaveMetadata {
     summary: { charName: string; level: number; class: CharacterClass; location: string };
 }
 
+export interface OverworldEnemy { id: string; q: number; r: number; spriteUrl: string; }
+
 export interface HexCell {
     q: number; r: number; terrain: TerrainType;
     isExplored: boolean; isVisible: boolean; weather: WeatherType;
     poiType?: string; hasPortal?: boolean; hasEncounter?: boolean;
     npcs?: NPCEntity[]; regionName?: string;
     movementType?: MovementType;
+    // new fields for rendering features and overworld enemies
+    feature?: 'tree' | 'city' | 'village' | 'ruins' | 'enemy';
+    featureSprite?: string;
+    enemies?: OverworldEnemy[];
 }
 
 export interface BattleCell { 

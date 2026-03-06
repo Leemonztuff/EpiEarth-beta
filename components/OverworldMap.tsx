@@ -57,6 +57,8 @@ export const OverworldMap = ({ playerPos, onMove, dimension = 'MORTAL' }: any) =
     const gameState = useGameStore(s => s.gameState);
     const townMapData = useGameStore(s => s.townMapData);
     const isAssetsLoaded = useGameStore(s => s.isAssetsLoaded);
+    const overworldEnemies = useGameStore(s => s.enemies);
+    const overworldEnemies = useGameStore(s => s.enemies);
     
     const safeDimension = dimension || 'MORTAL';
     
@@ -69,6 +71,17 @@ export const OverworldMap = ({ playerPos, onMove, dimension = 'MORTAL' }: any) =
             console.log('[OverworldMap] Wesnoth Atlas loaded, sprites:', wesnothAtlas.getAllSprites().length);
             const grassSprites = wesnothAtlas.getSpritesByCategory('grass');
             console.log('[OverworldMap] Grass sprites:', grassSprites.slice(0, 10));
+
+            // validate terrain mappings
+            const missing: string[] = [];
+            Object.values(TERRAIN_TO_WESNOTH).forEach(val => {
+                const candidates = [`flat/${val}`, val];
+                const found = candidates.some(c => wesnothAtlas.hasSprite(c));
+                if (!found && !missing.includes(val)) missing.push(val);
+            });
+            if (missing.length > 0) {
+                console.warn('[OverworldMap] missing mapped terrains in atlas:', missing);
+            }
         }).catch(err => {
             console.error('[OverworldMap] Failed to load Wesnoth Atlas:', err);
         });
@@ -114,14 +127,36 @@ export const OverworldMap = ({ playerPos, onMove, dimension = 'MORTAL' }: any) =
             const currentExplored = exploredTiles?.[safeDimension] || new Set();
             if (!currentExplored || currentExplored.size === 0) return;
             
+            const cleared = useGameStore.getState().clearedEncounters || new Set();
             tilesArray = Array.from(currentExplored).map(key => {
                 const [q, r] = key.split(',').map(Number);
-                return WorldGenerator.getTile(q, r, safeDimension);
+                const tile = WorldGenerator.getTile(q, r, safeDimension);
+                if (!tile) return null;
+                // if this tile has been cleared, strip its encounter/enemies
+                if (cleared.has(key)) {
+                    tile.hasEncounter = false;
+                    tile.enemies = [];
+                }
+                return tile;
             }).filter(Boolean);
             
             tilesArray.forEach(tile => {
                 hexTileRenderer.setTerrain(tile.q, tile.r, tile.terrain);
             });
+
+        // add enemies to store so they can be rendered and cleared later
+        const spawnEnemy = useGameStore.getState().spawnEnemy;
+        const existing = useGameStore.getState().enemies || [];
+        tilesArray.forEach(tile => {
+            if (!tile) return;
+            const key = `${tile.q},${tile.r}`;
+            if (tile.hasEncounter && !useGameStore.getState().clearedEncounters.has(key)) {
+                const found = existing.find(e => `${e.q},${e.r}` === key);
+                if (!found) {
+                    spawnEnemy({ id: key, q: tile.q, r: tile.r, spriteUrl: AssetManager.FALLBACK_SPRITE });
+                }
+            }
+        });
         }
 
         const drawLoop = (tiles: any[]) => {
@@ -212,6 +247,7 @@ export const OverworldMap = ({ playerPos, onMove, dimension = 'MORTAL' }: any) =
             }
             
             if (!drewSprite) {
+                console.warn(`[OverworldMap] no wesnoth sprite for terrain ${tile.terrain}, using fallback`);
                 const terrainPath = ASSETS.TERRAIN[tile.terrain];
                 const img = AssetManager.getAsset(terrainPath);
                 if (img) {
@@ -236,6 +272,36 @@ export const OverworldMap = ({ playerPos, onMove, dimension = 'MORTAL' }: any) =
             ctx.closePath();
             ctx.fill();
 
+            // feature layer: trees, ruins, etc. supplied by world generator
+            if (tile.featureSprite) {
+                const featImg = AssetManager.getAsset(tile.featureSprite);
+                if (featImg) {
+                    const fs = s * 1.5;
+                    ctx.drawImage(featImg, cx - fs/2, cy - fs/2, fs, fs);
+                }
+            }
+
+            // draw enemies from store for this coordinate
+            if (!isLocal && overworldEnemies && overworldEnemies.length > 0) {
+                const coordsKey = `${tile.q},${tile.r}`;
+                overworldEnemies.filter(e => `${e.q},${e.r}` === coordsKey).forEach((e, idx) => {
+                    const eImg = AssetManager.getAsset(e.spriteUrl);
+                    const es = s * 1.6;
+                    const bounce = Math.sin(Date.now() / 250 + idx) * 3;
+                    if (eImg) {
+                        ctx.drawImage(eImg, cx - es/2, cy - es/1.3 + bounce, es, es);
+                    } else {
+                        ctx.fillStyle = 'rgba(239, 68, 68, 0.4)';
+                        ctx.beginPath();
+                        ctx.arc(cx, cy, s * 0.5, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.font = '16px serif';
+                        ctx.textAlign = 'center';
+                        ctx.fillText('💀', cx, cy + 5);
+                    }
+                });
+            }
+
             const poiType = tile.poiType || (tile.hasPortal ? 'PORTAL' : null);
             if (poiType && ASSETS.STRUCTURES[poiType]) {
                 const structImg = AssetManager.getAsset(ASSETS.STRUCTURES[poiType]);
@@ -250,21 +316,22 @@ export const OverworldMap = ({ playerPos, onMove, dimension = 'MORTAL' }: any) =
                 }
             }
 
-            if (tile.hasEncounter && !isLocal) {
-                ctx.fillStyle = 'rgba(239, 68, 68, 0.4)';
-                ctx.beginPath();
-                ctx.arc(cx, cy, s * 0.5, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.font = '16px serif';
-                ctx.textAlign = 'center';
-                ctx.fillText('💀', cx, cy + 5);
-            }
+            // encounters are rendered via overworldEnemies layer now
+            // if (tile.hasEncounter && !isLocal) {
+            //     ctx.fillStyle = 'rgba(239, 68, 68, 0.4)';
+            //     ctx.beginPath();
+            //     ctx.arc(cx, cy, s * 0.5, 0, Math.PI * 2);
+            //     ctx.fill();
+            //     ctx.font = '16px serif';
+            //     ctx.textAlign = 'center';
+            //     ctx.fillText('💀', cx, cy + 5);
+            // }
 
             ctx.strokeStyle = 'rgba(255,255,255,0.05)';
             ctx.lineWidth = 1;
             ctx.stroke();
         } catch (e) {}
-    }, [isLocal, safeDimension, getNeighborTerrain, drawTransitionEdge]);
+    }, [isLocal, safeDimension, getNeighborTerrain, drawTransitionEdge, overworldEnemies]);
 
     const render = useCallback(() => {
         const canvas = canvasRef.current;
@@ -338,6 +405,23 @@ export const OverworldMap = ({ playerPos, onMove, dimension = 'MORTAL' }: any) =
             ctx.shadowColor = 'rgba(0,0,0,0.6)';
             ctx.drawImage(playerImg, px - s/2, py - s + 5 + bounce, s, s);
             ctx.restore();
+        }
+
+        // draw overworld enemies
+        if (overworldEnemies && overworldEnemies.length > 0) {
+            overworldEnemies.forEach(enemy => {
+                const { x: ex, y: ey } = hexToPixel(enemy.q, enemy.r);
+                const img = AssetManager.getAsset(enemy.spriteUrl);
+                if (img) {
+                    ctx.save();
+                    const s2 = HEX_SIZE * 2;
+                    const bounce2 = Math.sin(Date.now() / 250 + parseInt(enemy.id.replace(/\D/g,'')||'0')) * 3;
+                    ctx.shadowBlur = 8;
+                    ctx.shadowColor = 'rgba(0,0,0,0.6)';
+                    ctx.drawImage(img, ex - s2/2, ey - s2 + 5 + bounce2, s2, s2);
+                    ctx.restore();
+                }
+            });
         }
 
         ctx.restore();

@@ -22,8 +22,10 @@ export interface OverworldSlice {
   townMapData: HexCell[] | null;
   playerPos: PositionComponent;
   isPlayerMoving: boolean;
+  enemies: OverworldEnemy[];  // active enemies on map
   lastOverworldPos: PositionComponent | null;
   fatigue: number;
+  changeFatigue: (delta: number) => void;
   supplies: number; 
   worldTime: number; 
   quests: Record<string, Quest>;
@@ -43,6 +45,8 @@ export interface OverworldSlice {
   isAmbushed: boolean;
   
   initializeWorld: () => void;
+  spawnEnemy: (enemy: OverworldEnemy) => void;
+  clearEnemy: (id: string) => void;
   movePlayerOverworld: (q: number, r: number) => Promise<void>;
   hireCarriage: (targetQ: number, targetR: number) => void;
   buySupplies: (amount: number, cost: number) => void;
@@ -62,7 +66,23 @@ export interface OverworldSlice {
   checkTileTriggers: (q: number, r: number) => boolean;
 }
 
-export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (set, get) => ({
+export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (set, get) => {
+
+  // enemy templates reused from exploration slice
+  const OVERWORLD_ENEMY_TEMPLATES = [
+      { name: 'Goblin', sprite: '/sprites/characters/goblin_01.png' },
+      { name: 'Slime', sprite: '/sprites/characters/slime_01.png' },
+      { name: 'Skeleton', sprite: '/sprites/characters/skeleton_01.png' },
+      { name: 'Orco', sprite: '/sprites/characters/orc_01.png' },
+      { name: 'Wolf', sprite: '/sprites/characters/werewolf_01.png' }
+  ];
+
+  const pickRandomEnemySprite = () => {
+      const tpl = OVERWORLD_ENEMY_TEMPLATES[Math.floor(Math.random() * OVERWORLD_ENEMY_TEMPLATES.length)];
+      return tpl.sprite;
+  };
+
+  return ({
   gameState: GameState.TITLE,
   dimension: Dimension.NORMAL,
   difficulty: Difficulty.NORMAL,
@@ -92,6 +112,7 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
   activeNarrativeEvent: null,
   userSession: null,
   isAmbushed: false,
+  enemies: [],
 
   setUserSession: (session) => set({ userSession: session }),
 
@@ -108,6 +129,9 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
   logout: async () => { set({ userSession: null }); sfx.playUiClick(); },
 
   initializeWorld: () => { WorldGenerator.init(12345); },
+  changeFatigue: (delta) => set(state => ({ fatigue: Math.max(0, state.fatigue + delta) })),
+  spawnEnemy: (enemy) => set(state => ({ enemies: [...state.enemies, enemy] })),
+  clearEnemy: (id) => set(state => ({ enemies: state.enemies.filter(e => e.id !== id) })),
 
   talkToNPC: () => {
       const { playerPos, gameState, townMapData } = get();
@@ -123,9 +147,15 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
   },
 
   clearCurrentEncounter: () => {
-      const { playerPos, dimension } = get();
+      const { playerPos, dimension, enemies } = get();
       const tile = WorldGenerator.getTile(playerPos.x, playerPos.y, dimension);
       if (tile) tile.hasEncounter = false;
+      // remove any overworld enemy on this coordinate
+      const key = `${playerPos.x},${playerPos.y}`;
+      const enemyToRemove = enemies.find(e => `${e.q},${e.r}` === key);
+      if (enemyToRemove) {
+          set(state => ({ enemies: state.enemies.filter(e => e.id !== enemyToRemove.id) }));
+      }
   },
 
   checkTileTriggers: (q, r) => {
@@ -139,6 +169,11 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
 
     // EVENTO DE COMBATE (CALAVERAS) - Entrar a Zona de Caza 3D
     if (!isLocal && tile.hasEncounter) {
+        // spawn an overworld enemy for visualization
+        const id = generateId();
+        const spriteUrl = pickRandomEnemySprite();
+        set(state => ({ enemies: [...state.enemies, { id, q, r, spriteUrl }] }));
+
         const { initZone, setGameState } = useGameStore.getState();
         initZone('forest');
         setGameState(GameState.EXPLORATION_3D);

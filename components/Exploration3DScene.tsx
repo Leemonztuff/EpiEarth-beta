@@ -5,6 +5,7 @@ import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { useGameStore } from '../store/gameStore';
 import { TrapMarker } from './TrapMarker';
+import { Exploration3DMinimap } from './Exploration3DMinimap';
 import { GameState } from '../types';
 
 interface MapCell {
@@ -94,40 +95,32 @@ const Water: React.FC<{ position: [number, number, number] }> = ({ position }) =
     );
 };
 
+// small helper to safely load a texture into a sprite material
+const SafeSprite3D: React.FC<{ url?: string }> = ({ url }) => {
+    const [tex, setTex] = useState<THREE.Texture | null>(null);
+    useEffect(() => {
+        if (!url) return;
+        const loader = new THREE.TextureLoader();
+        loader.load(AssetManager.getSafeSprite(url), (t) => {
+            t.magFilter = THREE.NearestFilter;
+            t.minFilter = THREE.NearestFilter;
+            setTex(t);
+        });
+    }, [url]);
+    if (!tex) return null;
+    return <spriteMaterial map={tex} transparent alphaTest={0.5} />;
+};
+
 const PlayerCharacter: React.FC<{ position: [number, number, number]; hp: number; maxHp: number; spriteUrl?: string }> = ({ position, hp, maxHp, spriteUrl }) => {
     const hpPercent = hp / maxHp;
     const hpColor = hpPercent > 0.5 ? '#22c55e' : hpPercent > 0.25 ? '#eab308' : '#ef4444';
-    const [imgError, setImgError] = useState(false);
-    
     return (
         <group position={position}>
-            {spriteUrl && !imgError ? (
-                <mesh position={[0, 0.6, 0]} castShadow>
-                    <planeGeometry args={[0.8, 1.2]} />
-                    <meshBasicMaterial transparent>
-                        <canvasTexture 
-                            attach="map" 
-                            image={(() => {
-                                const img = new Image();
-                                img.src = spriteUrl;
-                                img.onerror = () => setImgError(true);
-                                return img;
-                            })()} 
-                        />
-                    </meshBasicMaterial>
-                </mesh>
-            ) : (
-                <>
-                    <mesh position={[0, 0.5, 0]} castShadow>
-                        <boxGeometry args={[0.4, 0.8, 0.4]} />
-                        <meshStandardMaterial color="#3b82f6" />
-                    </mesh>
-                    <mesh position={[0, 1, 0]} castShadow>
-                        <sphereGeometry args={[0.25, 8, 8]} />
-                        <meshStandardMaterial color="#fbbf24" />
-                    </mesh>
-                </>
-            )}
+            {spriteUrl ? (
+                <sprite scale={[1.2, 1.8, 1]} position={[0, 0.9, 0]}>
+                    <SafeSprite3D url={spriteUrl} />
+                </sprite>
+            ) : null}
             <mesh position={[0, 1.5, 0]}>
                 <sphereGeometry args={[0.15, 8, 8]} />
                 <meshBasicMaterial color={hpColor} />
@@ -136,22 +129,20 @@ const PlayerCharacter: React.FC<{ position: [number, number, number]; hp: number
     );
 };
 
-const EnemyCharacter: React.FC<{ position: [number, number, number]; type: string; isDefeated: boolean }> = ({ position, type, isDefeated }) => {
+
+const EnemyCharacter: React.FC<{ position: [number, number, number]; spriteUrl?: string; isDefeated: boolean }> = ({ position, spriteUrl, isDefeated }) => {
     if (isDefeated) return null;
-    const colors: Record<string, string> = { goblin: '#22c55e', slime: '#06b6d4', skeleton: '#e5e7eb', orc: '#84cc16', wolf: '#a3a3a3', default: '#ef4444' };
     return (
         <group position={position}>
-            <mesh position={[0, 0.5, 0]} castShadow>
-                <boxGeometry args={[0.5, 0.9, 0.5]} />
-                <meshStandardMaterial color={colors[type] || colors.default} />
-            </mesh>
-            <mesh position={[0, 1.1, 0]} castShadow>
-                <sphereGeometry args={[0.3, 8, 8]} />
-                <meshStandardMaterial color={colors[type] || colors.default} emissive={colors[type] || colors.default} emissiveIntensity={0.3} />
-            </mesh>
+            {spriteUrl && (
+                <sprite scale={[1.3, 1.3, 1]} position={[0, 0.8, 0]}>
+                    <SafeSprite3D url={spriteUrl} />
+                </sprite>
+            )}
         </group>
     );
 };
+
 
 const ExplorationMap: React.FC<{
     map: MapCell[][];
@@ -189,34 +180,20 @@ const VirtualJoystick: React.FC<{
     const [isDragging, setIsDragging] = useState(false);
     const [startPos, setStartPos] = useState({ x: 0, y: 0 });
     const [currentPos, setCurrentPos] = useState({ x: 0, y: 0 });
+    const [hasMoved, setHasMoved] = useState(false);
     const baseSize = 120;
     const maxDistance = 40;
-    const moveIntervalRef = useRef<number | null>(null);
-
-    const startMoving = (dx: number, dy: number) => {
-        onMove(dx, dy);
-        moveIntervalRef.current = window.setInterval(() => {
-            onMove(dx, dy);
-        }, 200);
-    };
-
-    const stopMoving = () => {
-        if (moveIntervalRef.current) {
-            clearInterval(moveIntervalRef.current);
-            moveIntervalRef.current = null;
-        }
-        onRelease();
-    };
 
     const handleStart = (e: React.TouchEvent) => {
         const touch = e.touches[0];
         setStartPos({ x: touch.clientX, y: touch.clientY });
         setCurrentPos({ x: touch.clientX, y: touch.clientY });
         setIsDragging(true);
+        setHasMoved(false);
     };
 
     const handleMove = (e: React.TouchEvent) => {
-        if (!isDragging) return;
+        if (!isDragging || hasMoved) return;
         e.preventDefault();
         const touch = e.touches[0];
         setCurrentPos({ x: touch.clientX, y: touch.clientY });
@@ -225,16 +202,16 @@ const VirtualJoystick: React.FC<{
         const dy = Math.max(-1, Math.min(1, (touch.clientY - startPos.y) / maxDistance));
         
         if (Math.abs(dx) > 0.3 || Math.abs(dy) > 0.3) {
-            if (!moveIntervalRef.current) {
-                startMoving(dx, dy);
-            }
+            onMove(dx, dy);
+            setHasMoved(true);
         }
     };
 
     const handleEnd = () => {
         setIsDragging(false);
         setCurrentPos(startPos);
-        stopMoving();
+        setHasMoved(false);
+        onRelease();
     };
 
     const distance = Math.sqrt(Math.pow(currentPos.x - startPos.x, 2) + Math.pow(currentPos.y - startPos.y, 2));
@@ -322,6 +299,7 @@ export const Exploration3DScene: React.FC = () => {
     const [playerPos, setPlayerPos] = useState({ x: Math.floor(MAP_SIZE / 2), z: Math.floor(MAP_SIZE / 2) });
     const [selectedTrap, setSelectedTrap] = useState<string | null>(null);
     const [isMoving, setIsMoving] = useState(false);
+    const [targetPos, setTargetPos] = useState<{ x: number; z: number } | null>(null);
     const [canMove, setCanMove] = useState(true);
     const moveIntervalRef = useRef<number | null>(null);
     
@@ -332,6 +310,9 @@ export const Exploration3DScene: React.FC = () => {
     const initZone = useGameStore(s => s.initZone);
     const movePlayer = useGameStore(s => s.movePlayer);
     const placeTrap = useGameStore(s => s.placeTrap);
+    const fatigue = useGameStore(s => s.fatigue);
+    const supplies = useGameStore(s => s.supplies);
+    const changeFatigue = useGameStore(s => s.changeFatigue);
     
     useEffect(() => {
         if (gameState === GameState.EXPLORATION_3D && explorationState.zoneEnemies.length === 0) {
@@ -346,10 +327,7 @@ export const Exploration3DScene: React.FC = () => {
     
     const enemies = explorationState.zoneEnemies.map(e => ({
         id: e.id, x: e.x, z: e.z,
-        type: e.name.toLowerCase().includes('goblin') ? 'goblin' : 
-              e.name.toLowerCase().includes('slime') ? 'slime' :
-              e.name.toLowerCase().includes('skeleton') ? 'skeleton' :
-              e.name.toLowerCase().includes('orco') ? 'orc' : 'wolf',
+        spriteUrl: e.sprite,
         isDefeated: e.isDefeated
     }));
     
@@ -365,21 +343,30 @@ export const Exploration3DScene: React.FC = () => {
     const handleJoystickMove = useCallback((dx: number, dy: number) => {
         if (dx === 0 && dy === 0 || !canMove) return;
         
-        let newX = playerPos.x;
-        let newZ = playerPos.z;
+        const fatigue = useGameStore.getState().fatigue || 0;
+        const supplies = useGameStore.getState().supplies || 0;
         
-        if (dy < -0.3) newZ -= 1;
-        if (dy > 0.3) newZ += 1;
-        if (dx < -0.3) newX -= 1;
-        if (dx > 0.3) newX += 1;
-        
-        if (newX >= 0 && newX < MAP_SIZE && newZ >= 0 && newZ < MAP_SIZE) {
-            const cell = map[newX][newZ];
-            if (cell.type === 'FLOOR') {
-                setPlayerPos({ x: newX, z: newZ });
-                movePlayer(newX, newZ);
-                setCanMove(false);
-                setTimeout(() => setCanMove(true), 150);
+        // tile movement costs 1 fatigue and 0.5 supplies
+        if (fatigue >= 1 && supplies >= 0.5) {
+            let newX = playerPos.x;
+            let newZ = playerPos.z;
+            
+            if (dy < -0.3) newZ -= 1;
+            if (dy > 0.3) newZ += 1;
+            if (dx < -0.3) newX -= 1;
+            if (dx > 0.3) newX += 1;
+            
+            if (newX >= 0 && newX < MAP_SIZE && newZ >= 0 && newZ < MAP_SIZE) {
+                const cell = map[newX][newZ];
+                if (cell.type === 'FLOOR') {
+                    setPlayerPos({ x: newX, z: newZ });
+                    movePlayer(newX, newZ);
+                    changeFatigue(1);  // increment fatigue
+                    // reduce supplies: 0.5 per tile moved
+                    useGameStore.setState(s => ({ supplies: Math.max(0, (s.supplies || 0) - 0.5) }));
+                    setCanMove(false);
+                    setTimeout(() => setCanMove(true), 150);
+                }
             }
         }
     }, [playerPos, map, movePlayer, canMove]);
@@ -426,11 +413,28 @@ export const Exploration3DScene: React.FC = () => {
                             <div className="h-full bg-emerald-500" style={{ width: `${(playerHp / playerMaxHp) * 100}%` }} />
                         </div>
                     </div>
+                    <div className="bg-black/60 px-3 py-1 rounded-lg">
+                        <div className="text-orange-400 font-bold text-sm">Fatiga</div>
+                        <div className="text-xs text-white">{fatigue || 0} / 100</div>
+                    </div>
+                    <div className="bg-black/60 px-3 py-1 rounded-lg">
+                        <div className="text-blue-400 font-bold text-sm">Suministros</div>
+                        <div className="text-xs text-white">{(supplies || 0).toFixed(1)}</div>
+                    </div>
                 </div>
             </div>
             
             {/* Virtual Joystick */}
             <VirtualJoystick onMove={handleJoystickMove} onRelease={handleJoystickRelease} />
+            
+            {/* Minimap */}
+            <Exploration3DMinimap 
+                mapSize={MAP_SIZE}
+                playerPos={playerPos}
+                enemies={enemies.map(e => ({ ...e, type: 'default', isDefeated: e.isDefeated }))}
+                traps={traps}
+                targetPos={targetPos}
+            />
             
             {/* Trap Buttons - Bottom Right */}
             <div className="absolute bottom-4 right-4">

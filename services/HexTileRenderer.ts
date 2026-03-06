@@ -4,6 +4,11 @@ import { TerrainType } from '../types';
 import { TERRAIN_CATEGORIES, TerrainCategory, HEX_DIRECTIONS } from '../constants';
 import { wesnothAtlas, LoadedSprite } from './WesnothAtlas';
 
+interface TerrainTransition {
+    spriteName: string;
+    layer: number;
+}
+
 const TERRAIN_TO_WESNOTH: Record<TerrainType, string> = {
     [TerrainType.GRASS]: 'grass/green',
     [TerrainType.PLAINS]: 'grass/semi-dry',
@@ -41,6 +46,7 @@ function getDirectionName(index: number): string {
 
 export class HexTileRenderer {
     private terrainCache: Map<string, TerrainType> = new Map();
+    private spriteCache: Map<string, TerrainTransition[]> = new Map();
 
     setTerrain(q: number, r: number, terrain: TerrainType): void {
         this.terrainCache.set(`${q},${r}`, terrain);
@@ -52,49 +58,70 @@ export class HexTileRenderer {
 
     clear(): void {
         this.terrainCache.clear();
+        this.spriteCache.clear();
     }
 
     getTileSprites(q: number, r: number): TerrainTransition[] {
+        const cacheKey = `${q},${r}`;
+        
+        // Return cached sprites if available
+        if (this.spriteCache.has(cacheKey)) {
+            return this.spriteCache.get(cacheKey)!;
+        }
+
         const currentTerrain = this.getTerrain(q, r);
         if (!currentTerrain) return [];
 
         const transitions: TerrainTransition[] = [];
 
-        const currentCategory = TERRAIN_CATEGORIES[currentTerrain] || 'grass';
-        const currentWesnoth = TERRAIN_TO_WESNOTH[currentTerrain] || 'grass';
+        const currentCategory: TerrainCategory = TERRAIN_CATEGORIES[currentTerrain] || 'grass';
+        const currentWesnoth = TERRAIN_TO_WESNOTH[currentTerrain] || String(currentTerrain).toLowerCase();
 
-        const baseSprite = `flat/${currentWesnoth}`;
-        if (wesnothAtlas.hasSprite(baseSprite)) {
-            transitions.push({ spriteName: baseSprite, layer: 0 });
-        } else {
-            transitions.push({ spriteName: currentWesnoth, layer: 0 });
-        }
+        // helper resolves a sprite name or logs a warning and optionally
+        // searches by category/fallbackBase substring
+        const resolveSprite = (name: string, fallbackBase?: string): string | null => {
+            if (wesnothAtlas.hasSprite(name)) return name;
+            const withoutFlat = name.replace(/^flat\//, '');
+            if (wesnothAtlas.hasSprite(withoutFlat)) return withoutFlat;
+            if (fallbackBase) {
+                const candidates = wesnothAtlas.getSpritesByCategory(currentCategory);
+                const found = candidates.find(s => s.includes(fallbackBase));
+                if (found) return found;
+            }
+            console.warn('[HexTileRenderer] missing sprite', name);
+            return null;
+        };
 
+        // base layer
+        const baseName = `flat/${currentWesnoth}`;
+        const resolvedBase = resolveSprite(baseName, currentWesnoth) || currentWesnoth;
+        transitions.push({ spriteName: resolvedBase, layer: 0 });
+
+        // transitions for differing neighbor categories
         for (let i = 0; i < 6; i++) {
             const dir = HEX_DIRECTIONS[i];
             const nq = q + dir.q;
             const nr = r + dir.r;
             const neighborTerrain = this.getTerrain(nq, nr);
-            
             if (!neighborTerrain) continue;
 
-            const neighborCategory = TERRAIN_CATEGORIES[neighborTerrain] || 'grass';
-            
-            if (neighborCategory !== currentCategory) {
-                const neighborWesnoth = TERRAIN_TO_WESNOTH[neighborTerrain] || 'grass';
-                const dirName = getDirectionName(i);
-                
-                const concaveName = `flat/${currentWesnoth}-to-${neighborWesnoth}-concave-${dirName}`;
-                const convexName = `flat/${currentWesnoth}-to-${neighborWesnoth}-convex-${dirName}`;
-                
-                if (wesnothAtlas.hasSprite(concaveName)) {
-                    transitions.push({ spriteName: concaveName, layer: 1 });
-                } else if (wesnothAtlas.hasSprite(convexName)) {
-                    transitions.push({ spriteName: convexName, layer: 1 });
-                }
+            const neighborCategory: TerrainCategory = TERRAIN_CATEGORIES[neighborTerrain] || 'grass';
+            if (neighborCategory === currentCategory) continue;
+
+            const neighborWesnoth = TERRAIN_TO_WESNOTH[neighborTerrain] || String(neighborTerrain).toLowerCase();
+            const dirName = getDirectionName(i);
+            const baseTag = `${currentWesnoth}-to-${neighborWesnoth}`;
+
+            const concaveName = `flat/${baseTag}-concave-${dirName}`;
+            const convexName = `flat/${baseTag}-convex-${dirName}`;
+            const sprite = resolveSprite(concaveName, baseTag) || resolveSprite(convexName, baseTag);
+            if (sprite) {
+                transitions.push({ spriteName: sprite, layer: 1 });
             }
         }
 
+        // Cache the computed transitions
+        this.spriteCache.set(cacheKey, transitions);
         return transitions;
     }
 
@@ -110,6 +137,8 @@ export class HexTileRenderer {
             if (loaded) {
                 const scale = hexSize / 72 * 2;
                 wesnothAtlas.drawSprite(ctx, sprite.spriteName, cx, cy, scale);
+            } else {
+                console.warn(`[HexTileRenderer] drawTile unable to load sprite ${sprite.spriteName}`);
             }
         }
     }
