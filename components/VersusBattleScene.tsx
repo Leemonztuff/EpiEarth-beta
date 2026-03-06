@@ -13,6 +13,8 @@ interface VersusBattleSceneProps {
     enemyMaxHp: number;
     turn: 'PLAYER' | 'ENEMY';
     battleLog: string[];
+    playerSpriteUrl?: string;
+    enemySpriteUrl?: string;
     onAction: (action: BattleAction, skillId?: string) => void;
     onVictory?: () => void;
     onDefeat?: () => void;
@@ -99,6 +101,8 @@ export const VersusBattleScene: React.FC<VersusBattleSceneProps> = ({
     enemyMaxHp,
     turn,
     battleLog,
+    playerSpriteUrl,
+    enemySpriteUrl,
     onAction,
     onFlee
 }) => {
@@ -106,6 +110,8 @@ export const VersusBattleScene: React.FC<VersusBattleSceneProps> = ({
     const [shake] = useState(0);
     const playerHpPercent = (playerHp / playerMaxHp) * 100;
     const enemyHpPercent = (enemyHp / enemyMaxHp) * 100;
+    const [playerImgError, setPlayerImgError] = useState(false);
+    const [enemyImgError, setEnemyImgError] = useState(false);
     
     const lastMessage = battleLog[battleLog.length - 1];
     
@@ -118,10 +124,27 @@ export const VersusBattleScene: React.FC<VersusBattleSceneProps> = ({
                 <ParticleSystem effects={particles} />
                 
                 <group position={[-3, 0, 0]}>
-                    <mesh position={[0, 1.5, 0]} castShadow>
-                        <boxGeometry args={[1.2, 2, 0.5]} />
-                        <meshStandardMaterial color="#3b82f6" />
-                    </mesh>
+                    {playerSpriteUrl && !playerImgError ? (
+                        <mesh position={[0, 1.2, 0]}>
+                            <planeGeometry args={[2, 2.5]} />
+                            <meshBasicMaterial transparent>
+                                <canvasTexture 
+                                    attach="map" 
+                                    image={(() => {
+                                        const img = new Image();
+                                        img.src = playerSpriteUrl;
+                                        img.onerror = () => setPlayerImgError(true);
+                                        return img;
+                                    })()} 
+                                />
+                            </meshBasicMaterial>
+                        </mesh>
+                    ) : (
+                        <mesh position={[0, 1.5, 0]} castShadow>
+                            <boxGeometry args={[1.2, 2, 0.5]} />
+                            <meshStandardMaterial color="#3b82f6" />
+                        </mesh>
+                    )}
                     <mesh position={[0, 0.2, 0]} rotation={[-Math.PI / 2, 0, 0]}>
                         <planeGeometry args={[1.5, 2]} />
                         <meshBasicMaterial color="#1e3a5f" />
@@ -129,10 +152,27 @@ export const VersusBattleScene: React.FC<VersusBattleSceneProps> = ({
                 </group>
                 
                 <group position={[3, 0, 0]}>
-                    <mesh position={[0, 1.5, 0]} castShadow>
-                        <boxGeometry args={[1.2, 2, 0.5]} />
-                        <meshStandardMaterial color="#ef4444" emissive="#ef4444" emissiveIntensity={0.2} />
-                    </mesh>
+                    {enemySpriteUrl && !enemyImgError ? (
+                        <mesh position={[0, 1.2, 0]}>
+                            <planeGeometry args={[2, 2.5]} />
+                            <meshBasicMaterial transparent>
+                                <canvasTexture 
+                                    attach="map" 
+                                    image={(() => {
+                                        const img = new Image();
+                                        img.src = enemySpriteUrl;
+                                        img.onerror = () => setEnemyImgError(true);
+                                        return img;
+                                    })()} 
+                                />
+                            </meshBasicMaterial>
+                        </mesh>
+                    ) : (
+                        <mesh position={[0, 1.5, 0]} castShadow>
+                            <boxGeometry args={[1.2, 2, 0.5]} />
+                            <meshStandardMaterial color="#ef4444" emissive="#ef4444" emissiveIntensity={0.2} />
+                        </mesh>
+                    )}
                     <mesh position={[0, 0.2, 0]} rotation={[-Math.PI / 2, 0, 0]}>
                         <planeGeometry args={[1.5, 2]} />
                         <meshBasicMaterial color="#5f1e1e" />

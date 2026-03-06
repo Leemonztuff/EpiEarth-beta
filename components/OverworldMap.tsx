@@ -369,7 +369,17 @@ export const OverworldMap = ({ playerPos, onMove, dimension = 'MORTAL' }: any) =
                     const mx = (e.clientX - rect.left) / zoom - ((canvas.width / (2 * dpr * zoom)) - px);
                     const my = (e.clientY - rect.top) / zoom - ((canvas.height / (2 * dpr * zoom)) - py);
                     const { q, r } = pixelToAxial(mx, my);
-                    onMove(q, r);
+                    
+                    const targetTile = WorldGenerator.getTile(q, r, safeDimension);
+                    
+                    if (targetTile?.hasEncounter && !isLocal) {
+                        const initZone = useGameStore.getState().initZone;
+                        const setGameState = useGameStore.getState().setGameState;
+                        initZone('forest');
+                        setGameState(GameState.EXPLORATION_3D);
+                    } else {
+                        onMove(q, r);
+                    }
                 }}
             />
         </div>

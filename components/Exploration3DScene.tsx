@@ -94,19 +94,40 @@ const Water: React.FC<{ position: [number, number, number] }> = ({ position }) =
     );
 };
 
-const PlayerCharacter: React.FC<{ position: [number, number, number]; hp: number; maxHp: number }> = ({ position, hp, maxHp }) => {
+const PlayerCharacter: React.FC<{ position: [number, number, number]; hp: number; maxHp: number; spriteUrl?: string }> = ({ position, hp, maxHp, spriteUrl }) => {
     const hpPercent = hp / maxHp;
     const hpColor = hpPercent > 0.5 ? '#22c55e' : hpPercent > 0.25 ? '#eab308' : '#ef4444';
+    const [imgError, setImgError] = useState(false);
+    
     return (
         <group position={position}>
-            <mesh position={[0, 0.5, 0]} castShadow>
-                <boxGeometry args={[0.4, 0.8, 0.4]} />
-                <meshStandardMaterial color="#3b82f6" />
-            </mesh>
-            <mesh position={[0, 1, 0]} castShadow>
-                <sphereGeometry args={[0.25, 8, 8]} />
-                <meshStandardMaterial color="#fbbf24" />
-            </mesh>
+            {spriteUrl && !imgError ? (
+                <mesh position={[0, 0.6, 0]} castShadow>
+                    <planeGeometry args={[0.8, 1.2]} />
+                    <meshBasicMaterial transparent>
+                        <canvasTexture 
+                            attach="map" 
+                            image={(() => {
+                                const img = new Image();
+                                img.src = spriteUrl;
+                                img.onerror = () => setImgError(true);
+                                return img;
+                            })()} 
+                        />
+                    </meshBasicMaterial>
+                </mesh>
+            ) : (
+                <>
+                    <mesh position={[0, 0.5, 0]} castShadow>
+                        <boxGeometry args={[0.4, 0.8, 0.4]} />
+                        <meshStandardMaterial color="#3b82f6" />
+                    </mesh>
+                    <mesh position={[0, 1, 0]} castShadow>
+                        <sphereGeometry args={[0.25, 8, 8]} />
+                        <meshStandardMaterial color="#fbbf24" />
+                    </mesh>
+                </>
+            )}
             <mesh position={[0, 1.5, 0]}>
                 <sphereGeometry args={[0.15, 8, 8]} />
                 <meshBasicMaterial color={hpColor} />
@@ -137,9 +158,10 @@ const ExplorationMap: React.FC<{
     playerPos: { x: number; z: number };
     playerHp: number;
     playerMaxHp: number;
+    playerSpriteUrl?: string;
     enemies: { id: string; x: number; z: number; type: string; isDefeated: boolean }[];
     traps: { id: string; x: number; z: number; type: string; isArmed: boolean }[];
-}> = ({ map, playerPos, playerHp, playerMaxHp, enemies, traps }) => (
+}> = ({ map, playerPos, playerHp, playerMaxHp, playerSpriteUrl, enemies, traps }) => (
     <group>
         {map.map((row, x) => row.map((cell, z) => {
             const pos: [number, number, number] = [x - MAP_SIZE / 2, cell.height * 0.1, z - MAP_SIZE / 2];
@@ -150,7 +172,7 @@ const ExplorationMap: React.FC<{
             if (cell.type === 'WATER') return <Water key={`water-${x}-${z}`} position={pos} />;
             return null;
         }))}
-        <PlayerCharacter position={[playerPos.x - MAP_SIZE / 2, 0, playerPos.z - MAP_SIZE / 2]} hp={playerHp} maxHp={playerMaxHp} />
+        <PlayerCharacter position={[playerPos.x - MAP_SIZE / 2, 0, playerPos.z - MAP_SIZE / 2]} hp={playerHp} maxHp={playerMaxHp} spriteUrl={playerSpriteUrl} />
         {enemies.map(enemy => (
             <EnemyCharacter key={enemy.id} position={[enemy.x - MAP_SIZE / 2, 0, enemy.z - MAP_SIZE / 2]} type={enemy.type} isDefeated={enemy.isDefeated} />
         ))}
@@ -320,6 +342,7 @@ export const Exploration3DScene: React.FC = () => {
     const currentPlayer = party[0];
     const playerHp = currentPlayer?.stats.hp || 1;
     const playerMaxHp = currentPlayer?.stats.maxHp || 1;
+    const playerSpriteUrl = currentPlayer?.visual?.spriteUrl;
     
     const enemies = explorationState.zoneEnemies.map(e => ({
         id: e.id, x: e.x, z: e.z,
@@ -380,7 +403,7 @@ export const Exploration3DScene: React.FC = () => {
                 <ambientLight intensity={0.4} />
                 <directionalLight position={[10, 20, 10]} intensity={1} castShadow shadow-mapSize={[2048, 2048]} />
                 <fog attach="fog" args={['#1e293b', 10, 30]} />
-                <ExplorationMap map={map} playerPos={playerPos} playerHp={playerHp} playerMaxHp={playerMaxHp} enemies={enemies} traps={traps} />
+                <ExplorationMap map={map} playerPos={playerPos} playerHp={playerHp} playerMaxHp={playerMaxHp} playerSpriteUrl={playerSpriteUrl} enemies={enemies} traps={traps} />
                 <OrbitControls enableZoom={true} enablePan={false} maxPolarAngle={Math.PI / 2.5} />
             </Canvas>
             
