@@ -12,7 +12,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { logger } from './services/logger';
 
 // Code Splitting - Lazy Loading de componentes pesados
-const OverworldMap = lazy(() => import('./components/OverworldMap').then(m => ({ default: m.OverworldMap })));
+const OverworldMap = lazy(() => import('./components/OverworldMap.tsx'));
 const TitleScreen = lazy(() => import('./components/CharacterCreation').then(m => ({ default: m.TitleScreen })));
 const EndingScreen = lazy(() => import('./components/EndingScreen').then(m => ({ default: m.EndingScreen })));
 const TownServicesManager = lazy(() => import('./components/TownServices').then(m => ({ default: m.TownServicesManager })));

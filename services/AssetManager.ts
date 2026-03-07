@@ -1,7 +1,7 @@
 
 import * as THREE from 'three';
-import { Item, EnemyDefinition, NPCEntity, TerrainType } from '../types';
-import { WESNOTH_BASE_URL, WESNOTH_CDN_URL, ASSETS, CLASS_CONFIG, RACE_ICONS, DAMAGE_ICONS, ITEMS, BATTLE_TEXTURES } from '../constants';
+import { Item, EnemyDefinition, NPCEntity, TerrainType, CharacterRace, CharacterClass } from '../types';
+import { WESNOTH_BASE_URL, WESNOTH_CDN_URL, ASSETS, CLASS_CONFIG, RACE_ICONS, DAMAGE_ICONS, ITEMS, BATTLE_TEXTURES, CLASS_SPRITES } from '../constants';
 import { useContentStore } from '../store/contentStore';
 
 export const AssetManager = {
@@ -14,6 +14,10 @@ export const AssetManager = {
     // Sprite de emergencia usando sprite local
     FALLBACK_SPRITE: "/sprites/characters/fighter_01.png",
     FALLBACK_URL: "/sprites/characters/fighter_01.png",
+
+    getSprite(race: CharacterRace, cls: CharacterClass): string {
+        return CLASS_SPRITES[cls] || RACE_ICONS[race] || `units/human-loyalists/lieutenant.png`;
+    },
 
     getSafeSprite(path: string | undefined): string {
         if (!path || typeof path !== 'string' || path === 'undefined') {

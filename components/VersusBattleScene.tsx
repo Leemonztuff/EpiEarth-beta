@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Billboard, Image, Text } from '@react-three/drei';
 import * as THREE from 'three';
-import { BattleAction, CameraEffect, ParticleEffect } from '../../types'; // Assuming types are in ../../types
+import { BattleAction, CameraEffect, ParticleEffect } from '../types'; // Assuming types are in ../../types
 
 interface VersusBattleSceneProps {
     playerName: string;

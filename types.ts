@@ -1,5 +1,3 @@
-
-
 export enum TerrainType {
     GRASS = 'GRASS', PLAINS = 'PLAINS', FOREST = 'FOREST', JUNGLE = 'JUNGLE', MOUNTAIN = 'MOUNTAIN',
     WATER = 'WATER', OCEAN = 'OCEAN', CASTLE = 'CASTLE', VILLAGE = 'VILLAGE', DESERT = 'DESERT',
@@ -214,6 +212,7 @@ export interface CombatStatsComponent {
     maxActions?: number; derived?: DerivedStats;
     attackDamageType?: DamageType; affinity?: DamageType;
     evolutionStage?: EvolutionStage; branch?: ClassBranch;
+    corruption?: number;
 }
 
 export interface Entity {

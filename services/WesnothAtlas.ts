@@ -67,6 +67,17 @@ export class WesnothAtlas {
             const key = frame.filename.replace(/\//g, '_');
             this.definitions.set(key, frame);
             this.definitions.set(frame.filename, frame);
+            
+            if (frame.filename.startsWith('terrain/')) {
+                const shortName = frame.filename
+                    .replace('terrain/', '')
+                    .replace('.png', '')
+                    .replace('-tile', '');
+                if (!this.definitions.has(shortName)) {
+                    this.definitions.set(shortName, frame);
+                    console.log(`[WesnothAtlas] Registered short name: ${shortName}`);
+                }
+            }
         }
 
         console.log(`[WesnothAtlas] Loaded atlas ${index} with ${atlasData.frames.length} sprites`);
@@ -92,16 +103,15 @@ export class WesnothAtlas {
     getSprite(name: string): LoadedSprite | null {
         const frame = this.definitions.get(name);
         if (!frame) {
+            console.log(`[WesnothAtlas] Sprite not found for key: ${name}`);
             return null;
         }
 
-        // Determine which atlas the sprite belongs to.
-        // This logic seems a bit arbitrary, assuming sprites past a certain x-coordinate are in the second atlas.
-        // It's based on the original structure and might need revisiting if the atlases change.
-        const atlasIndex = this.atlases.size > 1 && frame.frame.x >= this.atlases.get(0)!.width ? 1 : 0;
+        const atlasIndex = this.atlases.size > 1 && this.atlases.get(0) && frame.frame.x >= this.atlases.get(0)!.width ? 1 : 0;
         const image = this.atlases.get(atlasIndex);
 
         if (!image) {
+            console.log(`[WesnothAtlas] Atlas image not found for index: ${atlasIndex}`);
             return null;
         }
 
@@ -125,8 +135,6 @@ export class WesnothAtlas {
         const drawW = srcW * scale;
         const drawH = srcH * scale;
 
-        // The pivot was originally in the center, so we adjust the drawing position
-        // to keep it centered around the x, y coordinates.
         const centerX = x - (drawW / 2);
         const centerY = y - (drawH / 2);
 
@@ -147,6 +155,10 @@ export class WesnothAtlas {
 
     hasSprite(name: string): boolean {
         return this.definitions.has(name);
+    }
+
+    isReady(): boolean {
+        return this.atlases.size > 0 && this.definitions.size > 0;
     }
 
     getAllSprites(): string[] {

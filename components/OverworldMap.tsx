@@ -1,5 +1,3 @@
-
-// @ts-nocheck
 import React, { useRef, useEffect, useCallback } from 'react';
 import { WeatherType, Dimension, GameState } from '../types';
 import { HEX_SIZE, TERRAIN_COLORS, ASSETS } from '../constants';
@@ -33,7 +31,7 @@ function pixelToAxial(x: number, y: number) {
     return axialRound(q, r);
 }
 
-export const WeatherOverlay = ({ type, dimension }: { type: WeatherType, dimension: Dimension }) => {
+export const WeatherOverlay = ({ type, dimension }: { type: WeatherType | 'NONE', dimension: Dimension }) => {
     const isShadow = dimension === Dimension.UPSIDE_DOWN;
     return (
         <div className="fixed inset-0 pointer-events-none z-[80] overflow-hidden">
@@ -48,7 +46,7 @@ export const WeatherOverlay = ({ type, dimension }: { type: WeatherType, dimensi
     );
 };
 
-export const OverworldMap = ({ playerPos, onMove, dimension = 'MORTAL' }: any) => {
+const OverworldMap = ({ playerPos, onMove, dimension = 'MORTAL' }: any) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const terrainCacheRef = useRef<HTMLCanvasElement>(null);
@@ -117,10 +115,10 @@ export const OverworldMap = ({ playerPos, onMove, dimension = 'MORTAL' }: any) =
             const existing = enemies || [];
 
             tilesArray = Array.from(currentExplored).map(key => {
-                const [q, r] = key.split(',').map(Number);
+                const [q, r] = (key as string).split(',').map(Number);
                 const tile = WorldGenerator.getTile(q, r, safeDimension);
                 if (!tile) return null;
-                if (cleared.has(key)) {
+                if (cleared.has(key as string)) {
                     tile.hasEncounter = false;
                     tile.enemies = [];
                 }
@@ -299,3 +297,5 @@ export const OverworldMap = ({ playerPos, onMove, dimension = 'MORTAL' }: any) =
         </div>
     );
 };
+
+export default OverworldMap;

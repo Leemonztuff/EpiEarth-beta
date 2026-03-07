@@ -1,8 +1,6 @@
 # AGENTS.md - EpiEarth Tactics Development Guide
 
-## Project Overview
-
-EpiEarth Tactics is a tactical RPG built with React 18, TypeScript, Three.js (@react-three/fiber), Zustand, and Supabase. Uses Vite.
+EpiEarth Tactics es un RPG táctico construido con React 18, TypeScript, Three.js (@react-three/fiber), Zustand y Supabase. Usa Vite.
 
 ## Commands
 
@@ -24,11 +22,11 @@ npm run test:watch   # Run tests in watch mode
 npm run test:coverage
 ```
 
-### Single Test Execution
+**Single Test Execution:**
 ```bash
 npx vitest run src/path/to/test.file.ts              # Run specific test file
-npx vitest run --grep "pattern"                     # Run tests matching pattern
-npx vitest run src/services/dndRules.test.ts --coverage
+npx vitest run --grep "pattern"                      # Run tests matching pattern
+npx vitest run src/services/dndRules.test.ts        # Run with coverage
 ```
 
 ### Type Checking
@@ -48,13 +46,10 @@ Note: No lint command configured (no ESLint/Prettier).
 
 ### File Organization
 ```
-components/          # React components
-  battle/            # Battle scene components
-  ui/                # Reusable UI components
-store/               # Zustand state management
-  slices/            # Store slices
-services/            # Business logic
-shaders/             # GLSL shaders
+components/     # React components (battle/, ui/)
+store/          # Zustand state (slices/)
+services/       # Business logic
+shaders/        # GLSL shaders
 ```
 
 ### Imports (order matters)
@@ -65,7 +60,7 @@ shaders/             # GLSL shaders
 5. Internal services/stores
 6. Constants/assets
 
-Use `@` alias for absolute imports: `import { x } from '@/services/module'`
+Use `@` alias: `import { x } from '@/services/module'`
 
 ### Naming
 - **Components**: PascalCase (`BattleScene.tsx`)
@@ -77,32 +72,12 @@ Use `@` alias for absolute imports: `import { x } from '@/services/module'`
 ### TypeScript
 - Use interfaces for extensible object shapes
 - Use type aliases for unions/intersections
-- Enable strict null checks
 - Use `as const` for literal types
+- tsconfig: ES2022, jsx: react-jsx, moduleResolution: bundler
 
-### React Patterns
-```typescript
-export const MyComponent: React.FC<Props> = ({ prop1 }) => {
-  // useMemo for expensive calculations
-  // useCallback for callbacks to children
-  // Avoid inline object definitions
-};
-```
-
-### Zustand Store (Slice Pattern)
-```typescript
-// store/slices/featureSlice.ts
-export interface FeatureSlice {
-  state: string;
-  action: () => void;
-}
-
-export const createFeatureSlice: StateCreator<Store, [], [], FeatureSlice> = (set) => ({
-  state: '',
-  action: () => set({ state: 'updated' }),
-});
-```
-- Compose slices in `gameStore.ts`
+### React & Zustand
+- Functional components with hooks, memoize expensive calcs with useMemo
+- Zustand slice pattern: define interface, create slice with StateCreator, compose in gameStore.ts
 - Use selectors: `useGameStore(s => s.someState)`
 
 ### Error Handling
@@ -118,10 +93,7 @@ export const createFeatureSlice: StateCreator<Store, [], [], FeatureSlice> = (se
 - Dispose geometries/materials in `useEffect` cleanup
 - Use `useFrame` for animation loops
 - Keep 3D scene logic separate from UI
-
-### Git Conventions
-- Feature branches: `feature/description`
-- Bug fixes: `fix/description`
+- Use `shaderMaterial` from drei
 
 ## Known Technical Notes
 
@@ -131,35 +103,26 @@ Create `.env.local`:
 GEMINI_API_KEY=your_api_key_here
 ```
 
-### Dependencies (check before adding new)
+### Dependencies
 - React: react, react-dom, @react-three/fiber, @react-three/drei
 - State: zustand
 - 3D: three, three-stdlib
 - Backend: @supabase/supabase-js
 - AI: @google/genai
+- Test: vitest, @testing-library/react, jsdom
 
 ### Performance
 - Code-split heavy components (BattleScene, OverworldMap)
 - Memoize expensive calculations
 - Object pooling for projectiles/particles
+- Build chunks: 'three', 'vendor'
 
-### Battle System Components
+### Battle Components
 `components/battle/`: BattleScene, CinematicCamera, TerrainLayer, EntityRenderer, LightingSystem, FogController, PixelPostProcess
 
-### Post-Processing
-```tsx
-<PixelPostProcess 
-  pixelSize={3}
-  colorDepth={16}
-  ditherIntensity={0.4}
-  enablePalette={false}
-/>
-```
-
-### Three.js Shaders
-- Use `shaderMaterial` from drei
-- Handle cleanup in `useEffect`
-- Use `useFrame` for animated shaders
+### Git Conventions
+- Feature branches: `feature/description`
+- Bug fixes: `fix/description`
 
 ## Testing Guidelines
 - Tests alongside source: `service.ts` → `service.test.ts`
