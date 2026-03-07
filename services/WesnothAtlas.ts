@@ -1,3 +1,4 @@
+
 export interface SpriteFrame {
     filename: string;
     frame: { x: number; y: number; w: number; h: number };
@@ -21,6 +22,7 @@ export class WesnothAtlas {
     private atlases: Map<number, HTMLImageElement> = new Map();
     private definitions: Map<string, SpriteFrame> = new Map();
     private loadingPromise: Promise<void> | null = null;
+    private isLoaded: boolean = false;
 
     private static instance: WesnothAtlas | null = null;
 
@@ -29,6 +31,10 @@ export class WesnothAtlas {
             WesnothAtlas.instance = new WesnothAtlas();
         }
         return WesnothAtlas.instance;
+    }
+
+    isReady(): boolean {
+        return this.isLoaded;
     }
 
     async load(): Promise<void> {
@@ -42,7 +48,6 @@ export class WesnothAtlas {
 
     private async loadAtlases(): Promise<void> {
         const baseUrl = '/assets/wesnoth';
-        
         const promises: Promise<void>[] = [];
         
         for (let i = 0; i < 2; i++) {
@@ -50,6 +55,8 @@ export class WesnothAtlas {
         }
 
         await Promise.all(promises);
+        this.isLoaded = true;
+        console.log(`[WesnothAtlas] All atlases loaded and definitions are set.`);
     }
 
     private async loadAtlas(index: number, baseUrl: string): Promise<void> {
@@ -75,7 +82,6 @@ export class WesnothAtlas {
                     .replace('-tile', '');
                 if (!this.definitions.has(shortName)) {
                     this.definitions.set(shortName, frame);
-                    console.log(`[WesnothAtlas] Registered short name: ${shortName}`);
                 }
             }
         }
@@ -103,7 +109,6 @@ export class WesnothAtlas {
     getSprite(name: string): LoadedSprite | null {
         const frame = this.definitions.get(name);
         if (!frame) {
-            console.log(`[WesnothAtlas] Sprite not found for key: ${name}`);
             return null;
         }
 
@@ -111,7 +116,6 @@ export class WesnothAtlas {
         const image = this.atlases.get(atlasIndex);
 
         if (!image) {
-            console.log(`[WesnothAtlas] Atlas image not found for index: ${atlasIndex}`);
             return null;
         }
 
@@ -155,10 +159,6 @@ export class WesnothAtlas {
 
     hasSprite(name: string): boolean {
         return this.definitions.has(name);
-    }
-
-    isReady(): boolean {
-        return this.atlases.size > 0 && this.definitions.size > 0;
     }
 
     getAllSprites(): string[] {
