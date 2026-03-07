@@ -104,15 +104,15 @@ export class HexTileRenderer {
         const currentCategory: TerrainCategory = TERRAIN_CATEGORIES[currentTerrain] || 'grass';
         const currentWesnoth = TERRAIN_TO_WESNOTH[currentTerrain] || String(currentTerrain).toLowerCase();
 
-        // 1. Add base terrain sprite
-        if (wesnothAtlas.hasSprite(currentWesnoth)) {
-            transitions.push({ spriteName: currentWesnoth, layer: 0 });
-        } else {
-            // Fallback to category if specific sprite not found
-            if (wesnothAtlas.hasSprite(currentCategory)) {
-                transitions.push({ spriteName: currentCategory, layer: 0 });
+        // 1. Add base terrain sprite with robust fallbacks
+        let baseSpriteName = currentWesnoth;
+        if (!wesnothAtlas.hasSprite(baseSpriteName)) {
+            baseSpriteName = currentCategory;
+            if (!wesnothAtlas.hasSprite(baseSpriteName)) {
+                baseSpriteName = 'grass/green'; // Default fallback
             }
         }
+        transitions.push({ spriteName: baseSpriteName, layer: 0 });
 
         // 2. Add transition sprites
         for (let i = 0; i < 6; i++) {
@@ -127,7 +127,6 @@ export class HexTileRenderer {
 
             const dirName = getDirectionName(i);
 
-            // Standard Wesnoth transition names (e.g., flat/grass-to-desert-concave-ne)
             const baseTag = `${currentCategory}-to-${neighborCategory}`;
             const concaveName = `flat/${baseTag}-concave-${dirName}`;
             const convexName = `flat/${baseTag}-convex-${dirName}`;
@@ -139,7 +138,6 @@ export class HexTileRenderer {
                 transitions.push({ spriteName: convexName, layer: 1 });
             }
 
-            // Simpler transition names (e.g., flat/grass-desert-ne)
             const simpleTransition = `flat/${currentCategory}-${neighborCategory}-${dirName}`;
             if (wesnothAtlas.hasSprite(simpleTransition)) {
                 transitions.push({ spriteName: simpleTransition, layer: 1 });
@@ -172,6 +170,7 @@ export class HexTileRenderer {
         const sprites = this.getTileSprites(q, r, feature);
         
         if (sprites.length === 0) {
+            this.drawFallbackHex(ctx, cx, cy, hexSize, this.getTerrain(q, r));
             return;
         }
 
@@ -190,7 +189,6 @@ export class HexTileRenderer {
             } else {
                 const now = Date.now();
                 if (now - this.lastWarningTime > this.WARN_INTERVAL_MS) {
-                    console.warn(`[HexTileRenderer] Sprite not found: ${sprite.spriteName} (showing fallback)`);
                     this.lastWarningTime = now;
                 }
                 this.drawFallbackHex(ctx, cx, cy, hexSize, this.getTerrain(q, r));
