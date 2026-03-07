@@ -1,16 +1,14 @@
 
-// @ts-nocheck
 import { StateCreator } from 'zustand';
 import { CharacterRace, CharacterClass, Attributes, Difficulty, EquipmentSlot, Item, Ability, Entity, CombatStatsComponent, VisualComponent, Dimension, GameState, CreatureType, ItemRarity, MovementType, EvolutionStage, ClassBranch } from '../../types';
-import { calculateHp, getModifier, calculateVisionRange, getCorruptionPenalty, rollDice, calculateDerivedStats } from '../../services/dndRules';
+import { calculateHp, getModifier, calculateVisionRange, rollDice, calculateDerivedStats } from '../../services/dndRules';
 import { BASE_STATS, RACE_BONUS, XP_TABLE, getSprite, CLASS_TREES, ITEMS } from '../../constants';
 import { sfx } from '../../services/SoundSystem';
 import { useContentStore } from '../contentStore';
 import { SummoningService } from '../../services/SummoningService';
 import { WorldGenerator } from '../../services/WorldGenerator';
 import { logger } from '../../services/logger';
-
-const generateId = () => Math.random().toString(36).substr(2, 9);
+import { generateId } from '../utils';
 
 export interface PlayerSlice {
   party: (Entity & { stats: CombatStatsComponent, visual: VisualComponent })[];

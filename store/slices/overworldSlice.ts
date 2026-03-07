@@ -8,8 +8,7 @@ import { calculateVisionRange } from '../../services/dndRules';
 import { sfx } from '../../services/SoundSystem';
 import { TERRAIN_MOVEMENT_COST, ITEMS } from '../../constants';
 import { useGameStore } from '../gameStore';
-
-const generateId = () => Math.random().toString(36).substr(2, 9);
+import { generateId } from '../utils';
 
 export interface OverworldSlice {
   gameState: GameState;

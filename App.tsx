@@ -4,7 +4,7 @@ import { GameState } from './types';
 import { UIOverlay } from './components/UIOverlay';
 import { AssetLoaderOverlay } from './components/AssetLoaderOverlay';
 import { OverworldUI } from './components/OverworldUI';
-import { DebugOverworldMap } from './components/DebugOverworldMap';
+
 import { getSupabase } from './services/supabaseClient';
 import { useGameStore } from './store/gameStore';
 import { useContentStore } from './store/contentStore';

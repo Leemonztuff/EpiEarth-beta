@@ -1,5 +1,3 @@
-// @ts-nocheck
-
 export interface SpriteFrame {
     filename: string;
     frame: { x: number; y: number; w: number; h: number };
@@ -43,7 +41,7 @@ export class WesnothAtlas {
     }
 
     private async loadAtlases(): Promise<void> {
-        const baseUrl = 'https://raw.githubusercontent.com/Leemonztuff/hex-tiles/master/tiles';
+        const baseUrl = '/assets/wesnoth';
         
         const promises: Promise<void>[] = [];
         
@@ -77,7 +75,6 @@ export class WesnothAtlas {
     private loadImage(src: string): Promise<HTMLImageElement> {
         return new Promise((resolve, reject) => {
             const img = new Image();
-            img.crossOrigin = 'anonymous';
             img.onload = () => resolve(img);
             img.onerror = () => reject(new Error(`Failed to load image: ${src}`));
             img.src = src;
@@ -98,8 +95,12 @@ export class WesnothAtlas {
             return null;
         }
 
-        const atlasIndex = frame.frame.x > 2000 ? 1 : 0;
+        // Determine which atlas the sprite belongs to.
+        // This logic seems a bit arbitrary, assuming sprites past a certain x-coordinate are in the second atlas.
+        // It's based on the original structure and might need revisiting if the atlases change.
+        const atlasIndex = this.atlases.size > 1 && frame.frame.x >= this.atlases.get(0)!.width ? 1 : 0;
         const image = this.atlases.get(atlasIndex);
+
         if (!image) {
             return null;
         }
@@ -114,10 +115,7 @@ export class WesnothAtlas {
         }
 
         const { image, frame } = sprite;
-        const { frame: f, spriteSourceSize, sourceSize } = frame;
-
-        const centerX = x;
-        const centerY = y;
+        const { frame: f, spriteSourceSize } = frame;
 
         const srcX = f.x;
         const srcY = f.y;
@@ -127,14 +125,19 @@ export class WesnothAtlas {
         const drawW = srcW * scale;
         const drawH = srcH * scale;
 
+        // The pivot was originally in the center, so we adjust the drawing position
+        // to keep it centered around the x, y coordinates.
+        const centerX = x - (drawW / 2);
+        const centerY = y - (drawH / 2);
+
         const offsetX = spriteSourceSize.x * scale;
         const offsetY = spriteSourceSize.y * scale;
 
         ctx.drawImage(
             image,
             srcX, srcY, srcW, srcH,
-            centerX - offsetX - drawW / 2,
-            centerY - offsetY - drawH / 2,
+            centerX + offsetX,
+            centerY + offsetY,
             drawW,
             drawH
         );

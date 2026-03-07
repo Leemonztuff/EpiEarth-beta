@@ -1,8 +1,6 @@
-// @ts-nocheck
-
 import { TerrainType } from '../types';
 import { TERRAIN_CATEGORIES, TerrainCategory, HEX_DIRECTIONS } from '../constants';
-import { wesnothAtlas, LoadedSprite } from './WesnothAtlas';
+import { wesnothAtlas } from './WesnothAtlas';
 
 interface TerrainTransition {
     spriteName: string;
@@ -64,7 +62,6 @@ export class HexTileRenderer {
     getTileSprites(q: number, r: number, feature?: string): TerrainTransition[] {
         const cacheKey = `${q},${r}-${feature || ''}`;
         
-        // Return cached sprites if available
         if (this.spriteCache.has(cacheKey)) {
             return this.spriteCache.get(cacheKey)!;
         }
@@ -77,8 +74,6 @@ export class HexTileRenderer {
         const currentCategory: TerrainCategory = TERRAIN_CATEGORIES[currentTerrain] || 'grass';
         const currentWesnoth = TERRAIN_TO_WESNOTH[currentTerrain] || String(currentTerrain).toLowerCase();
 
-        // helper resolves a sprite name or logs a warning and optionally
-        // searches by category/fallbackBase substring
         const resolveSprite = (name: string, fallbackBase?: string): string | null => {
             if (wesnothAtlas.hasSprite(name)) return name;
             const withoutFlat = name.replace(/^flat\//, '');
@@ -88,20 +83,16 @@ export class HexTileRenderer {
                 const found = candidates.find(s => s.includes(fallbackBase));
                 if (found) return found;
                 
-                // second level fallback: just use the category base flat
                 if (wesnothAtlas.hasSprite(`flat/${currentCategory}`)) return `flat/${currentCategory}`;
                 if (wesnothAtlas.hasSprite(currentCategory)) return currentCategory;
             }
-            // final fallback: basic grass
             return 'grass/green';
         };
 
-        // base layer
         const baseName = `flat/${currentWesnoth}`;
         const resolvedBase = resolveSprite(baseName, currentWesnoth) || currentWesnoth;
         transitions.push({ spriteName: resolvedBase, layer: 0 });
 
-        // transitions for differing neighbor categories
         for (let i = 0; i < 6; i++) {
             const dir = HEX_DIRECTIONS[i];
             const nq = q + dir.q;
@@ -124,9 +115,7 @@ export class HexTileRenderer {
             }
         }
 
-        // Feature layer (Overlays)
         if (feature) {
-            // map features to wesnoth scenery or internal names
             const featureMap: Record<string, string> = {
                 'tree': 'scenery/tree-varied',
                 'forest': 'terrain/forest/deciduous-summer-tile',
@@ -140,7 +129,6 @@ export class HexTileRenderer {
             }
         }
 
-        // Cache the computed transitions
         this.spriteCache.set(cacheKey, transitions);
         return transitions;
     }
@@ -155,7 +143,7 @@ export class HexTileRenderer {
         for (const sprite of sprites) {
             const loaded = wesnothAtlas.getSprite(sprite.spriteName);
             if (loaded) {
-                const scale = hexSize / 72 * 2;
+                const scale = hexSize / 36; // Adjusted scale for better visuals
                 wesnothAtlas.drawSprite(ctx, sprite.spriteName, cx, cy, scale);
             } else {
                 console.warn(`[HexTileRenderer] drawTile unable to load sprite ${sprite.spriteName}`);

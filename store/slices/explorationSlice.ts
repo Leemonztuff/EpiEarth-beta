@@ -2,6 +2,7 @@
 import { StateCreator } from 'zustand';
 import { GameState, Trap, TrapType, BattleAction, Entity } from '../../types';
 import { TRAP_DATA, PLAYER_TRAP_LIMIT } from '../../data/trapsData';
+import { generateId, randomInt, randomElement } from '../utils';
 
 interface ZoneEnemy {
     id: string;
@@ -70,14 +71,14 @@ const generateZoneEnemies = (count: number = 5): ZoneEnemy[] => {
     for (let i = 0; i < count; i++) {
         let x: number, z: number, key: string;
         do {
-            x = Math.floor(Math.random() * 16) + 2;
-            z = Math.floor(Math.random() * 16) + 2;
+            x = randomInt(2, 17);
+            z = randomInt(2, 17);
             key = `${x},${z}`;
         } while (usedPositions.has(key));
         
         usedPositions.add(key);
-        const template = ENEMY_TEMPLATES[Math.floor(Math.random() * ENEMY_TEMPLATES.length)];
-        const level = Math.floor(Math.random() * 3) + 1;
+        const template = randomElement(ENEMY_TEMPLATES)!;
+        const level = randomInt(1, 3);
         
         enemies.push({
             id: `enemy_${i}`,
@@ -126,7 +127,7 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             swamp: 'Ciénaga Maldita'
         };
         
-        const enemies = generateZoneEnemies(5 + Math.floor(Math.random() * 5));
+        const enemies = generateZoneEnemies(5 + randomInt(0, 4));
         
         set({
             explorationState: {
@@ -151,7 +152,7 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
         
         const trapData = TRAP_DATA[type];
         const newTrap: Trap = {
-            id: `trap_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            id: `trap_${Date.now()}_${generateId()}`,
             type,
             position: { x, y: 0, z },
             isArmed: true,

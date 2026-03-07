@@ -3,6 +3,7 @@ import { StateCreator } from 'zustand';
 import { InventorySlot, EquipmentSlot, Item, CombatStatsComponent, GameState, CreatureType } from '../../types';
 import { rollDice } from '../../services/dndRules';
 import { sfx } from '../../services/SoundSystem';
+import { generateId } from '../utils';
 
 export interface InventorySlice {
   inventory: InventorySlot[];
@@ -20,8 +21,6 @@ export interface InventorySlice {
   getItemCount: (itemId: string) => number;
   removeItems: (itemId: string, amount: number) => boolean;
 }
-
-const generateId = () => Math.random().toString(36).substr(2, 9);
 
 // --- ITEM STRATEGY PATTERN ---
 

@@ -1,5 +1,4 @@
 
-// @ts-nocheck
 import * as THREE from 'three';
 import { Item, EnemyDefinition, NPCEntity, TerrainType } from '../types';
 import { WESNOTH_BASE_URL, WESNOTH_CDN_URL, ASSETS, CLASS_CONFIG, RACE_ICONS, DAMAGE_ICONS, ITEMS, BATTLE_TEXTURES } from '../constants';

@@ -1,8 +1,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Canvas, useFrame, useThree as useR3FThree } from '@react-three/fiber';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { Billboard, Image, Text } from '@react-three/drei';
 import * as THREE from 'three';
-import { BattleAction, CameraEffect, ParticleEffect } from '../types';
+import { BattleAction, CameraEffect, ParticleEffect } from '../../types'; // Assuming types are in ../../types
 
 interface VersusBattleSceneProps {
     playerName: string;
@@ -21,76 +22,69 @@ interface VersusBattleSceneProps {
     onFlee?: () => void;
 }
 
-interface BattleMessage {
-    text: string;
-    type: 'normal' | 'damage' | 'heal' | 'critical' | 'miss';
-}
+const BattleBackground = () => {
+    const { camera } = useThree();
+    const bgRef = useRef<THREE.Group>(null!);
 
-const ParticleSystem: React.FC<{ effects: ParticleEffect[] }> = ({ effects }) => (
-    <>
-        {effects.map((effect, i) => (
-            <Particle key={i} effect={effect} />
-        ))}
-    </>
-);
+    useFrame(() => {
+        // Parallax effect
+        bgRef.current.position.x = -camera.position.x * 0.1;
+    });
 
-const Particle: React.FC<{ effect: ParticleEffect }> = ({ effect }) => {
-    const meshRef = useRef<THREE.Mesh>(null);
-    const [life, setLife] = useState(1);
-    
-    const colors: Record<string, string> = {
-        fire: '#ff4500', ice: '#00ffff', lightning: '#ffff00',
-        smoke: '#888888', blood: '#ff0000', sparkle: '#ffd700', explosion: '#ff6600'
-    };
-    
-    useEffect(() => {
-        const timer = setTimeout(() => setLife(0), effect.duration * 1000);
-        return () => clearTimeout(timer);
-    }, [effect.duration]);
-    
-    if (life <= 0) return null;
-    
     return (
-        <mesh ref={meshRef} position={[effect.position.x, effect.position.y, 0]} scale={life * 0.3}>
-            <boxGeometry args={[1, 1, 1]} />
-            <meshBasicMaterial color={colors[effect.type] || '#ffffff'} transparent opacity={life} />
-        </mesh>
+        <group ref={bgRef}>
+            <Image url="/assets/backgrounds/forest_bg.png" scale={[100, 50]} position={[0, 10, -30]} />
+            
+            {/* Billboard Trees */}
+            {[-40, -30, -20, -10, 0, 10, 20, 30, 40].map(x => (
+                 <Billboard key={x} position={[x + (Math.random() - 0.5) * 5, -2, -15 - Math.random() * 10]}>
+                    <Image url="/assets/sprites/tree_1.png" scale={15} />
+                </Billboard>
+            ))}
+        </group>
     );
 };
 
-const BattleBackground: React.FC<{ effect: CameraEffect; shake: number }> = ({ effect, shake }) => {
-    const groupRef = useRef<THREE.Group>(null);
-    
-    useFrame(({ clock }) => {
-        if (groupRef.current) {
-            let offsetX = 0;
-            if (effect === 'PARALLAX_LEFT') offsetX = Math.sin(clock.getElapsedTime() * 2) * 0.5;
-            if (effect === 'PARALLAX_RIGHT') offsetX = -Math.sin(clock.getElapsedTime() * 2) * 0.5;
-            groupRef.current.position.x = offsetX + (Math.random() - 0.5) * shake * 0.1;
-        }
-    });
-    
+const Character = ({ spriteUrl, position, isPlayer }) => {
+    const [imgError, setImgError] = useState(false);
+
     return (
-        <group ref={groupRef}>
-            <mesh position={[0, 5, -20]}>
-                <planeGeometry args={[100, 50]} />
-                <meshBasicMaterial color="#1e1e2e" />
-            </mesh>
-            <mesh position={[-15, 3, -10]} rotation={[0, 0.3, 0]}>
-                <planeGeometry args={[10, 8]} />
-                <meshBasicMaterial color="#2d2d44" />
-            </mesh>
-            <mesh position={[15, 2, -8]} rotation={[0, -0.2, 0]}>
-                <planeGeometry args={[8, 6]} />
-                <meshBasicMaterial color="#3d3d5c" />
-            </mesh>
-            <mesh position={[0, 0, -5]}>
-                <planeGeometry args={[30, 1]} />
-                <meshBasicMaterial color="#4a4a6a" />
+        <group position={position}>
+            {spriteUrl && !imgError ? (
+                <Billboard>
+                    <Image 
+                        url={spriteUrl} 
+                        scale={[3, 3]}
+                        transparent
+                    />
+                </Billboard>
+            ) : (
+                <mesh>
+                    <boxGeometry args={[1, 2, 1]} />
+                    <meshStandardMaterial color={isPlayer ? "#3b82f6" : "#ef4444"} />
+                </mesh>
+            )}
+            <mesh position={[0, -1.5, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+                <circleGeometry args={[1.5, 32]} />
+                <meshBasicMaterial color={isPlayer ? "#1e3a5f" : "#5f1e1e"} transparent opacity={0.7} />
             </mesh>
         </group>
     );
 };
+
+
+const CinematicCamera = () => {
+    const { camera } = useThree();
+    const cameraGroup = useRef<THREE.Group>(null!);
+
+    useFrame((state) => {
+        cameraGroup.current.position.lerp(new THREE.Vector3(0, 5, 12), 0.05);
+        camera.lookAt(0, 2, 0);
+    });
+
+    return <group ref={cameraGroup} />;
+};
+
 
 export const VersusBattleScene: React.FC<VersusBattleSceneProps> = ({
     playerName,
@@ -106,156 +100,91 @@ export const VersusBattleScene: React.FC<VersusBattleSceneProps> = ({
     onAction,
     onFlee
 }) => {
-    const [particles] = useState<ParticleEffect[]>([]);
-    const [shake] = useState(0);
     const playerHpPercent = (playerHp / playerMaxHp) * 100;
     const enemyHpPercent = (enemyHp / enemyMaxHp) * 100;
-    const [playerImgError, setPlayerImgError] = useState(false);
-    const [enemyImgError, setEnemyImgError] = useState(false);
     
     const lastMessage = battleLog[battleLog.length - 1];
     
     return (
         <div className="w-full h-full relative bg-black overflow-hidden">
-            <Canvas camera={{ position: [0, 5, 10], fov: 60 }}>
-                <ambientLight intensity={0.6} />
-                <directionalLight position={[5, 10, 5]} intensity={0.8} />
-                <BattleBackground effect="NONE" shake={shake} />
-                <ParticleSystem effects={particles} />
+            <Canvas>
+                <ambientLight intensity={0.8} />
+                <pointLight position={[0, 10, 10]} intensity={0.5} />
+                <CinematicCamera />
+                <BattleBackground />
                 
-                <group position={[-3, 0, 0]}>
-                    {playerSpriteUrl && !playerImgError ? (
-                        <mesh position={[0, 1.2, 0]}>
-                            <planeGeometry args={[2, 2.5]} />
-                            <meshBasicMaterial transparent>
-                                <canvasTexture 
-                                    attach="map" 
-                                    image={(() => {
-                                        const img = new Image();
-                                        img.src = playerSpriteUrl;
-                                        img.onerror = () => setPlayerImgError(true);
-                                        return img;
-                                    })()} 
-                                />
-                            </meshBasicMaterial>
-                        </mesh>
-                    ) : (
-                        <mesh position={[0, 1.5, 0]} castShadow>
-                            <boxGeometry args={[1.2, 2, 0.5]} />
-                            <meshStandardMaterial color="#3b82f6" />
-                        </mesh>
-                    )}
-                    <mesh position={[0, 0.2, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-                        <planeGeometry args={[1.5, 2]} />
-                        <meshBasicMaterial color="#1e3a5f" />
-                    </mesh>
-                </group>
-                
-                <group position={[3, 0, 0]}>
-                    {enemySpriteUrl && !enemyImgError ? (
-                        <mesh position={[0, 1.2, 0]}>
-                            <planeGeometry args={[2, 2.5]} />
-                            <meshBasicMaterial transparent>
-                                <canvasTexture 
-                                    attach="map" 
-                                    image={(() => {
-                                        const img = new Image();
-                                        img.src = enemySpriteUrl;
-                                        img.onerror = () => setEnemyImgError(true);
-                                        return img;
-                                    })()} 
-                                />
-                            </meshBasicMaterial>
-                        </mesh>
-                    ) : (
-                        <mesh position={[0, 1.5, 0]} castShadow>
-                            <boxGeometry args={[1.2, 2, 0.5]} />
-                            <meshStandardMaterial color="#ef4444" emissive="#ef4444" emissiveIntensity={0.2} />
-                        </mesh>
-                    )}
-                    <mesh position={[0, 0.2, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-                        <planeGeometry args={[1.5, 2]} />
-                        <meshBasicMaterial color="#5f1e1e" />
-                    </mesh>
-                </group>
+                <Character spriteUrl={playerSpriteUrl} position={[-4, 0, 0]} isPlayer={true} />
+                <Character spriteUrl={enemySpriteUrl} position={[4, 0, 0]} isPlayer={false} />
+
             </Canvas>
             
-            <div className="absolute inset-0 pointer-events-none flex flex-col">
-                <div className="flex justify-between p-6">
-                    <div className="w-64">
-                        <div className="bg-slate-900/90 border-2 border-slate-700 rounded-xl p-4">
-                            <div className="flex justify-between items-center mb-2">
-                                <span className="text-white font-bold">{playerName}</span>
-                                <span className="text-amber-500 font-mono">{playerHp}/{playerMaxHp}</span>
-                            </div>
-                            <div className="h-4 bg-slate-800 rounded-full overflow-hidden border border-slate-600">
-                                <div 
-                                    className={`h-full transition-all duration-500 ${
-                                        playerHpPercent > 50 ? 'bg-emerald-500' : 
-                                        playerHpPercent > 20 ? 'bg-amber-500' : 'bg-red-500'
-                                    }`}
-                                    style={{ width: `${playerHpPercent}%` }}
-                                />
-                            </div>
+            <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-2 sm:p-4 md:p-6">
+                {/* Top UI - Health Bars */}
+                <div className="flex flex-col sm:flex-row justify-between w-full">
+                     <div className="bg-slate-900/80 border border-slate-700 rounded-lg p-2 md:p-4 w-full sm:w-2/5 lg:w-1/3">
+                        <div className="flex justify-between items-center mb-1 md:mb-2">
+                            <span className="text-white font-bold text-sm sm:text-base">{playerName}</span>
+                            <span className="text-amber-400 font-mono text-xs sm:text-sm">{playerHp}/{playerMaxHp}</span>
+                        </div>
+                        <div className="h-3 md:h-4 bg-slate-700 rounded-full overflow-hidden border border-slate-600">
+                            <div 
+                                className="h-full transition-all duration-500 bg-green-500"
+                                style={{ width: `${playerHpPercent}%` }}
+                            />
                         </div>
                     </div>
                     
-                    <div className="w-64">
-                        <div className="bg-slate-900/90 border-2 border-slate-700 rounded-xl p-4 text-right">
-                            <div className="flex justify-between items-center mb-2">
-                                <span className="text-amber-500 font-mono">{enemyHp}/{enemyMaxHp}</span>
-                                <span className="text-white font-bold">{enemyName}</span>
-                            </div>
-                            <div className="h-4 bg-slate-800 rounded-full overflow-hidden border border-slate-600">
-                                <div 
-                                    className={`h-full transition-all duration-500 ml-auto ${
-                                        enemyHpPercent > 50 ? 'bg-emerald-500' : 
-                                        enemyHpPercent > 20 ? 'bg-amber-500' : 'bg-red-500'
-                                    }`}
-                                    style={{ width: `${enemyHpPercent}%` }}
-                                />
-                            </div>
+                    <div className="bg-slate-900/80 border border-slate-700 rounded-lg p-2 md:p-4 w-full sm:w-2/5 lg:w-1/3 mt-2 sm:mt-0">
+                         <div className="flex justify-between items-center mb-1 md:mb-2">
+                            <span className="text-white font-bold text-sm sm:text-base">{enemyName}</span>
+                            <span className="text-amber-400 font-mono text-xs sm:text-sm">{enemyHp}/{enemyMaxHp}</span>
+                        </div>
+                        <div className="h-3 md:h-4 bg-slate-700 rounded-full overflow-hidden border border-slate-600">
+                            <div 
+                                className="h-full transition-all duration-500 bg-red-500"
+                                style={{ width: `${enemyHpPercent}%` }}
+                            />
                         </div>
                     </div>
                 </div>
-                
-                <div className="flex-1 flex items-center justify-center">
+
+                {/* Middle UI - Battle Log */}
+                <div className="flex-grow flex items-center justify-center">
                     {lastMessage && (
-                        <div className={`text-2xl font-black uppercase tracking-wider animate-pulse ${
-                            lastMessage.includes('vencido') || lastMessage.includes('Victoria') ? 'text-emerald-500' :
-                            lastMessage.includes('derrotado') || lastMessage.includes('HP') && lastMessage.includes('-') ? 'text-red-500' :
-                            lastMessage.includes('CRÍTICO') ? 'text-amber-500' : 'text-white'
-                        }`}>
-                            {lastMessage}
+                        <div className="bg-black/50 p-2 rounded-md">
+                            <p className="text-white text-lg sm:text-xl md:text-2xl font-black uppercase tracking-wider text-center">
+                                {lastMessage}
+                            </p>
                         </div>
                     )}
                 </div>
-                
+
+                {/* Bottom UI - Action Buttons */}
                 {turn === 'PLAYER' ? (
-                    <div className="pointer-events-auto p-6">
-                        <div className="bg-slate-900/95 border-2 border-amber-500/50 rounded-2xl p-6 max-w-2xl mx-auto">
-                            <div className="grid grid-cols-4 gap-3">
+                    <div className="pointer-events-auto pb-2">
+                        <div className="bg-slate-900/90 border-2 border-amber-500/50 rounded-xl p-2 sm:p-4 max-w-3xl mx-auto">
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                 <button 
                                     onClick={() => onAction(BattleAction.ATTACK)}
-                                    className="bg-red-600 hover:bg-red-500 text-white font-black uppercase py-4 rounded-xl transition-all hover:scale-105 active:scale-95 border-b-4 border-red-800"
+                                    className="bg-red-600 hover:bg-red-500 text-white font-black uppercase py-2 sm:py-3 rounded-lg text-sm sm:text-base"
                                 >
                                     ⚔️ Atacar
                                 </button>
                                 <button 
                                     onClick={() => onAction(BattleAction.SKILL, 'skill')}
-                                    className="bg-blue-600 hover:bg-blue-500 text-white font-black uppercase py-4 rounded-xl transition-all hover:scale-105 active:scale-95 border-b-4 border-blue-800"
+                                    className="bg-blue-600 hover:bg-blue-500 text-white font-black uppercase py-2 sm:py-3 rounded-lg text-sm sm:text-base"
                                 >
                                     ✨ Habilidad
                                 </button>
                                 <button 
                                     onClick={() => onAction(BattleAction.ITEM)}
-                                    className="bg-green-600 hover:bg-green-500 text-white font-black uppercase py-4 rounded-xl transition-all hover:scale-105 active:scale-95 border-b-4 border-green-800"
+                                    className="bg-green-600 hover:bg-green-500 text-white font-black uppercase py-2 sm:py-3 rounded-lg text-sm sm:text-base"
                                 >
                                     🎒 Objeto
                                 </button>
                                 <button 
                                     onClick={onFlee}
-                                    className="bg-slate-600 hover:bg-slate-500 text-white font-black uppercase py-4 rounded-xl transition-all hover:scale-105 active:scale-95 border-b-4 border-slate-800"
+                                    className="bg-slate-600 hover:bg-slate-500 text-white font-black uppercase py-2 sm:py-3 rounded-lg text-sm sm:text-base"
                                 >
                                     🏃 Huir
                                 </button>
@@ -263,29 +192,13 @@ export const VersusBattleScene: React.FC<VersusBattleSceneProps> = ({
                         </div>
                     </div>
                 ) : (
-                    <div className="pointer-events-auto p-6 flex justify-center">
-                        <div className="bg-slate-900/90 border-2 border-red-500/50 rounded-xl px-8 py-4">
+                     <div className="pb-2 flex justify-center">
+                        <div className="bg-slate-900/80 border border-red-500/50 rounded-lg px-4 py-2">
                             <span className="text-red-400 font-bold animate-pulse">Turno del enemigo...</span>
                         </div>
                     </div>
                 )}
             </div>
-            
-            {shake > 0 && (
-                <div 
-                    className="absolute inset-0 pointer-events-none"
-                    style={{ animation: `shake 0.1s ease-in-out infinite` }}
-                />
-            )}
-            
-            <style>{`
-                @keyframes shake {
-                    0%, 100% { transform: translate(0, 0); }
-                    25% { transform: translate(-5px, 3px); }
-                    50% { transform: translate(5px, -3px); }
-                    75% { transform: translate(-3px, 5px); }
-                }
-            `}</style>
         </div>
     );
 };
