@@ -88,9 +88,9 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
 
   const buildVisibleEncounterEnemies = (): OverworldEnemy[] => {
       const state = get();
-      const exploredKeys = state.exploredTiles[state.dimension] ?? new Set<string>();
+      const exploredKeys = (state.exploredTiles[state.dimension] ?? new Set<string>()) as Set<string>;
 
-      return Array.from(exploredKeys).flatMap((key) => {
+      return Array.from(exploredKeys).flatMap((key: string) => {
           if (state.clearedEncounters.has(key)) {
               return [];
           }
@@ -318,6 +318,24 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
     set({ isPlayerMoving: false });
   },
 
+  hireCarriage: (targetQ, targetR) => {
+    const state = get();
+    const nextExplored = new Set(state.exploredTiles[state.dimension] ?? []);
+    nextExplored.add(`${targetQ},${targetR}`);
+
+    set({
+      playerPos: { x: targetQ, y: targetR },
+      worldTime: (state.worldTime + 120) % 1440,
+      fatigue: Math.max(0, state.fatigue - 5),
+      exploredTiles: { ...state.exploredTiles, [state.dimension]: nextExplored },
+      currentRegionName: WorldGenerator.getTile(targetQ, targetR, state.dimension).regionName,
+    });
+
+    get().syncOverworldEnemies();
+    get().checkTileTriggers(targetQ, targetR);
+    get().addLog("El carruaje te acerca al destino.", "info");
+  },
+
   enterSettlement: () => {
     const { playerPos, dimension } = get();
     const tile = WorldGenerator.getTile(playerPos.x, playerPos.y, dimension);
@@ -386,8 +404,8 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
   resolveNarrativeOption: (idx) => { set({ activeNarrativeEvent: null }); },
   addQuest: (quest) => set(s => ({ quests: { ...s.quests, [quest.id]: quest } })),
   updateQuestProgress: (type, targetId, amount) => {
-      const quests = { ...get().quests };
-      Object.values(quests).forEach(q => {
+      const quests: Record<string, Quest> = { ...get().quests };
+      Object.values(quests).forEach((q: Quest) => {
           if (!q.completed && q.objective.type === type && q.objective.targetId === targetId) {
               q.objective.current += amount;
               if (q.objective.current >= q.objective.count) q.completed = true;
