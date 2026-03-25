@@ -1,0 +1,79 @@
+
+import { create } from 'zustand';
+import { GameStateData, GameState, Dimension, Difficulty } from '../types';
+import { createPlayerSlice, PlayerSlice } from './slices/playerSlice';
+import { createInventorySlice, InventorySlice } from './slices/inventorySlice';
+import { createOverworldSlice, OverworldSlice } from './slices/overworldSlice';
+import { createCommonSlice, CommonSlice } from './slices/commonSlice';
+import { createExplorationSlice, ExplorationSlice } from './slices/explorationSlice';
+
+// Compose the store type from all slices
+export type GameStore = PlayerSlice & InventorySlice & OverworldSlice & CommonSlice & ExplorationSlice & GameStateData;
+
+export const useGameStore = create<GameStore>((set, get, api) => {
+    const common = createCommonSlice(set, get, api);
+    const player = createPlayerSlice(set, get, api);
+    const inventory = createInventorySlice(set, get, api);
+    const overworld = createOverworldSlice(set, get, api);
+    const exploration = createExplorationSlice(set, get, api);
+
+    return {
+        ...common,
+        ...player,
+        ...inventory,
+        ...overworld,
+        ...exploration,
+        // Explicitly ensuring GameStateData compliance if any field is missing in creators
+        gameState: GameState.TITLE,
+        dimension: Dimension.NORMAL,
+        difficulty: Difficulty.NORMAL,
+        exploredTiles: { [Dimension.NORMAL]: new Set(), [Dimension.UPSIDE_DOWN]: new Set() },
+        visitedTowns: new Set(),
+        clearedEncounters: new Set(),
+        townMapData: null,
+        playerPos: { x: 0, y: 0 },
+        isPlayerMoving: false,
+        lastOverworldPos: null,
+        mapDimensions: { width: 40, height: 30 },
+        quests: {}, 
+        standingOnPortal: false,
+        standingOnSettlement: false,
+        standingOnTemple: false,
+        standingOnDungeon: false,
+        isMapOpen: false,
+        isScreenShaking: false, 
+        isScreenFlashing: false, 
+        gracePeriodEndTime: 0,
+        supplies: 20,
+        fatigue: 0,
+        worldTime: 480,
+        currentRegionName: null,
+        currentSettlementName: null,
+        activeNarrativeEvent: null,
+        activeIncursion: null,
+        standingOnPort: false,
+        inspectedEntityId: null,
+        explorationState: {
+            traps: [],
+            maxTraps: 5,
+            currentBiome: 'forest',
+            encounterRate: 0.15,
+            zoneEnemies: [],
+            currentEnemyId: null,
+            zoneCompleted: false,
+            zoneName: 'Bosque Encantado',
+            wasZoneCompletedBeforeLevelUp: false
+        },
+        versusState: {
+            isActive: false,
+            playerIndex: 0,
+            playerCurrentHp: 0,
+            playerMaxHp: 0,
+            enemyCurrentHp: 0,
+            enemyMaxHp: 0,
+            turn: 'PLAYER',
+            battleLog: [],
+            isPlayerTurn: true
+        }
+    };
+});
