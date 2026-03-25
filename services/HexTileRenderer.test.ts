@@ -41,4 +41,17 @@ describe('HexTileRenderer', () => {
 
         expect(first).toBe(second);
     });
+
+    it('should render overlay terrain above the base terrain', () => {
+        hexTileRenderer.clear();
+        hexTileRenderer.setTerrain(2, 3, TerrainType.FOREST, TerrainType.GRASS, TerrainType.FOREST);
+        const sprites = hexTileRenderer.getTileSprites(2, 3);
+
+        const base = sprites.find(s => s.layer === 0);
+        const overlay = sprites.find(s => s.layer > 0);
+
+        expect(base).toBeTruthy();
+        expect(overlay).toBeTruthy();
+        expect(overlay!.layer).toBeGreaterThan(base!.layer);
+    });
 });

@@ -38,6 +38,81 @@ function pickDeterministicSprite(candidates: string[], q: number, r: number, sal
     return available[hashCoords(q, r, salt) % available.length];
 }
 
+function getTransitionCandidates(
+    currentTerrain: TerrainType,
+    currentCategory: TerrainCategory,
+    neighborTerrain: TerrainType,
+    neighborCategory: TerrainCategory,
+    dirName: string
+): string[] {
+    if (currentCategory === 'water' && neighborCategory !== 'water') {
+        return [
+            `water/coast-tropical-A01-${dirName}`,
+            `water/coast-tropical-A02-${dirName}`,
+            `water/coast-tropical-A03-${dirName}`,
+            `water/coast-tropical-A04-${dirName}`,
+        ];
+    }
+
+    const dryTerrains = new Set<TerrainType>([
+        TerrainType.DESERT,
+        TerrainType.SAVANNAH,
+        TerrainType.WASTELAND,
+        TerrainType.BADLANDS,
+    ]);
+
+    if (currentTerrain === TerrainType.GRASS && (neighborTerrain === TerrainType.PLAINS || dryTerrains.has(neighborTerrain))) {
+        return [
+            `grass/green-medium-${dirName}`,
+            `grass/green-long-${dirName}`,
+            `grass/green-abrupt-${dirName}`,
+        ];
+    }
+
+    if (currentTerrain === TerrainType.PLAINS && (neighborTerrain === TerrainType.GRASS || dryTerrains.has(neighborTerrain))) {
+        return [
+            `grass/semi-dry-medium-${dirName}`,
+            `grass/semi-dry-long-${dirName}`,
+            `grass/semi-dry-abrupt-${dirName}`,
+        ];
+    }
+
+    if (dryTerrains.has(currentTerrain) && (neighborTerrain === TerrainType.GRASS || neighborTerrain === TerrainType.PLAINS)) {
+        return [
+            `grass/dry-medium-${dirName}`,
+            `grass/dry-long-${dirName}`,
+            `grass/dry-abrupt-${dirName}`,
+        ];
+    }
+
+    const baseTag = `${currentCategory}-to-${neighborCategory}`;
+    return [
+        `flat/${baseTag}-concave-${dirName}`,
+        `flat/${baseTag}-convex-${dirName}`,
+        `flat/${currentCategory}-${neighborCategory}-${dirName}`,
+    ];
+}
+
+function isFeatureCoveredByOverlay(feature: string | undefined, overlayTerrain?: TerrainType | null): boolean {
+    if (!feature || !overlayTerrain) {
+        return false;
+    }
+
+    if (overlayTerrain === TerrainType.FOREST && feature === 'forest') {
+        return true;
+    }
+
+    if (overlayTerrain === TerrainType.VILLAGE && (feature === 'city' || feature === 'village')) {
+        return true;
+    }
+
+    if (overlayTerrain === TerrainType.RUINS && feature === 'ruins') {
+        return true;
+    }
+
+    return false;
+}
+
 export function resolveTerrainSprites(params: {
     q: number;
     r: number;
@@ -49,7 +124,8 @@ export function resolveTerrainSprites(params: {
 }): ResolvedTerrainSprite[] {
     const { q, r, terrain, baseTerrain, overlayTerrain, feature, getTerrain } = params;
     const effectiveBaseTerrain = baseTerrain ?? terrain;
-    const { category, baseCandidates, featureCandidates } = getTerrainVisualSelection(effectiveBaseTerrain, feature);
+    const resolvedFeature = isFeatureCoveredByOverlay(feature, overlayTerrain) ? undefined : feature;
+    const { category, baseCandidates, featureCandidates } = getTerrainVisualSelection(effectiveBaseTerrain, resolvedFeature);
     const sprites: ResolvedTerrainSprite[] = [];
 
     const baseSpriteName =
@@ -75,12 +151,13 @@ export function resolveTerrainSprites(params: {
         if (!shouldDrawTransition) continue;
 
         const dirName = getDirectionName(i);
-        const baseTag = `${category}-to-${neighborCategory}`;
-        const candidates = [
-            `flat/${baseTag}-concave-${dirName}`,
-            `flat/${baseTag}-convex-${dirName}`,
-            `flat/${category}-${neighborCategory}-${dirName}`,
-        ];
+        const candidates = getTransitionCandidates(
+            effectiveBaseTerrain,
+            category,
+            neighborTerrain,
+            neighborCategory,
+            dirName
+        );
 
         candidates.forEach(candidate => {
             if (wesnothAtlas.hasSprite(candidate)) {

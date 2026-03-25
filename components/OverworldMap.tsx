@@ -93,7 +93,12 @@ const OverworldMap = ({ playerPos, onMove, dimension = Dimension.NORMAL }: Overw
             (q, r) => {
                 const tile = tileLookup.get(`${q},${r}`);
                 if (!tile) return null;
-                return { terrain: tile.terrain, feature: tile.feature };
+                return {
+                    terrain: tile.terrain,
+                    baseTerrain: tile.baseTerrain,
+                    overlayTerrain: tile.overlayTerrain,
+                    feature: tile.feature,
+                };
             }
         );
 

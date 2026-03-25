@@ -61,7 +61,7 @@ export class HexTileRenderer {
         centerQ: number, centerR: number,
         viewportWidth: number, viewportHeight: number,
         hexSize: number,
-        terrainProvider: (q: number, r: number) => { terrain: TerrainType, feature?: string } | null
+        terrainProvider: (q: number, r: number) => { terrain: TerrainType, baseTerrain?: TerrainType, overlayTerrain?: TerrainType | null, feature?: string } | null
     ): void {
         this.resourceManager.preloadViewport(
             centerQ, centerR, viewportWidth, viewportHeight, hexSize, terrainProvider
@@ -105,16 +105,21 @@ export class HexTileRenderer {
         }
         
         sprites.sort((a, b) => a.layer - b.layer);
+        let drewAnySprite = false;
 
         for (const sprite of sprites) {
             const loaded = wesnothAtlas.getSprite(sprite.spriteName);
             if (loaded) {
                 const scale = hexSize / 36;
                 wesnothAtlas.drawSprite(ctx, sprite.spriteName, cx, cy, scale);
+                drewAnySprite = true;
             } else {
                 this.warnMissingSprite(sprite.spriteName, q, r);
-                this.drawFallbackHex(ctx, cx, cy, hexSize, this.getTerrain(q, r));
             }
+        }
+
+        if (!drewAnySprite) {
+            this.drawFallbackHex(ctx, cx, cy, hexSize, this.getTerrain(q, r));
         }
     }
 

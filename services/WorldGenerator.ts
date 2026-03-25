@@ -1,7 +1,7 @@
 
 // @ts-nocheck
 import { HexCell, TerrainType, WeatherType, Dimension, MovementType, NPCEntity, BattleCell, OverworldEnemy } from '../types';
-import { BATTLE_TEXTURES, BATTLE_MAP_SIZE, ASSETS } from '../constants';
+import { BATTLE_TEXTURES, BATTLE_MAP_SIZE } from '../constants';
 
 class Mulberry32 {
     private state: number;
@@ -54,8 +54,6 @@ export class WorldGenerator {
             }
         }
 
-        const terrain = overlayTerrain ?? baseTerrain;
-
         const poiRoll = rng.next();
         let poiType: string | undefined = undefined;
         let hasPortal = rng.next() > 0.98;
@@ -66,30 +64,40 @@ export class WorldGenerator {
         else if (poiRoll > 0.92) poiType = 'DUNGEON';
         else if (poiRoll > 0.90) poiType = 'TEMPLE';
 
-        // assign simple features for grass tiles and enemies for encounters
+        // Overlay terrain owns large natural/structural visuals.
+        // Feature is reserved for small details that sit on top.
         let feature: 'tree' | 'city' | 'village' | 'ruins' | 'enemy' | undefined;
         let featureSprite: string | undefined;
-        if (terrain === TerrainType.GRASS && rng.next() < 0.15) {
+        if (!overlayTerrain && baseTerrain === TerrainType.GRASS && !poiType && rng.next() < 0.15) {
             feature = 'tree';
             featureSprite = 'scenery/tree.png';
         }
         if (poiType === 'CITY') {
-            feature = 'city';
-            featureSprite = ASSETS.STRUCTURES.CITY; // reuse existing path
+            overlayTerrain = TerrainType.VILLAGE;
+            feature = undefined;
+            featureSprite = undefined;
         }
         if (poiType === 'VILLAGE') {
-            feature = 'village';
-            featureSprite = ASSETS.STRUCTURES.VILLAGE;
+            overlayTerrain = TerrainType.VILLAGE;
+            feature = undefined;
+            featureSprite = undefined;
         }
+        if (poiType === 'DUNGEON' || poiType === 'TEMPLE') {
+            overlayTerrain = TerrainType.RUINS;
+            feature = undefined;
+            featureSprite = undefined;
+        }
+
+        const finalTerrain = overlayTerrain ?? baseTerrain;
 
         // we no longer generate enemy objects here; the slice will spawn them
         // when the tile is explored so that they can be cleared and animated.
         return {
-            q, r, terrain, baseTerrain, overlayTerrain,
+            q, r, terrain: finalTerrain, baseTerrain, overlayTerrain,
             isExplored: false, isVisible: false,
             weather: WeatherType.NONE,
             poiType, hasPortal, hasEncounter,
-            regionName: `${terrain} Region ${Math.abs(q+r)}`,
+            regionName: `${finalTerrain} Region ${Math.abs(q+r)}`,
             movementType: MovementType.WALK,
             feature,
             featureSprite,

@@ -1,5 +1,6 @@
 import { TerrainType } from '../types';
-import { wesnothAtlas, LoadedSprite } from './WesnothAtlas';
+import { wesnothAtlas } from './WesnothAtlas';
+import { getTerrainVisualSelection } from './TerrainRegistry';
 
 export interface TerrainResourceManagerConfig {
     maxCacheSize?: number;
@@ -9,6 +10,8 @@ export interface TerrainResourceManagerConfig {
 
 export interface TileResource {
     terrain: TerrainType;
+    baseTerrain?: TerrainType;
+    overlayTerrain?: TerrainType | null;
     sprites: string[];
     isLoaded: boolean;
     lastAccessed: number;
@@ -102,15 +105,15 @@ export class TerrainResourceManager {
         return { ...this.loadingState };
     }
 
-    private getTileKey(q: number, r: number, feature?: string): string {
-        return `${q},${r}${feature ? `-${feature}` : ''}`;
+    private getTileKey(q: number, r: number, feature?: string, baseTerrain?: TerrainType, overlayTerrain?: TerrainType | null): string {
+        return `${q},${r}:${baseTerrain || 'none'}:${overlayTerrain || 'none'}${feature ? `-${feature}` : ''}`;
     }
 
     private getSpriteKey(spriteName: string, scale: number): string {
         return `${spriteName}@${scale}`;
     }
 
-    async preloadTiles(tiles: Array<{q: number, r: number, terrain: TerrainType, feature?: string}>): Promise<void> {
+    async preloadTiles(tiles: Array<{q: number, r: number, terrain: TerrainType, baseTerrain?: TerrainType, overlayTerrain?: TerrainType | null, feature?: string}>): Promise<void> {
         if (tiles.length === 0) return;
 
         this.loadingState.isLoading = true;
@@ -124,20 +127,21 @@ export class TerrainResourceManager {
         }
 
         for (const chunk of chunks) {
-            await Promise.all(chunk.map(tile => this.loadTileResources(tile.q, tile.r, tile.terrain, tile.feature)));
+            await Promise.all(chunk.map(tile => this.loadTileResources(tile.q, tile.r, tile.terrain, tile.baseTerrain, tile.overlayTerrain, tile.feature)));
             this.loadingState.loadedCount += chunk.length;
         }
 
         this.loadingState.isLoading = false;
     }
 
-    async loadTileResources(q: number, r: number, terrain: TerrainType, feature?: string): Promise<TileResource | null> {
-        const key = this.getTileKey(q, r, feature);
+    async loadTileResources(q: number, r: number, terrain: TerrainType, baseTerrain?: TerrainType, overlayTerrain?: TerrainType | null, feature?: string): Promise<TileResource | null> {
+        const key = this.getTileKey(q, r, feature, baseTerrain, overlayTerrain);
 
         const cached = this.tileDataCache.get(key);
         if (cached) return cached;
 
-        const sprites = this.getTerrainSprites(terrain, q, r, feature);
+        const sprites = this.getTerrainSprites(terrain, q, r, baseTerrain, overlayTerrain, feature);
+        const pendingSpriteKeys: string[] = [];
         const loadPromises: Promise<void>[] = [];
 
         for (const spriteName of sprites) {
@@ -147,20 +151,22 @@ export class TerrainResourceManager {
                     this.loadingState.errors.add(spriteName);
                 });
                 this.pendingLoads.set(spriteKey, loadPromise);
+                pendingSpriteKeys.push(spriteKey);
                 loadPromises.push(loadPromise);
             }
         }
 
         if (loadPromises.length > 0) {
             await Promise.all(loadPromises);
-            loadPromises.forEach((_, i) => {
-                const spriteKey = this.getSpriteKey(sprites[i], 1);
+            pendingSpriteKeys.forEach(spriteKey => {
                 this.pendingLoads.delete(spriteKey);
             });
         }
 
         const resource: TileResource = {
             terrain,
+            baseTerrain,
+            overlayTerrain,
             sprites,
             isLoaded: true,
             lastAccessed: Date.now()
@@ -170,57 +176,24 @@ export class TerrainResourceManager {
         return resource;
     }
 
-    private getTerrainSprites(terrain: TerrainType, q: number, r: number, feature?: string): string[] {
+    private getTerrainSprites(terrain: TerrainType, _q: number, _r: number, baseTerrain?: TerrainType, overlayTerrain?: TerrainType | null, feature?: string): string[] {
         const sprites: string[] = [];
-        
-        const terrainToSprite: Record<TerrainType, string> = {
-            [TerrainType.GRASS]: 'grass/green',
-            [TerrainType.PLAINS]: 'grass/semi-dry',
-            [TerrainType.FOREST]: 'forest/deciduous-summer',
-            [TerrainType.JUNGLE]: 'forest/deciduous-summer',
-            [TerrainType.MOUNTAIN]: 'mountains/basic',
-            [TerrainType.WATER]: 'water/coast-tropical-A01',
-            [TerrainType.OCEAN]: 'water/ocean-A01',
-            [TerrainType.CASTLE]: 'mountains/basic-castle-n',
-            [TerrainType.VILLAGE]: 'village/human-city',
-            [TerrainType.DESERT]: 'grass/dry',
-            [TerrainType.SWAMP]: 'swamp/water',
-            [TerrainType.ANCIENT_MONUMENT]: 'mountains/basic',
-            [TerrainType.TUNDRA]: 'frozen/snow',
-            [TerrainType.TAIGA]: 'forest/pine',
-            [TerrainType.COBBLESTONE]: 'grass/semi-dry',
-            [TerrainType.DIRT_ROAD]: 'flat/dirt',
-            [TerrainType.STONE_FLOOR]: 'grass/semi-dry',
-            [TerrainType.CAVE_FLOOR]: 'chasm/regular',
-            [TerrainType.DUNGEON_FLOOR]: 'chasm/regular',
-            [TerrainType.FUNGUS]: 'forest/mushrooms',
-            [TerrainType.LAVA]: 'chasm/abyss',
-            [TerrainType.CHASM]: 'chasm/regular',
-            [TerrainType.VOID]: 'chasm/abyss',
-            [TerrainType.SAVANNAH]: 'grass/dry',
-            [TerrainType.WASTELAND]: 'grass/dry',
-            [TerrainType.BADLANDS]: 'grass/dry',
-            [TerrainType.RUINS]: 'village/human-city-ruin'
-        };
 
-        const baseSprite = terrainToSprite[terrain] || 'grass/green';
-        sprites.push(baseSprite);
+        const effectiveBaseTerrain = baseTerrain ?? terrain;
+        const baseSelection = getTerrainVisualSelection(effectiveBaseTerrain);
+        sprites.push(...baseSelection.baseCandidates.slice(0, 2));
 
-        if (feature) {
-            const featureMap: Record<string, string> = {
-                'tree': 'forest/deciduous-summer-small',
-                'forest': 'forest/deciduous-summer',
-                'village': 'village/human-city',
-                'city': 'village/human-city',
-                'ruins': 'village/human-city-ruin'
-            };
-            const featureSprite = featureMap[feature];
-            if (featureSprite) {
-                sprites.push(featureSprite);
-            }
+        if (overlayTerrain) {
+            const overlaySelection = getTerrainVisualSelection(overlayTerrain);
+            sprites.push(...overlaySelection.baseCandidates.slice(0, 2));
         }
 
-        return sprites;
+        if (feature) {
+            const featureSelection = getTerrainVisualSelection(effectiveBaseTerrain, feature);
+            sprites.push(...featureSelection.featureCandidates.slice(0, 2));
+        }
+
+        return Array.from(new Set(sprites));
     }
 
     private async preloadSprite(spriteName: string): Promise<void> {
@@ -266,7 +239,14 @@ export class TerrainResourceManager {
     }
 
     getCachedTile(q: number, r: number, feature?: string): TileResource | undefined {
-        return this.tileDataCache.get(this.getTileKey(q, r, feature));
+        const keyPrefix = `${q},${r}:`;
+        const featureSuffix = feature ? `-${feature}` : '';
+        for (const key of this.tileDataCache.keys()) {
+            if (!String(key).startsWith(keyPrefix)) continue;
+            if (featureSuffix && !String(key).endsWith(featureSuffix)) continue;
+            return this.tileDataCache.get(key);
+        }
+        return undefined;
     }
 
     getCachedSprite(spriteName: string): HTMLCanvasElement | undefined {
@@ -280,7 +260,7 @@ export class TerrainResourceManager {
         hexSize: number,
         feature?: string
     ): void {
-        const tileData = this.tileDataCache.get(this.getTileKey(q, r, feature));
+        const tileData = this.getCachedTile(q, r, feature);
         if (!tileData) return;
 
         for (const spriteName of tileData.sprites) {
@@ -344,7 +324,7 @@ export class TerrainResourceManager {
         centerQ: number, centerR: number,
         viewportW: number, viewportH: number,
         hexSize: number,
-        terrainProvider: (q: number, r: number) => { terrain: TerrainType, feature?: string } | null
+        terrainProvider: (q: number, r: number) => { terrain: TerrainType, baseTerrain?: TerrainType, overlayTerrain?: TerrainType | null, feature?: string } | null
     ): void {
         const visibleTiles = this.getVisibleTiles(centerQ, centerR, viewportW, viewportH, hexSize);
         
@@ -353,7 +333,7 @@ export class TerrainResourceManager {
                 const data = terrainProvider(q, r);
                 return data ? { q, r, ...data } : null;
             })
-            .filter((t): t is {q: number, r: number, terrain: TerrainType, feature?: string} => t !== null);
+            .filter((t): t is {q: number, r: number, terrain: TerrainType, baseTerrain?: TerrainType, overlayTerrain?: TerrainType | null, feature?: string} => t !== null);
 
         this.preloadTiles(tilesToLoad).catch(err => {
             console.error('[TerrainResourceManager] Failed to preload viewport:', err);
