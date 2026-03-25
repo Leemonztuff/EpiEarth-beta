@@ -139,7 +139,8 @@ export class HexTileRenderer {
         ctx.fillStyle = color;
         ctx.beginPath();
         for (let i = 0; i < 6; i++) {
-            const angle = (Math.PI / 3) * i - Math.PI / 6;
+            // Flat-top hexagons to match the Wesnoth atlas orientation.
+            const angle = (Math.PI / 3) * i;
             const x = cx + hexSize * Math.cos(angle);
             const y = cy + hexSize * Math.sin(angle);
             if (i === 0) ctx.moveTo(x, y);

@@ -26,7 +26,8 @@ function drawFoggedHex(ctx: CanvasRenderingContext2D, cx: number, cy: number, he
     ctx.lineWidth = 1;
     ctx.beginPath();
     for (let i = 0; i < 6; i++) {
-        const angle = (Math.PI / 3) * i - Math.PI / 6;
+        // Match the flat-top overworld geometry so fog aligns with fallback terrain.
+        const angle = (Math.PI / 3) * i;
         const x = cx + hexSize * Math.cos(angle);
         const y = cy + hexSize * Math.sin(angle);
         if (i === 0) ctx.moveTo(x, y);
