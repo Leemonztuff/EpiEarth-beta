@@ -170,7 +170,7 @@ const App = () => {
                 battleLog={versusState.battleLog}
                 playerSpriteUrl={party[versusState.playerIndex]?.visual?.spriteUrl}
                 enemySpriteUrl={explorationState.zoneEnemies.find(e => e.id === explorationState.currentEnemyId)?.sprite}
-                onAction={(action) => executeBattleAction(action)}
+                onAction={(action, skillId) => executeBattleAction(action, skillId)}
                 onFlee={() => fleeFromBattle()}
                 onVictory={() => endVersusBattle(true)}
                 onDefeat={() => endVersusBattle(false)}

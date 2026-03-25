@@ -1,8 +1,6 @@
-
-import React, { useRef, useMemo } from 'react';
-import { useFrame } from '@react-three/fiber';
+import React, { useMemo, useRef } from 'react';
+import { useFrame, useLoader } from '@react-three/fiber';
 import * as THREE from 'three';
-import { TrapType } from '../types';
 
 interface TrapMarkerProps {
     position: [number, number, number];
@@ -10,58 +8,61 @@ interface TrapMarkerProps {
     isArmed: boolean;
 }
 
-const TRAP_COLORS: Record<string, string> = {
-    SPIKE: '#8b5cf6',
-    FIRE: '#ef4444',
-    ICE: '#06b6d4',
-    POISON: '#22c55e',
-    EXPLOSIVE: '#f97316',
-    STUN: '#eab308',
-    TELEPORT: '#a855f7',
-    DECOY: '#ec4899',
-    TRAP_DOOR: '#475569',
-    ALARM: '#dc2626'
+const TRAP_TEXTURES: Record<string, string> = {
+    SPIKE: '/assets/minecraft/cobblestone.png',
+    FIRE: '/assets/minecraft/lava_still.png',
+    ICE: '/assets/minecraft/blue_concrete.png',
+    POISON: '/assets/minecraft/mycelium_top.png',
+    EXPLOSIVE: '/assets/minecraft/bricks.png',
+    STUN: '/assets/minecraft/oak_planks.png',
+    TELEPORT: '/assets/minecraft/blue_concrete.png',
+    DECOY: '/assets/minecraft/brown_mushroom.png',
+    TRAP_DOOR: '/assets/minecraft/mossy_cobblestone.png',
+    ALARM: '/assets/minecraft/black_concrete.png',
 };
 
+const FALLBACK_TEXTURE = '/assets/minecraft/bricks.png';
+
 export const TrapMarker: React.FC<TrapMarkerProps> = ({ position, trapType, isArmed }) => {
-    const meshRef = useRef<THREE.Mesh>(null);
-    const glowRef = useRef<THREE.Mesh>(null);
-    
-    const color = TRAP_COLORS[trapType] || '#ffffff';
-    
+    const groupRef = useRef<THREE.Group>(null);
+    const haloRef = useRef<THREE.Mesh>(null);
+    const textureUrl = TRAP_TEXTURES[trapType] || FALLBACK_TEXTURE;
+    const texture = useLoader(THREE.TextureLoader, textureUrl);
+
+    const material = useMemo(() => {
+        texture.magFilter = THREE.NearestFilter;
+        texture.minFilter = THREE.NearestFilter;
+        texture.wrapS = THREE.ClampToEdgeWrapping;
+        texture.wrapT = THREE.ClampToEdgeWrapping;
+        return texture;
+    }, [texture]);
+
     useFrame(({ clock }) => {
-        if (meshRef.current && isArmed) {
-            meshRef.current.position.y = position[1] + Math.sin(clock.getElapsedTime() * 3) * 0.05;
-            meshRef.current.rotation.y = clock.getElapsedTime() * 0.5;
+        if (!groupRef.current || !haloRef.current || !isArmed) {
+            return;
         }
-        if (glowRef.current && isArmed) {
-            glowRef.current.scale.setScalar(1 + Math.sin(clock.getElapsedTime() * 4) * 0.1);
-        }
+
+        const t = clock.getElapsedTime();
+        groupRef.current.position.y = position[1] + 0.12 + Math.sin(t * 3) * 0.04;
+        groupRef.current.rotation.y = t * 0.6;
+
+        const pulse = 1 + Math.sin(t * 4) * 0.12;
+        haloRef.current.scale.setScalar(pulse);
     });
-    
+
     if (!isArmed) {
         return null;
     }
-    
+
     return (
-        <group position={position}>
-            <mesh ref={meshRef} position={[0, 0.1, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-                <ringGeometry args={[0.2, 0.35, 6]} />
-                <meshStandardMaterial 
-                    color={color} 
-                    emissive={color} 
-                    emissiveIntensity={0.5}
-                    transparent
-                    opacity={0.8}
-                />
+        <group ref={groupRef} position={position}>
+            <mesh position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+                <planeGeometry args={[0.78, 0.78]} />
+                <meshStandardMaterial map={material} transparent alphaTest={0.05} />
             </mesh>
-            <mesh ref={glowRef} position={[0, 0.05, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-                <circleGeometry args={[0.5, 16]} />
-                <meshBasicMaterial 
-                    color={color} 
-                    transparent 
-                    opacity={0.2}
-                />
+            <mesh ref={haloRef} position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+                <ringGeometry args={[0.45, 0.62, 24]} />
+                <meshBasicMaterial color="#fbbf24" transparent opacity={0.25} side={THREE.DoubleSide} />
             </mesh>
         </group>
     );
