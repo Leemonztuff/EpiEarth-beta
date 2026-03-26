@@ -286,10 +286,15 @@ export const Exploration3DScene: React.FC = () => {
     const setInputMode = useGameStore(s => s.setInputMode);
 
     const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
+    const [isShortViewport, setIsShortViewport] = useState(() => window.innerHeight < 760);
+    const [mobileTrapDrawerOpen, setMobileTrapDrawerOpen] = useState(false);
     const [trapConfirmTarget, setTrapConfirmTarget] = useState<{ x: number; z: number } | null>(null);
 
     useEffect(() => {
-        const onResize = () => setIsMobile(window.innerWidth < 768);
+        const onResize = () => {
+            setIsMobile(window.innerWidth < 768);
+            setIsShortViewport(window.innerHeight < 760);
+        };
         window.addEventListener('resize', onResize);
         return () => window.removeEventListener('resize', onResize);
     }, []);
@@ -397,6 +402,14 @@ export const Exploration3DScene: React.FC = () => {
     }, [selectedTrap]);
 
     useEffect(() => {
+        if (!isMobile) {
+            setMobileTrapDrawerOpen(true);
+            return;
+        }
+        setMobileTrapDrawerOpen(trapSetMode);
+    }, [isMobile, trapSetMode]);
+
+    useEffect(() => {
         const onKeyDown = (event: KeyboardEvent) => {
             if (gameState !== GameState.EXPLORATION_3D) return;
 
@@ -474,7 +487,7 @@ export const Exploration3DScene: React.FC = () => {
     if (gameState !== GameState.EXPLORATION_3D) return null;
 
     return (
-        <div className="w-full h-full relative overflow-hidden bg-[#04070b]">
+        <div className="w-full h-[100dvh] min-h-[100svh] relative overflow-hidden bg-[#04070b]">
             <Canvas shadows camera={{ position: [0, 6, 6], fov: 55 }} className="touch-none">
                 <color attach="background" args={['#0b1220']} />
                 <ambientLight intensity={0.75} />
@@ -515,21 +528,23 @@ export const Exploration3DScene: React.FC = () => {
             </Canvas>
 
             <div className="absolute inset-0 pointer-events-none flex flex-col">
-                <div className="pointer-events-auto p-2 sm:p-3">
-                    <div className="mx-auto max-w-[920px] rounded-xl border border-cyan-300/25 bg-gradient-to-b from-slate-950/78 to-slate-900/56 shadow-[0_6px_20px_rgba(0,0,0,0.42)] backdrop-blur-md">
-                        <div className="p-2 sm:p-2.5 flex items-start justify-between gap-2">
+                <div className={`pointer-events-auto ${isMobile ? 'px-2 pt-2' : 'p-2 sm:p-3'}`}>
+                    <div className={`mx-auto rounded-xl border border-cyan-300/25 bg-gradient-to-b from-slate-950/78 to-slate-900/56 shadow-[0_6px_20px_rgba(0,0,0,0.42)] backdrop-blur-md ${isMobile ? 'max-w-[96vw]' : 'max-w-[920px]'}`}>
+                        <div className={`flex items-start justify-between gap-2 ${isMobile ? 'p-2' : 'p-2 sm:p-2.5'}`}>
                             <div className="min-w-0">
                                 <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-300/90 font-bold">
                                     {explorationState.zoneContext?.kind === 'dungeon' ? 'Dungeon Hunt' : 'Trap Hunt'}
                                 </div>
-                                <h2 className="text-white font-black text-base sm:text-lg leading-none truncate tracking-wide">{tacticalUiState.zoneName}</h2>
-                                <p className={`text-cyan-100/75 text-[11px] mt-1 truncate ${tacticalUiState.blockReason ? 'motion-safe:animate-pulse text-amber-200' : ''}`}>{statusMessage}</p>
+                                <h2 className={`text-white font-black leading-none truncate tracking-wide ${isMobile ? 'text-sm' : 'text-base sm:text-lg'}`}>{tacticalUiState.zoneName}</h2>
+                                <p className={`text-cyan-100/75 mt-1 truncate ${isMobile ? 'text-[10px]' : 'text-[11px]'} ${tacticalUiState.blockReason ? 'motion-safe:animate-pulse text-amber-200' : ''}`}>{statusMessage}</p>
                                 <div className="mt-1.5 flex flex-wrap gap-1 text-[10px] sm:text-[11px]">
                                     <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-white/10 text-white font-bold">HP {player?.stats.hp ?? 0}/{player?.stats.maxHp ?? 0}</span>
                                     <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-white/10 text-white font-bold">ENEM {tacticalUiState.enemyCount}</span>
                                     <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-white/10 text-white font-bold">PASO {tacticalUiState.turnStep}</span>
                                     <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-white/10 text-white font-bold">TRAPS {tacticalUiState.trapCount}/{tacticalUiState.maxTraps}</span>
-                                    <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-cyan-300/30 text-cyan-200 font-bold">FACING {facing}</span>
+                                    {(!isMobile || trapSetMode) && (
+                                        <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-cyan-300/30 text-cyan-200 font-bold">FACING {facing}</span>
+                                    )}
                                     {trapSetMode && (
                                         <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-amber-300/30 text-amber-200 font-bold">COMBO x{(tacticalUiState.comboMultiplier ?? 1).toFixed(2)}</span>
                                     )}
@@ -544,17 +559,17 @@ export const Exploration3DScene: React.FC = () => {
                             </div>
                             <div className="flex items-center gap-1.5 sm:gap-2">
                                 <button onClick={() => dispatchTacticalAction({ type: 'ToggleMinimap' })} className="px-2 py-1.5 rounded-lg text-[10px] sm:text-xs font-black bg-slate-800/90 text-white border border-white/10 hover:border-cyan-300/40 transition-colors">
-                                    {explorationState.showMinimap ? 'RADAR OFF' : 'RADAR ON'}
+                                    {explorationState.showMinimap ? 'Radar Off' : 'Radar'}
                                 </button>
                                 <button onClick={() => dispatchTacticalAction({ type: 'ToggleTacticalPause' })} className={`px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg text-[10px] sm:text-xs font-black transition-all ${trapSetMode ? 'bg-amber-400 text-black motion-safe:animate-pulse' : 'bg-slate-800/90 text-white border border-white/10 hover:border-cyan-300/40'}`}>
-                                    {trapSetMode ? 'Reanudar' : 'Trap Set'}
+                                    {trapSetMode ? 'Run' : 'Trap Set'}
                                 </button>
                                 <button onClick={() => dispatchTacticalAction({ type: 'ExitTrapZone' })} className="px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[10px] sm:text-xs font-black transition-colors">
                                     Salir
                                 </button>
                             </div>
                         </div>
-                        {trapSetMode && (
+                        {trapSetMode && (!isMobile || !isShortViewport) && (
                             <div className="px-2 pb-2 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-1.5 text-[10px] sm:text-[11px]">
                                 <div className="rounded-xl bg-slate-900/85 border border-white/10 p-2"><span className="text-white/50">Fatiga</span><div className="text-white font-black">{fatigue.toFixed(1)}</div></div>
                                 <div className="rounded-xl bg-slate-900/85 border border-white/10 p-2"><span className="text-white/50">Sumin.</span><div className="text-white font-black">{supplies.toFixed(1)}</div></div>
@@ -569,8 +584,8 @@ export const Exploration3DScene: React.FC = () => {
 
                 <div className="flex-1" />
 
-                <div className="pointer-events-auto p-2 sm:p-3 grid gap-2 md:grid-cols-[1fr,auto] items-end">
-                    <div className="order-2 md:order-1 mx-auto w-full max-w-[880px] rounded-xl border border-cyan-300/25 bg-gradient-to-b from-slate-950/78 to-slate-900/62 backdrop-blur-md p-2">
+                <div className={`pointer-events-auto grid gap-2 md:grid-cols-[1fr,auto] items-end ${isMobile ? 'px-2 pb-[calc(env(safe-area-inset-bottom)+8px)]' : 'p-2 sm:p-3'}`}>
+                    <div className={`order-2 md:order-1 mx-auto w-full rounded-xl border border-cyan-300/25 bg-gradient-to-b from-slate-950/78 to-slate-900/62 backdrop-blur-md ${isMobile ? 'max-w-[96vw] p-1.5' : 'max-w-[880px] p-2'}`}>
                         {!trapSetMode ? (
                             <>
                                 <div className="grid grid-cols-3 gap-2">
@@ -596,6 +611,22 @@ export const Exploration3DScene: React.FC = () => {
                                         <div className="text-[11px] font-bold">{isMobile ? 'Tap directo' : 'Tecla 3'}</div>
                                     </button>
                                 </div>
+                                {isMobile && (
+                                    <div className="mt-1.5 grid grid-cols-2 gap-2">
+                                        <button
+                                            onClick={quickTurn}
+                                            className="rounded-lg px-2 py-2 text-[11px] font-black border border-amber-300/40 text-amber-200 bg-amber-950/45"
+                                        >
+                                            Giro 180
+                                        </button>
+                                        <button
+                                            onClick={lockOnNearestEnemy}
+                                            className="rounded-lg px-2 py-2 text-[11px] font-black border border-cyan-300/40 text-cyan-200 bg-cyan-950/45"
+                                        >
+                                            Lock
+                                        </button>
+                                    </div>
+                                )}
                                 <div className="mt-2 text-[11px] text-white/50">
                                     {isMobile
                                         ? 'Tank: forward/back + turn + strafe | Trap Set para preparar'
@@ -604,6 +635,18 @@ export const Exploration3DScene: React.FC = () => {
                             </>
                         ) : (
                             <>
+                                {isMobile && (
+                                    <div className="mb-2 flex justify-end">
+                                        <button
+                                            onClick={() => setMobileTrapDrawerOpen(prev => !prev)}
+                                            className="px-2.5 py-1.5 rounded-lg text-[10px] font-black bg-slate-800/90 text-white border border-white/10"
+                                        >
+                                            {mobileTrapDrawerOpen ? 'Ocultar Deck' : 'Abrir Deck'}
+                                        </button>
+                                    </div>
+                                )}
+                                {(!isMobile || mobileTrapDrawerOpen) && (
+                                    <>
                                 <div className="flex items-center justify-between mb-1.5">
                                     <div className="text-white font-black text-xs sm:text-sm tracking-wide">
                                         {tacticalUiState.trapCount}/{tacticalUiState.maxTraps} colocadas
@@ -683,11 +726,13 @@ export const Exploration3DScene: React.FC = () => {
                                         ? 'Trap Set: tap en tile para colocar | confirma al segundo tap'
                                         : 'Trap Set: click para apuntar/confirmar | Q/E rota rapido'}
                                 </div>
+                                    </>
+                                )}
                             </>
                         )}
                     </div>
 
-                    {isMobile && (
+                    {isMobile && !trapSetMode && (
                         <div className="order-1 flex justify-center">
                             <DirectionPad
                                 onForward={attemptForward}
