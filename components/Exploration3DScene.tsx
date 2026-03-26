@@ -254,7 +254,6 @@ export const Exploration3DScene: React.FC = () => {
     const setInputMode = useGameStore(s => s.setInputMode);
 
     const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
-    const [showDetails, setShowDetails] = useState(false);
     const [trapConfirmTarget, setTrapConfirmTarget] = useState<{ x: number; z: number } | null>(null);
 
     useEffect(() => {
@@ -277,6 +276,15 @@ export const Exploration3DScene: React.FC = () => {
     const selectedTrap = explorationState.selectedTrapType;
     const statusMessage = tacticalUiState.blockReason || tacticalUiState.message || 'Mueve 1 casillero y fuerza errores del enemigo.';
     const activeRuntime = activeDungeonId ? dungeonRuntimeById[activeDungeonId] : null;
+    const trapSetMode = explorationState.tacticalPaused;
+    const armedSurfaceCount = useMemo(() => {
+        const base = { floor: 0, wall: 0, ceiling: 0 };
+        explorationState.traps.forEach(trap => {
+            if (!trap.isArmed || !trap.placementSurface) return;
+            base[trap.placementSurface] += 1;
+        });
+        return base;
+    }, [explorationState.traps]);
     const currentRoomDoors = useMemo(() => {
         if (!explorationState.roomGraphRef || !explorationState.currentRoomId) return [];
         return Object.values(explorationState.roomGraphRef.doors).filter(
@@ -402,8 +410,8 @@ export const Exploration3DScene: React.FC = () => {
 
             <div className="absolute inset-0 pointer-events-none flex flex-col">
                 <div className="pointer-events-auto p-2 sm:p-3">
-                    <div className="mx-auto max-w-[880px] rounded-xl border border-cyan-300/25 bg-gradient-to-b from-slate-950/80 to-slate-900/64 shadow-[0_6px_20px_rgba(0,0,0,0.42)] backdrop-blur-md">
-                        <div className="p-2 flex items-start justify-between gap-2">
+                    <div className="mx-auto max-w-[920px] rounded-xl border border-cyan-300/25 bg-gradient-to-b from-slate-950/78 to-slate-900/56 shadow-[0_6px_20px_rgba(0,0,0,0.42)] backdrop-blur-md">
+                        <div className="p-2 sm:p-2.5 flex items-start justify-between gap-2">
                             <div className="min-w-0">
                                 <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-300/90 font-bold">
                                     {explorationState.zoneContext?.kind === 'dungeon' ? 'Dungeon Hunt' : 'Trap Hunt'}
@@ -413,30 +421,27 @@ export const Exploration3DScene: React.FC = () => {
                                 <div className="mt-1.5 flex flex-wrap gap-1 text-[10px] sm:text-[11px]">
                                     <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-white/10 text-white font-bold">HP {player?.stats.hp ?? 0}/{player?.stats.maxHp ?? 0}</span>
                                     <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-white/10 text-white font-bold">ENEM {tacticalUiState.enemyCount}</span>
-                                    <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-white/10 text-white font-bold">TURNO {tacticalUiState.turnStep}</span>
+                                    <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-white/10 text-white font-bold">PASO {tacticalUiState.turnStep}</span>
                                     <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-white/10 text-white font-bold">TRAPS {tacticalUiState.trapCount}/{tacticalUiState.maxTraps}</span>
                                     <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-amber-300/30 text-amber-200 font-bold">COMBO x{(tacticalUiState.comboMultiplier ?? 1).toFixed(2)}</span>
                                     <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-emerald-300/30 text-emerald-200 font-bold">ARK {tacticalUiState.trapCurrency ?? 0}</span>
-                                    <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-cyan-300/30 text-cyan-200 font-bold">DIR {explorationState.trapOrientation}</span>
-                                    <span className={`px-2 py-[3px] rounded-md border font-bold ${explorationState.tacticalPaused ? 'bg-amber-400 text-black border-amber-300' : 'bg-slate-900/90 border-white/10 text-white'}`}>{explorationState.tacticalPaused ? 'SET TRAP' : 'RUN'}</span>
+                                    <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-cyan-300/30 text-cyan-200 font-bold">{tacticalUiState.stepPhase || 'PLAYER_STEP'}</span>
+                                    <span className={`px-2 py-[3px] rounded-md border font-bold ${trapSetMode ? 'bg-amber-400 text-black border-amber-300' : 'bg-slate-900/90 border-white/10 text-white'}`}>{trapSetMode ? 'TRAP SET' : 'RUN'}</span>
                                 </div>
                             </div>
                             <div className="flex items-center gap-1.5 sm:gap-2">
-                                <button onClick={() => setShowDetails(prev => !prev)} className="px-2 py-1.5 rounded-lg text-[10px] sm:text-xs font-black bg-slate-800/90 text-white border border-white/10 hover:border-cyan-300/40 transition-colors">
-                                    {showDetails ? 'DETALLE -' : 'DETALLE +'}
-                                </button>
                                 <button onClick={() => dispatchTacticalAction({ type: 'ToggleMinimap' })} className="px-2 py-1.5 rounded-lg text-[10px] sm:text-xs font-black bg-slate-800/90 text-white border border-white/10 hover:border-cyan-300/40 transition-colors">
                                     {explorationState.showMinimap ? 'RADAR OFF' : 'RADAR ON'}
                                 </button>
-                                <button onClick={() => dispatchTacticalAction({ type: 'ToggleTacticalPause' })} className={`px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg text-[10px] sm:text-xs font-black transition-all ${explorationState.tacticalPaused ? 'bg-amber-400 text-black motion-safe:animate-pulse' : 'bg-slate-800/90 text-white border border-white/10 hover:border-cyan-300/40'}`}>
-                                    {explorationState.tacticalPaused ? 'Reanudar' : 'Pausa'}
+                                <button onClick={() => dispatchTacticalAction({ type: 'ToggleTacticalPause' })} className={`px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg text-[10px] sm:text-xs font-black transition-all ${trapSetMode ? 'bg-amber-400 text-black motion-safe:animate-pulse' : 'bg-slate-800/90 text-white border border-white/10 hover:border-cyan-300/40'}`}>
+                                    {trapSetMode ? 'Reanudar' : 'Trap Set'}
                                 </button>
                                 <button onClick={() => dispatchTacticalAction({ type: 'ExitTrapZone' })} className="px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[10px] sm:text-xs font-black transition-colors">
                                     Salir
                                 </button>
                             </div>
                         </div>
-                        {showDetails && (
+                        {trapSetMode && (
                             <div className="px-2 pb-2 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-1.5 text-[10px] sm:text-[11px]">
                                 <div className="rounded-xl bg-slate-900/85 border border-white/10 p-2"><span className="text-white/50">Fatiga</span><div className="text-white font-black">{fatigue.toFixed(1)}</div></div>
                                 <div className="rounded-xl bg-slate-900/85 border border-white/10 p-2"><span className="text-white/50">Sumin.</span><div className="text-white font-black">{supplies.toFixed(1)}</div></div>
@@ -453,87 +458,120 @@ export const Exploration3DScene: React.FC = () => {
 
                 <div className="pointer-events-auto p-2 sm:p-3 grid gap-2 md:grid-cols-[1fr,auto] items-end">
                     <div className="order-2 md:order-1 mx-auto w-full max-w-[880px] rounded-xl border border-cyan-300/25 bg-gradient-to-b from-slate-950/78 to-slate-900/62 backdrop-blur-md p-2">
-                        <div className="flex items-center justify-between mb-1.5">
-                            <div className="text-white font-black text-xs sm:text-sm tracking-wide">
-                                {tacticalUiState.trapCount}/{tacticalUiState.maxTraps} colocadas
-                            </div>
-                            <div className="text-right text-[10px] sm:text-[11px] text-cyan-100/70">
-                                {trapConfirmTarget && selectedTrap
-                                    ? `Confirmar en ${trapConfirmTarget.x},${trapConfirmTarget.z}`
-                                    : selectedTrap
-                                    ? `${TRAP_DATA[selectedTrap].name} - Alc ${tacticalUiState.selectedTrapRange ?? TRAP_DATA[selectedTrap].range}`
-                                    : 'Elige una trampa'}
-                            </div>
-                        </div>
-                        <div className="flex gap-1.5 overflow-x-auto pb-1 md:grid md:grid-cols-6 md:gap-2 md:overflow-visible md:pb-0">
-                            {(Object.keys(TRAP_DATA) as TrapType[]).slice(0, 6).map(type => (
-                                (() => {
-                                    const mastery = explorationState.trapMastery[type];
-                                    const isLocked = !mastery?.unlocked;
-                                    const cooldown = explorationState.trapCooldowns[type] ?? 0;
-                                    return (
-                                <button
-                                    key={type}
-                                    onClick={() => dispatchTacticalAction({ type: 'SelectTrap', trapType: selectedTrap === type ? null : type })}
-                                    className={`min-w-[112px] md:min-w-0 rounded-xl px-2 py-2 text-left border transition-all duration-150 hover:-translate-y-[1px] ${
-                                        isLocked
-                                            ? 'bg-slate-950/95 text-slate-500 border-slate-700'
-                                            : selectedTrap === type
-                                            ? 'bg-amber-400 text-black border-amber-300 shadow-[0_0_14px_rgba(251,191,36,0.25)]'
-                                            : 'bg-slate-900/88 text-white border-white/10 hover:border-cyan-300/45'
-                                    }`}
-                                >
-                                    <div className="text-[10px] uppercase font-black">{type}</div>
-                                    <div className={`text-[11px] mt-1 ${selectedTrap === type ? 'text-black/75' : 'text-white/65'}`}>
-                                        {isLocked ? `Lock ${TRAP_DATA[type].unlockCost ?? 0}` : `Alc ${TRAP_DATA[type].range}`}
+                        {!trapSetMode ? (
+                            <>
+                                <div className="grid grid-cols-3 gap-2">
+                                    <button
+                                        onClick={() => dispatchTacticalAction({ type: 'TriggerTrapSurface', surface: 'floor' })}
+                                        className={`rounded-lg px-2 py-2 text-left border transition-all ${armedSurfaceCount.floor > 0 ? 'border-orange-300 bg-orange-950/40 text-orange-100 shadow-[0_0_12px_rgba(251,146,60,0.25)] motion-safe:animate-pulse' : 'border-white/15 bg-slate-900/88 text-white'}`}
+                                    >
+                                        <div className="text-[10px] uppercase font-black tracking-wide">Piso</div>
+                                        <div className="text-[11px] font-bold">{isMobile ? 'Tap' : '1'} Trigger</div>
+                                    </button>
+                                    <button
+                                        onClick={() => dispatchTacticalAction({ type: 'TriggerTrapSurface', surface: 'wall' })}
+                                        className={`rounded-lg px-2 py-2 text-left border transition-all ${armedSurfaceCount.wall > 0 ? 'border-cyan-300 bg-cyan-950/40 text-cyan-100 shadow-[0_0_12px_rgba(34,211,238,0.22)] motion-safe:animate-pulse' : 'border-white/15 bg-slate-900/88 text-white'}`}
+                                    >
+                                        <div className="text-[10px] uppercase font-black tracking-wide">Pared</div>
+                                        <div className="text-[11px] font-bold">{isMobile ? 'Tap' : '2'} Trigger</div>
+                                    </button>
+                                    <button
+                                        onClick={() => dispatchTacticalAction({ type: 'TriggerTrapSurface', surface: 'ceiling' })}
+                                        className={`rounded-lg px-2 py-2 text-left border transition-all ${armedSurfaceCount.ceiling > 0 ? 'border-violet-300 bg-violet-950/40 text-violet-100 shadow-[0_0_12px_rgba(167,139,250,0.22)] motion-safe:animate-pulse' : 'border-white/15 bg-slate-900/88 text-white'}`}
+                                    >
+                                        <div className="text-[10px] uppercase font-black tracking-wide">Techo</div>
+                                        <div className="text-[11px] font-bold">{isMobile ? 'Tap' : '3'} Trigger</div>
+                                    </button>
+                                </div>
+                                <div className="mt-2 text-[11px] text-white/50">
+                                    {isMobile
+                                        ? 'Pad mover · Trap Set para preparar · Radar opcional'
+                                        : 'WASD/Flechas mover · 1/2/3 trigger · P Trap Set · M Radar'}
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <div className="flex items-center justify-between mb-1.5">
+                                    <div className="text-white font-black text-xs sm:text-sm tracking-wide">
+                                        {tacticalUiState.trapCount}/{tacticalUiState.maxTraps} colocadas
                                     </div>
-                                    <div className={`text-[10px] mt-0.5 ${selectedTrap === type ? 'text-black/75' : 'text-white/55'}`}>
-                                        Lvl {mastery?.level ?? 1} {cooldown > 0 ? `| CD ${cooldown}` : ''}
+                                    <div className="text-right text-[10px] sm:text-[11px] text-cyan-100/70">
+                                        {trapConfirmTarget && selectedTrap
+                                            ? `Confirmar en ${trapConfirmTarget.x},${trapConfirmTarget.z}`
+                                            : selectedTrap
+                                            ? `${TRAP_DATA[selectedTrap].name} - Alc ${tacticalUiState.selectedTrapRange ?? TRAP_DATA[selectedTrap].range}`
+                                            : 'Selecciona trampa'}
                                     </div>
-                                </button>
-                                    );
-                                })()
-                            ))}
-                        </div>
-
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                            <button onClick={() => dispatchTacticalAction({ type: 'TriggerTrapSurface', surface: 'floor' })} className="px-2 py-1 rounded-md text-[10px] font-black border border-orange-300/40 text-orange-200 bg-orange-950/40">Trigger Floor (1)</button>
-                            <button onClick={() => dispatchTacticalAction({ type: 'TriggerTrapSurface', surface: 'wall' })} className="px-2 py-1 rounded-md text-[10px] font-black border border-cyan-300/40 text-cyan-200 bg-cyan-950/40">Trigger Wall (2)</button>
-                            <button onClick={() => dispatchTacticalAction({ type: 'TriggerTrapSurface', surface: 'ceiling' })} className="px-2 py-1 rounded-md text-[10px] font-black border border-violet-300/40 text-violet-200 bg-violet-950/40">Trigger Ceiling (3)</button>
-                            {selectedTrap && (
-                                <button onClick={() => dispatchTacticalAction({ type: 'UpgradeTrap', trapType: selectedTrap })} className="px-2 py-1 rounded-md text-[10px] font-black border border-emerald-300/40 text-emerald-200 bg-emerald-950/40">Upgrade {selectedTrap}</button>
-                            )}
-                        </div>
-
-                        {explorationState.currentRoomId && currentRoomDoors.length > 0 && (
-                            <div className="mt-2 flex flex-wrap gap-1.5">
-                                {currentRoomDoors.map(door => {
-                                    const stateDoor = explorationState.doorStates[door.id] || door.state;
-                                    const nextRoom = door.fromRoomId === explorationState.currentRoomId ? door.toRoomId : door.fromRoomId;
-                                    return (
-                                        <button
-                                            key={door.id}
-                                            onClick={() => dispatchTacticalAction({ type: 'OpenDoor', doorId: door.id })}
-                                            className={`px-2 py-1 rounded-md text-[10px] font-black border ${
-                                                stateDoor === 'open'
-                                                    ? 'bg-emerald-900/50 text-emerald-200 border-emerald-400/40'
-                                                    : stateDoor === 'locked'
-                                                        ? 'bg-red-900/50 text-red-200 border-red-400/40'
-                                                        : 'bg-amber-900/50 text-amber-200 border-amber-400/40'
-                                            }`}
-                                        >
-                                            {stateDoor === 'open' ? `Ir ${nextRoom}` : `${stateDoor === 'locked' ? 'Bloq' : 'Abrir'} ${nextRoom}`}
-                                        </button>
-                                    );
-                                })}
-                            </div>
+                                </div>
+                                <div className="flex gap-1.5 overflow-x-auto pb-1 md:grid md:grid-cols-6 md:gap-2 md:overflow-visible md:pb-0">
+                                    {(Object.keys(TRAP_DATA) as TrapType[]).slice(0, 6).map(type => (
+                                        (() => {
+                                            const mastery = explorationState.trapMastery[type];
+                                            const isLocked = !mastery?.unlocked;
+                                            const cooldown = explorationState.trapCooldowns[type] ?? 0;
+                                            return (
+                                                <button
+                                                    key={type}
+                                                    onClick={() => dispatchTacticalAction({ type: 'SelectTrap', trapType: selectedTrap === type ? null : type })}
+                                                    className={`min-w-[112px] md:min-w-0 rounded-xl px-2 py-2 text-left border transition-all duration-150 hover:-translate-y-[1px] ${
+                                                        isLocked
+                                                            ? 'bg-slate-950/95 text-slate-500 border-slate-700'
+                                                            : selectedTrap === type
+                                                            ? 'bg-amber-400 text-black border-amber-300 shadow-[0_0_14px_rgba(251,191,36,0.25)]'
+                                                            : 'bg-slate-900/88 text-white border-white/10 hover:border-cyan-300/45'
+                                                    }`}
+                                                >
+                                                    <div className="text-[10px] uppercase font-black">{type}</div>
+                                                    <div className={`text-[11px] mt-1 ${selectedTrap === type ? 'text-black/75' : 'text-white/65'}`}>
+                                                        {isLocked ? `Lock ${TRAP_DATA[type].unlockCost ?? 0}` : `Alc ${TRAP_DATA[type].range}`}
+                                                    </div>
+                                                    <div className={`text-[10px] mt-0.5 ${selectedTrap === type ? 'text-black/75' : 'text-white/55'}`}>
+                                                        Lvl {mastery?.level ?? 1} {cooldown > 0 ? `| CD ${cooldown}` : ''}
+                                                    </div>
+                                                </button>
+                                            );
+                                        })()
+                                    ))}
+                                </div>
+                                <div className="mt-2 flex flex-wrap gap-1.5">
+                                    {selectedTrap && (
+                                        <button onClick={() => dispatchTacticalAction({ type: 'UpgradeTrap', trapType: selectedTrap })} className="px-2 py-1 rounded-md text-[10px] font-black border border-emerald-300/40 text-emerald-200 bg-emerald-950/40">Upgrade {selectedTrap}</button>
+                                    )}
+                                    <button onClick={() => dispatchTacticalAction({ type: 'SetTrapOrientation', orientation: 'N' })} className="px-2 py-1 rounded-md text-[10px] font-black border border-cyan-300/40 text-cyan-200 bg-cyan-950/40">N</button>
+                                    <button onClick={() => dispatchTacticalAction({ type: 'SetTrapOrientation', orientation: 'E' })} className="px-2 py-1 rounded-md text-[10px] font-black border border-cyan-300/40 text-cyan-200 bg-cyan-950/40">E</button>
+                                    <button onClick={() => dispatchTacticalAction({ type: 'SetTrapOrientation', orientation: 'S' })} className="px-2 py-1 rounded-md text-[10px] font-black border border-cyan-300/40 text-cyan-200 bg-cyan-950/40">S</button>
+                                    <button onClick={() => dispatchTacticalAction({ type: 'SetTrapOrientation', orientation: 'W' })} className="px-2 py-1 rounded-md text-[10px] font-black border border-cyan-300/40 text-cyan-200 bg-cyan-950/40">W</button>
+                                </div>
+                                {explorationState.currentRoomId && currentRoomDoors.length > 0 && (
+                                    <div className="mt-2 flex flex-wrap gap-1.5">
+                                        {currentRoomDoors.map(door => {
+                                            const stateDoor = explorationState.doorStates[door.id] || door.state;
+                                            const nextRoom = door.fromRoomId === explorationState.currentRoomId ? door.toRoomId : door.fromRoomId;
+                                            return (
+                                                <button
+                                                    key={door.id}
+                                                    onClick={() => dispatchTacticalAction({ type: 'OpenDoor', doorId: door.id })}
+                                                    className={`px-2 py-1 rounded-md text-[10px] font-black border ${
+                                                        stateDoor === 'open'
+                                                            ? 'bg-emerald-900/50 text-emerald-200 border-emerald-400/40'
+                                                            : stateDoor === 'locked'
+                                                                ? 'bg-red-900/50 text-red-200 border-red-400/40'
+                                                                : 'bg-amber-900/50 text-amber-200 border-amber-400/40'
+                                                    }`}
+                                                >
+                                                    {stateDoor === 'open' ? `Ir ${nextRoom}` : `${stateDoor === 'locked' ? 'Bloq' : 'Abrir'} ${nextRoom}`}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                                <div className="mt-2 text-[11px] text-white/50">
+                                    {isMobile
+                                        ? 'Trap Set: Tap tile para colocar · Confirmacion al segundo tap'
+                                        : 'Trap Set: Click tile para apuntar/confirmar · Q/E rota rapido'}
+                                </div>
+                            </>
                         )}
-
-                        <div className="mt-2 text-[11px] text-white/50">
-                            {isMobile
-                                ? 'Mobile: Pad mover | Tap colocar | Trigger 1/2/3'
-                                : 'Desktop: WASD/Flechas | Click colocar | 1/2/3 Trigger | Q/E orientacion | P pausa | M radar'}
-                        </div>
                     </div>
 
                     {isMobile && (
