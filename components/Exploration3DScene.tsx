@@ -324,12 +324,31 @@ export const Exploration3DScene: React.FC = () => {
             } else if (event.key.toLowerCase() === 'm') {
                 event.preventDefault();
                 dispatchTacticalAction({ type: 'ToggleMinimap' });
+            } else if (event.key === '1') {
+                event.preventDefault();
+                dispatchTacticalAction({ type: 'TriggerTrapSurface', surface: 'floor' });
+            } else if (event.key === '2') {
+                event.preventDefault();
+                dispatchTacticalAction({ type: 'TriggerTrapSurface', surface: 'wall' });
+            } else if (event.key === '3') {
+                event.preventDefault();
+                dispatchTacticalAction({ type: 'TriggerTrapSurface', surface: 'ceiling' });
+            } else if (event.key.toLowerCase() === 'q') {
+                event.preventDefault();
+                const order = ['N', 'W', 'S', 'E'] as const;
+                const idx = order.indexOf(explorationState.trapOrientation);
+                dispatchTacticalAction({ type: 'SetTrapOrientation', orientation: order[(idx + 1) % order.length] });
+            } else if (event.key.toLowerCase() === 'e') {
+                event.preventDefault();
+                const order = ['N', 'E', 'S', 'W'] as const;
+                const idx = order.indexOf(explorationState.trapOrientation);
+                dispatchTacticalAction({ type: 'SetTrapOrientation', orientation: order[(idx + 1) % order.length] });
             }
         };
 
         window.addEventListener('keydown', onKeyDown);
         return () => window.removeEventListener('keydown', onKeyDown);
-    }, [attemptMove, gameState, dispatchTacticalAction]);
+    }, [attemptMove, gameState, dispatchTacticalAction, explorationState.trapOrientation]);
 
     if (gameState !== GameState.EXPLORATION_3D) return null;
 
@@ -384,7 +403,8 @@ export const Exploration3DScene: React.FC = () => {
                                     <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-white/10 text-white font-bold">TURNO {tacticalUiState.turnStep}</span>
                                     <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-white/10 text-white font-bold">TRAPS {tacticalUiState.trapCount}/{tacticalUiState.maxTraps}</span>
                                     <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-amber-300/30 text-amber-200 font-bold">COMBO x{(tacticalUiState.comboMultiplier ?? 1).toFixed(2)}</span>
-                                    <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-emerald-300/30 text-emerald-200 font-bold">TRAP$ {tacticalUiState.trapCurrency ?? 0}</span>
+                                    <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-emerald-300/30 text-emerald-200 font-bold">ARK {tacticalUiState.trapCurrency ?? 0}</span>
+                                    <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-cyan-300/30 text-cyan-200 font-bold">DIR {explorationState.trapOrientation}</span>
                                     <span className={`px-2 py-[3px] rounded-md border font-bold ${explorationState.tacticalPaused ? 'bg-amber-400 text-black border-amber-300' : 'bg-slate-900/90 border-white/10 text-white'}`}>{explorationState.tacticalPaused ? 'SET TRAP' : 'RUN'}</span>
                                 </div>
                             </div>
@@ -434,21 +454,42 @@ export const Exploration3DScene: React.FC = () => {
                         </div>
                         <div className="flex gap-1.5 overflow-x-auto pb-1 md:grid md:grid-cols-6 md:gap-2 md:overflow-visible md:pb-0">
                             {(Object.keys(TRAP_DATA) as TrapType[]).slice(0, 6).map(type => (
+                                (() => {
+                                    const mastery = explorationState.trapMastery[type];
+                                    const isLocked = !mastery?.unlocked;
+                                    const cooldown = explorationState.trapCooldowns[type] ?? 0;
+                                    return (
                                 <button
                                     key={type}
                                     onClick={() => dispatchTacticalAction({ type: 'SelectTrap', trapType: selectedTrap === type ? null : type })}
                                     className={`min-w-[112px] md:min-w-0 rounded-xl px-2 py-2 text-left border transition-all duration-150 hover:-translate-y-[1px] ${
-                                        selectedTrap === type
+                                        isLocked
+                                            ? 'bg-slate-950/95 text-slate-500 border-slate-700'
+                                            : selectedTrap === type
                                             ? 'bg-amber-400 text-black border-amber-300 shadow-[0_0_14px_rgba(251,191,36,0.25)]'
                                             : 'bg-slate-900/88 text-white border-white/10 hover:border-cyan-300/45'
                                     }`}
                                 >
                                     <div className="text-[10px] uppercase font-black">{type}</div>
                                     <div className={`text-[11px] mt-1 ${selectedTrap === type ? 'text-black/75' : 'text-white/65'}`}>
-                                        Alc {TRAP_DATA[type].range}
+                                        {isLocked ? `Lock ${TRAP_DATA[type].unlockCost ?? 0}` : `Alc ${TRAP_DATA[type].range}`}
+                                    </div>
+                                    <div className={`text-[10px] mt-0.5 ${selectedTrap === type ? 'text-black/75' : 'text-white/55'}`}>
+                                        Lvl {mastery?.level ?? 1} {cooldown > 0 ? `| CD ${cooldown}` : ''}
                                     </div>
                                 </button>
+                                    );
+                                })()
                             ))}
+                        </div>
+
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                            <button onClick={() => dispatchTacticalAction({ type: 'TriggerTrapSurface', surface: 'floor' })} className="px-2 py-1 rounded-md text-[10px] font-black border border-orange-300/40 text-orange-200 bg-orange-950/40">Trigger Floor (1)</button>
+                            <button onClick={() => dispatchTacticalAction({ type: 'TriggerTrapSurface', surface: 'wall' })} className="px-2 py-1 rounded-md text-[10px] font-black border border-cyan-300/40 text-cyan-200 bg-cyan-950/40">Trigger Wall (2)</button>
+                            <button onClick={() => dispatchTacticalAction({ type: 'TriggerTrapSurface', surface: 'ceiling' })} className="px-2 py-1 rounded-md text-[10px] font-black border border-violet-300/40 text-violet-200 bg-violet-950/40">Trigger Ceiling (3)</button>
+                            {selectedTrap && (
+                                <button onClick={() => dispatchTacticalAction({ type: 'UpgradeTrap', trapType: selectedTrap })} className="px-2 py-1 rounded-md text-[10px] font-black border border-emerald-300/40 text-emerald-200 bg-emerald-950/40">Upgrade {selectedTrap}</button>
+                            )}
                         </div>
 
                         {explorationState.currentRoomId && currentRoomDoors.length > 0 && (
@@ -477,8 +518,8 @@ export const Exploration3DScene: React.FC = () => {
 
                         <div className="mt-2 text-[11px] text-white/50">
                             {isMobile
-                                ? 'Mobile: Pad mover | Tap colocar | Pausa | Radar'
-                                : 'Desktop: WASD/Flechas | Click colocar/interactuar | P pausa | M radar'}
+                                ? 'Mobile: Pad mover | Tap colocar | Trigger 1/2/3'
+                                : 'Desktop: WASD/Flechas | Click colocar | 1/2/3 Trigger | Q/E orientacion | P pausa | M radar'}
                         </div>
                     </div>
 

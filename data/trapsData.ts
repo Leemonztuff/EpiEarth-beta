@@ -24,6 +24,10 @@ export interface TrapData {
     triggerMode?: TrapTriggerMode;
     stateEffect?: TrapStateEffect;
     forceVector?: { x: number; z: number };
+    unlockCost?: number;
+    upgradeCost?: number;
+    damagePerLevel?: number;
+    activationDelay?: number;
 }
 
 const AUTO: TrapTriggerMode = 'auto';
@@ -50,6 +54,10 @@ export const TRAP_DATA: Record<TrapType, TrapData> = {
         triggerMode: AUTO,
         stateEffect: 'knockback',
         forceVector: { x: 0, z: 1 },
+        unlockCost: 0,
+        upgradeCost: 30,
+        damagePerLevel: 4,
+        activationDelay: 0,
     },
     [TrapType.FIRE]: {
         id: 'fire_trap',
@@ -68,6 +76,10 @@ export const TRAP_DATA: Record<TrapType, TrapData> = {
         placementSurface: FLOOR,
         triggerMode: MANUAL,
         stateEffect: 'launch',
+        unlockCost: 0,
+        upgradeCost: 45,
+        damagePerLevel: 6,
+        activationDelay: 0,
     },
     [TrapType.ICE]: {
         id: 'ice_trap',
@@ -86,6 +98,10 @@ export const TRAP_DATA: Record<TrapType, TrapData> = {
         placementSurface: FLOOR,
         triggerMode: AUTO,
         stateEffect: 'stun',
+        unlockCost: 0,
+        upgradeCost: 40,
+        damagePerLevel: 3,
+        activationDelay: 0,
     },
     [TrapType.POISON]: {
         id: 'poison_trap',
@@ -104,6 +120,10 @@ export const TRAP_DATA: Record<TrapType, TrapData> = {
         placementSurface: WALL,
         triggerMode: AUTO,
         stateEffect: 'poison',
+        unlockCost: 55,
+        upgradeCost: 50,
+        damagePerLevel: 2,
+        activationDelay: 1,
     },
     [TrapType.EXPLOSIVE]: {
         id: 'explosive_trap',
@@ -122,6 +142,10 @@ export const TRAP_DATA: Record<TrapType, TrapData> = {
         placementSurface: FLOOR,
         triggerMode: MANUAL,
         stateEffect: 'launch',
+        unlockCost: 90,
+        upgradeCost: 70,
+        damagePerLevel: 8,
+        activationDelay: 1,
     },
     [TrapType.STUN]: {
         id: 'stun_trap',
@@ -140,6 +164,10 @@ export const TRAP_DATA: Record<TrapType, TrapData> = {
         placementSurface: CEILING,
         triggerMode: MANUAL,
         stateEffect: 'stun',
+        unlockCost: 80,
+        upgradeCost: 65,
+        damagePerLevel: 2,
+        activationDelay: 0,
     },
     [TrapType.TELEPORT]: {
         id: 'teleport_trap',
@@ -157,6 +185,10 @@ export const TRAP_DATA: Record<TrapType, TrapData> = {
         placementSurface: FLOOR,
         triggerMode: MANUAL,
         stateEffect: 'none',
+        unlockCost: 120,
+        upgradeCost: 85,
+        damagePerLevel: 0,
+        activationDelay: 0,
     },
     [TrapType.DECOY]: {
         id: 'decoy_trap',
@@ -174,6 +206,10 @@ export const TRAP_DATA: Record<TrapType, TrapData> = {
         placementSurface: WALL,
         triggerMode: MANUAL,
         stateEffect: 'none',
+        unlockCost: 65,
+        upgradeCost: 55,
+        damagePerLevel: 0,
+        activationDelay: 0,
     },
     [TrapType.TRAP_DOOR]: {
         id: 'trap_door_trap',
@@ -191,6 +227,10 @@ export const TRAP_DATA: Record<TrapType, TrapData> = {
         placementSurface: FLOOR,
         triggerMode: AUTO,
         stateEffect: 'launch',
+        unlockCost: 110,
+        upgradeCost: 90,
+        damagePerLevel: 7,
+        activationDelay: 1,
     },
     [TrapType.ALARM]: {
         id: 'alarm_trap',
@@ -208,6 +248,10 @@ export const TRAP_DATA: Record<TrapType, TrapData> = {
         placementSurface: WALL,
         triggerMode: AUTO,
         stateEffect: 'none',
+        unlockCost: 40,
+        upgradeCost: 35,
+        damagePerLevel: 0,
+        activationDelay: 0,
     },
 };
 

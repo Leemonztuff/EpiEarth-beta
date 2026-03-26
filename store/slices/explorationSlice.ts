@@ -19,6 +19,8 @@ import {
     TacticalStepPhase,
     TacticalUiState,
     Trap,
+    TrapOrientation,
+    TrapPlacementSurface,
     TrapType,
     ZoneContext,
     SnapState
@@ -114,6 +116,10 @@ interface ExplorationState {
     comboMultiplier: number;
     comboExpiresAtStep: number;
     trapCurrency: number;
+    arkCurrency: number;
+    trapOrientation: TrapOrientation;
+    trapCooldowns: Partial<Record<TrapType, number>>;
+    trapMastery: Record<TrapType, { unlocked: boolean; level: number; uses: number; kills: number }>;
 }
 
 interface VersusState {
@@ -166,6 +172,27 @@ const COMMON_CONTACT_KNOCKBACK = 1;
 const COMMON_CONTACT_COOLDOWN_STEPS = 1;
 const SNAP_DEADZONE = 0.2;
 const CHAIN_WINDOW_STEPS = 3;
+const DEFAULT_TRAP_ORIENTATION: TrapOrientation = 'N';
+
+function initialTrapMastery(): Record<TrapType, { unlocked: boolean; level: number; uses: number; kills: number }> {
+    const mastery = {} as Record<TrapType, { unlocked: boolean; level: number; uses: number; kills: number }>;
+    (Object.keys(TRAP_DATA) as TrapType[]).forEach(type => {
+        mastery[type] = {
+            unlocked: (TRAP_DATA[type].unlockCost ?? 0) === 0,
+            level: 1,
+            uses: 0,
+            kills: 0,
+        };
+    });
+    return mastery;
+}
+
+function orientationToVector(orientation: TrapOrientation): TacticalPosition {
+    if (orientation === 'N') return { x: 0, z: -1 };
+    if (orientation === 'E') return { x: 1, z: 0 };
+    if (orientation === 'S') return { x: 0, z: 1 };
+    return { x: -1, z: 0 };
+}
 
 function getZoneName(biome: string): string {
     const zoneNames: Record<string, string> = {
@@ -326,6 +353,15 @@ function decayTrapDurations(traps: Trap[]): Trap[] {
         .filter(trap => trap.isArmed && (trap.duration ?? 0) > 0);
 }
 
+function decayTrapCooldowns(cooldowns: Partial<Record<TrapType, number>>): Partial<Record<TrapType, number>> {
+    const next: Partial<Record<TrapType, number>> = {};
+    (Object.keys(cooldowns) as TrapType[]).forEach(type => {
+        const value = cooldowns[type] ?? 0;
+        next[type] = Math.max(0, value - 1);
+    });
+    return next;
+}
+
 function createEncounterContext(
     sourceMode: GameState,
     originTile: PositionComponent | null,
@@ -407,7 +443,7 @@ function buildTacticalUiState(
         stepPhase: explorationState.stepPhase,
         comboChain: explorationState.comboChain,
         comboMultiplier: explorationState.comboMultiplier,
-        trapCurrency: explorationState.trapCurrency,
+        trapCurrency: explorationState.arkCurrency,
     };
 }
 
@@ -493,6 +529,10 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
         comboMultiplier: 1,
         comboExpiresAtStep: 0,
         trapCurrency: 0,
+        arkCurrency: 0,
+        trapOrientation: DEFAULT_TRAP_ORIENTATION,
+        trapCooldowns: {},
+        trapMastery: initialTrapMastery(),
     },
     versusState: createInitialVersusState(),
 
@@ -692,6 +732,200 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
                 });
                 break;
             }
+            case 'SetTrapOrientation': {
+                const nextExplorationState: ExplorationState = {
+                    ...state.explorationState,
+                    trapOrientation: action.orientation,
+                    tacticalMessage: `Orientacion de trampa: ${action.orientation}.`,
+                };
+                set({
+                    explorationState: nextExplorationState,
+                    tacticalUiState: buildTacticalUiState(nextExplorationState, state.inputMode),
+                });
+                break;
+            }
+            case 'TriggerTrapSurface': {
+                const current = state.explorationState;
+                const armed = current.traps.filter(trap => trap.isArmed && (trap.triggerMode ?? 'auto') === 'manual' && (trap.placementSurface ?? 'floor') === action.surface);
+                if (armed.length === 0) {
+                    const nextExplorationState: ExplorationState = {
+                        ...current,
+                        tacticalMessage: `No hay trampas manuales de ${action.surface}.`,
+                    };
+                    set({
+                        explorationState: nextExplorationState,
+                        tacticalUiState: buildTacticalUiState(nextExplorationState, state.inputMode, 'Sin trampas manuales listas.'),
+                    });
+                    return;
+                }
+
+                let enemies = current.zoneEnemies.map(enemy => ({ ...enemy }));
+                let traps = current.traps.map(trap => ({ ...trap }));
+                let comboChain = current.turnStep <= current.comboExpiresAtStep ? current.comboChain : 0;
+                let comboMultiplier = current.turnStep <= current.comboExpiresAtStep ? current.comboMultiplier : 1;
+                let earnedArk = 0;
+                let triggeredAny = false;
+                let killedByTrap = 0;
+
+                armed.forEach(armedTrap => {
+                    const trapIndex = traps.findIndex(item => item.id === armedTrap.id);
+                    if (trapIndex < 0) return;
+                    const trapData = TRAP_DATA[armedTrap.type];
+                    const force = armedTrap.forceVector ?? orientationToVector(current.trapOrientation);
+                    enemies = enemies.map(enemy => {
+                        if (enemy.isDefeated) return enemy;
+                        const sameTile = enemy.x === armedTrap.position.x && enemy.z === armedTrap.position.z;
+                        const nearTile = manhattanDistance({ x: enemy.x, z: enemy.z }, { x: armedTrap.position.x, z: armedTrap.position.z }) <= 1;
+                        if (!sameTile && !(action.surface !== 'floor' && nearTile)) {
+                            return enemy;
+                        }
+                        triggeredAny = true;
+                        comboChain = shouldExtendCombo(enemy) ? comboChain + 1 : Math.max(1, comboChain + 1);
+                        comboMultiplier = computeComboMultiplier(comboChain);
+                        const resistance = getSurfaceResistance(enemy, armedTrap.placementSurface);
+                        const scaledDamage = trapData.damage + ((current.trapMastery[armedTrap.type]?.level ?? 1) - 1) * (trapData.damagePerLevel ?? 0);
+                        const perfectTiming =
+                            typeof armedTrap.armedAtStep === 'number' &&
+                            current.turnStep - armedTrap.armedAtStep <= Math.max(1, armedTrap.activationDelay ?? 0);
+                        const timingBonus = perfectTiming ? 1.2 : 1;
+                        const finalDamage = Math.max(1, Math.round(scaledDamage * (1 - resistance) * comboMultiplier * timingBonus));
+                        earnedArk += Math.max(1, Math.round(finalDamage / 3));
+                        let nextEnemy = { ...enemy, hp: Math.max(0, enemy.hp - finalDamage) };
+
+                        if (armedTrap.stateEffect === 'stun') {
+                            nextEnemy.stunnedTurns = 1;
+                            nextEnemy.aiState = EnemyAiState.STUNNED;
+                        } else if (armedTrap.stateEffect === 'poison') {
+                            nextEnemy.poisonTurns = Math.max(nextEnemy.poisonTurns, 2);
+                        } else if (armedTrap.stateEffect === 'knockback' || armedTrap.stateEffect === 'launch') {
+                            const pushed = {
+                                x: nextEnemy.x + force.x,
+                                z: nextEnemy.z + force.z,
+                            };
+                            if (isWalkable(current.map, pushed.x, pushed.z)) {
+                                nextEnemy.x = pushed.x;
+                                nextEnemy.z = pushed.z;
+                            }
+                        }
+
+                        if (nextEnemy.hp <= 0) {
+                            killedByTrap += 1;
+                            nextEnemy = { ...nextEnemy, hp: 0, isDefeated: true, x: -99, z: -99 };
+                        }
+                        return nextEnemy;
+                    });
+                    traps[trapIndex] = {
+                        ...traps[trapIndex],
+                        isArmed: false,
+                        isTriggered: true,
+                        cooldownRemaining: trapData.cooldown,
+                    };
+                });
+
+                if (!triggeredAny) {
+                    const nextExplorationState: ExplorationState = {
+                        ...current,
+                        tacticalMessage: `Sin objetivo para activar trampas de ${action.surface}.`,
+                    };
+                    set({
+                        explorationState: nextExplorationState,
+                        tacticalUiState: buildTacticalUiState(nextExplorationState, state.inputMode, 'No hay enemigos en zona de activacion.'),
+                    });
+                    return;
+                }
+
+                const updatedMastery = { ...current.trapMastery };
+                traps.forEach(trap => {
+                    if (trap.isTriggered) {
+                        const prev = updatedMastery[trap.type];
+                        updatedMastery[trap.type] = { ...prev, uses: prev.uses + 1, kills: prev.kills + killedByTrap };
+                    }
+                });
+
+                const nextExplorationState: ExplorationState = {
+                    ...current,
+                    zoneEnemies: enemies,
+                    traps: traps.filter(trap => trap.isArmed),
+                    comboChain,
+                    comboMultiplier,
+                    comboExpiresAtStep: current.turnStep + CHAIN_WINDOW_STEPS,
+                    trapCurrency: current.trapCurrency + earnedArk,
+                    arkCurrency: current.arkCurrency + earnedArk,
+                    trapMastery: updatedMastery,
+                    tacticalMessage: `Activacion manual ${action.surface}: combo x${comboMultiplier.toFixed(2)} | Ark +${earnedArk}.`,
+                };
+                set({
+                    gold: get().gold + earnedArk,
+                    explorationState: nextExplorationState,
+                    tacticalUiState: buildTacticalUiState(nextExplorationState, state.inputMode),
+                });
+                break;
+            }
+            case 'UpgradeTrap': {
+                const current = state.explorationState;
+                const trapData = TRAP_DATA[action.trapType];
+                const entry = current.trapMastery[action.trapType];
+                if (!entry) return;
+
+                const unlockCost = trapData.unlockCost ?? 0;
+                if (!entry.unlocked) {
+                    if (current.arkCurrency < unlockCost) {
+                        const blockedState: ExplorationState = {
+                            ...current,
+                            tacticalMessage: `Ark insuficiente para desbloquear ${trapData.name}.`,
+                        };
+                        set({
+                            explorationState: blockedState,
+                            tacticalUiState: buildTacticalUiState(blockedState, state.inputMode, 'Ark insuficiente.'),
+                        });
+                        return;
+                    }
+                    const nextMastery = {
+                        ...current.trapMastery,
+                        [action.trapType]: { ...entry, unlocked: true },
+                    };
+                    const nextExplorationState: ExplorationState = {
+                        ...current,
+                        arkCurrency: current.arkCurrency - unlockCost,
+                        trapMastery: nextMastery,
+                        tacticalMessage: `${trapData.name} desbloqueada.`,
+                    };
+                    set({
+                        explorationState: nextExplorationState,
+                        tacticalUiState: buildTacticalUiState(nextExplorationState, state.inputMode),
+                    });
+                    return;
+                }
+
+                const upgradeCost = trapData.upgradeCost ?? 40;
+                if (current.arkCurrency < upgradeCost) {
+                    const blockedState: ExplorationState = {
+                        ...current,
+                        tacticalMessage: `Ark insuficiente para mejorar ${trapData.name}.`,
+                    };
+                    set({
+                        explorationState: blockedState,
+                        tacticalUiState: buildTacticalUiState(blockedState, state.inputMode, 'Ark insuficiente.'),
+                    });
+                    return;
+                }
+
+                const nextMastery = {
+                    ...current.trapMastery,
+                    [action.trapType]: { ...entry, level: Math.min(10, entry.level + 1) },
+                };
+                const nextExplorationState: ExplorationState = {
+                    ...current,
+                    arkCurrency: current.arkCurrency - upgradeCost,
+                    trapMastery: nextMastery,
+                    tacticalMessage: `${trapData.name} mejorada a nivel ${nextMastery[action.trapType].level}.`,
+                };
+                set({
+                    explorationState: nextExplorationState,
+                    tacticalUiState: buildTacticalUiState(nextExplorationState, state.inputMode),
+                });
+                break;
+            }
             case 'ClearFeedback': {
                 const nextExplorationState: ExplorationState = {
                     ...state.explorationState,
@@ -808,6 +1042,10 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             comboMultiplier: 1,
             comboExpiresAtStep: 0,
             trapCurrency: state.tacticalUiState?.trapCurrency ?? 0,
+            arkCurrency: state.explorationState?.arkCurrency ?? 0,
+            trapOrientation: state.explorationState?.trapOrientation ?? DEFAULT_TRAP_ORIENTATION,
+            trapCooldowns: state.explorationState?.trapCooldowns ?? {},
+            trapMastery: state.explorationState?.trapMastery ?? initialTrapMastery(),
         };
 
         set({
@@ -833,6 +1071,17 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
 
     selectTrapType: (type) => {
         const { explorationState } = get();
+        if (type && !explorationState.trapMastery[type]?.unlocked) {
+            const blockedState: ExplorationState = {
+                ...explorationState,
+                tacticalMessage: `${TRAP_DATA[type].name} bloqueada. Usa Ark para desbloquear.`,
+            };
+            set({
+                explorationState: blockedState,
+                tacticalUiState: buildTacticalUiState(blockedState, get().inputMode, 'Trampa bloqueada.'),
+            });
+            return;
+        }
         const range = type ? TRAP_DATA[type].range : 1;
         const nextExplorationState: ExplorationState = {
             ...explorationState,
@@ -878,6 +1127,29 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
 
     placeTrap: (type, x, z) => {
         const { explorationState } = get();
+        const mastery = explorationState.trapMastery[type];
+        if (!mastery?.unlocked) {
+            const blockedState: ExplorationState = {
+                ...explorationState,
+                tacticalMessage: `${TRAP_DATA[type].name} no esta desbloqueada.`,
+            };
+            set({
+                explorationState: blockedState,
+                tacticalUiState: buildTacticalUiState(blockedState, get().inputMode, 'Trampa bloqueada.'),
+            });
+            return false;
+        }
+        if ((explorationState.trapCooldowns[type] ?? 0) > 0) {
+            const blockedState: ExplorationState = {
+                ...explorationState,
+                tacticalMessage: `${TRAP_DATA[type].name} en cooldown (${explorationState.trapCooldowns[type]}).`,
+            };
+            set({
+                explorationState: blockedState,
+                tacticalUiState: buildTacticalUiState(blockedState, get().inputMode, 'Cooldown activo.'),
+            });
+            return false;
+        }
         if (explorationState.traps.length >= explorationState.maxTraps) {
             const nextExplorationState: ExplorationState = {
                 ...explorationState,
@@ -929,13 +1201,14 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
         }
 
         const trapData = TRAP_DATA[type];
+        const trapLevel = mastery.level;
+        const orientationVector = orientationToVector(explorationState.trapOrientation);
         const trap: Trap = {
             id: `trap_${Date.now()}_${generateId()}`,
             type,
             position: { x, y: 0, z },
             isArmed: true,
             isTriggered: false,
-            damage: trapData.damage,
             duration: trapData.duration,
             description: trapData.description,
             placementSurface: trapData.placementSurface ?? 'floor',
@@ -943,11 +1216,26 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             stateEffect: trapData.stateEffect ?? 'none',
             forceVector: trapData.forceVector ?? { x: 0, z: 0 },
             cooldownRemaining: 0,
+            orientation: explorationState.trapOrientation,
+            armedAtStep: explorationState.turnStep,
+            activationDelay: trapData.activationDelay ?? 0,
+            damage: trapData.damage + (trapLevel - 1) * (trapData.damagePerLevel ?? 0),
         };
 
         const nextExplorationState: ExplorationState = {
             ...explorationState,
             traps: [...explorationState.traps, trap],
+            trapCooldowns: {
+                ...explorationState.trapCooldowns,
+                [type]: trapData.cooldown,
+            },
+            trapMastery: {
+                ...explorationState.trapMastery,
+                [type]: {
+                    ...mastery,
+                    uses: mastery.uses + 1,
+                },
+            },
             selectedTrapType: null,
             placementMode: false,
             tacticalPaused: false,
@@ -956,7 +1244,7 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             placementRange: 1,
             highlightedTiles: [],
             trapAimTarget: null,
-            tacticalMessage: `${trapData.name} colocada en ${x},${z}.`,
+            tacticalMessage: `${trapData.name} colocada ${explorationState.trapOrientation} (${orientationVector.x},${orientationVector.z}).`,
         };
         set({
             explorationState: nextExplorationState,
@@ -1054,6 +1342,7 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             comboMultiplier: nextMultiplier,
             comboExpiresAtStep: explorationState.turnStep + CHAIN_WINDOW_STEPS,
             trapCurrency: explorationState.trapCurrency + earnedCurrency,
+            arkCurrency: explorationState.arkCurrency + earnedCurrency,
         };
         set({
             gold: get().gold + earnedCurrency,
@@ -1282,6 +1571,7 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
                 ...current,
                 zoneEnemies: enemies,
                 traps: decayTrapDurations(traps.filter(trap => trap.isArmed)),
+                trapCooldowns: decayTrapCooldowns(current.trapCooldowns),
                 playerMapPos,
                 lastStableGridPos: { ...playerMapPos },
                 smoothedWorldPos: snapped,
@@ -1299,6 +1589,7 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
                 comboMultiplier,
                 comboExpiresAtStep: comboChain > 0 ? nextTurnStep + CHAIN_WINDOW_STEPS : 0,
                 trapCurrency: current.trapCurrency + earnedCurrency,
+                arkCurrency: current.arkCurrency + earnedCurrency,
                 lineOfSightMask: computeLineOfSightMask(current.map, playerMapPos, current.roomGraphRef, current.currentRoomId, current.doorStates),
                 tacticalMessage: zoneCompleted
                     ? 'La zona quedo limpia. Puedes volver al mapa hex.'
@@ -1739,6 +2030,10 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             comboMultiplier: explorationState.comboMultiplier,
             comboExpiresAtStep: explorationState.comboExpiresAtStep,
             trapCurrency: explorationState.trapCurrency,
+            arkCurrency: explorationState.arkCurrency,
+            trapOrientation: explorationState.trapOrientation,
+            trapCooldowns: explorationState.trapCooldowns,
+            trapMastery: explorationState.trapMastery,
         };
 
         set({
@@ -1779,6 +2074,10 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             comboMultiplier: 1,
             comboExpiresAtStep: 0,
             trapCurrency: explorationState.trapCurrency,
+            arkCurrency: explorationState.arkCurrency,
+            trapOrientation: explorationState.trapOrientation,
+            trapCooldowns: explorationState.trapCooldowns,
+            trapMastery: explorationState.trapMastery,
         };
         set({
             gameState: GameState.OVERWORLD,

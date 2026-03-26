@@ -1,11 +1,12 @@
 
 import { create } from 'zustand';
-import { GameStateData, GameState, Dimension, Difficulty } from '../types';
+import { GameStateData, GameState, Dimension, Difficulty, TrapType } from '../types';
 import { createPlayerSlice, PlayerSlice } from './slices/playerSlice';
 import { createInventorySlice, InventorySlice } from './slices/inventorySlice';
 import { createOverworldSlice, OverworldSlice } from './slices/overworldSlice';
 import { createCommonSlice, CommonSlice } from './slices/commonSlice';
 import { createExplorationSlice, ExplorationSlice } from './slices/explorationSlice';
+import { TRAP_DATA } from '../data/trapsData';
 
 // Compose the store type from all slices
 export type GameStore = PlayerSlice & InventorySlice & OverworldSlice & CommonSlice & ExplorationSlice & GameStateData;
@@ -16,6 +17,18 @@ export const useGameStore = create<GameStore>((set, get, api) => {
     const inventory = createInventorySlice(set, get, api);
     const overworld = createOverworldSlice(set, get, api);
     const exploration = createExplorationSlice(set, get, api);
+
+    const trapMasteryDefaults = Object.fromEntries(
+        (Object.keys(TRAP_DATA) as TrapType[]).map(type => [
+            type,
+            {
+                unlocked: (TRAP_DATA[type].unlockCost ?? 0) === 0,
+                level: 1,
+                uses: 0,
+                kills: 0,
+            },
+        ])
+    ) as Record<TrapType, { unlocked: boolean; level: number; uses: number; kills: number }>;
 
     return {
         ...common,
@@ -131,6 +144,10 @@ export const useGameStore = create<GameStore>((set, get, api) => {
             comboMultiplier: 1,
             comboExpiresAtStep: 0,
             trapCurrency: 0,
+            arkCurrency: 0,
+            trapOrientation: 'N',
+            trapCooldowns: {},
+            trapMastery: trapMasteryDefaults,
         },
         versusState: {
             isActive: false,

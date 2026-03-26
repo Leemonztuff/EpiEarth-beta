@@ -129,6 +129,7 @@ export type TacticalStepPhase =
 export type TrapPlacementSurface = 'floor' | 'wall' | 'ceiling';
 export type TrapTriggerMode = 'manual' | 'auto';
 export type TrapStateEffect = 'stun' | 'launch' | 'knockback' | 'poison' | 'none';
+export type TrapOrientation = 'N' | 'E' | 'S' | 'W';
 
 export type DungeonRoomObjectiveType =
     | 'clear'
@@ -242,6 +243,9 @@ export type TacticalAction =
     | { type: 'OpenDoor'; doorId: string }
     | { type: 'ToggleMinimap' }
     | { type: 'SetCameraMode'; cameraMode: CameraMode }
+    | { type: 'SetTrapOrientation'; orientation: TrapOrientation }
+    | { type: 'TriggerTrapSurface'; surface: TrapPlacementSurface }
+    | { type: 'UpgradeTrap'; trapType: TrapType }
     | { type: 'ClearFeedback' }
     | { type: 'ExitTrapZone' };
 
@@ -294,6 +298,9 @@ export interface Trap {
     forceVector?: { x: number; z: number };
     stateEffect?: TrapStateEffect;
     cooldownRemaining?: number;
+    orientation?: TrapOrientation;
+    armedAtStep?: number;
+    activationDelay?: number;
 }
 
 export interface VersusBattleState {
