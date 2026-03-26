@@ -1,5 +1,6 @@
 import { DungeonRuntimeState, PoiStateTag } from '../types';
 import { getDungeonBlueprint } from '../data/dungeonBlueprints';
+import { generateMixedDungeonLayout } from './dungeonLayout';
 
 function resolveStateTag(threatLevel: number, timelineDay: number): PoiStateTag {
     if (timelineDay >= 3 || threatLevel >= 6) return 'Collapsing';
@@ -8,8 +9,23 @@ function resolveStateTag(threatLevel: number, timelineDay: number): PoiStateTag 
     return 'Dormant';
 }
 
-export function createDungeonRuntime(dungeonId: string, blueprintId: string, initialWorldDay = 0): DungeonRuntimeState {
+export function createDungeonRuntime(
+    dungeonId: string,
+    blueprintId: string,
+    initialWorldDay = 0,
+    layoutSeed?: string
+): DungeonRuntimeState {
     const blueprint = getDungeonBlueprint(blueprintId);
+    const roomGraph = generateMixedDungeonLayout(blueprint, layoutSeed || `${dungeonId}:${initialWorldDay}`);
+    const roomStates: DungeonRuntimeState['roomStates'] = {};
+    Object.keys(roomGraph.rooms).forEach(roomId => {
+        roomStates[roomId] = roomId === roomGraph.entryRoomId ? 'active' : 'unseen';
+    });
+    const doorStates: DungeonRuntimeState['doorStates'] = {};
+    Object.values(roomGraph.doors).forEach(door => {
+        doorStates[door.id] = door.state;
+    });
+
     return {
         dungeonId,
         blueprintId: blueprint.id,
@@ -24,6 +40,11 @@ export function createDungeonRuntime(dungeonId: string, blueprintId: string, ini
         nextTimelineEventIndex: 0,
         roomCursor: 0,
         stateTag: 'Dormant',
+        roomStates,
+        doorStates,
+        discoveredRooms: roomGraph.entryRoomId ? [roomGraph.entryRoomId] : [],
+        activeRoomId: roomGraph.entryRoomId || null,
+        roomGraph,
     };
 }
 
@@ -74,10 +95,40 @@ export function markDungeonRoomResolved(state: DungeonRuntimeState, roomId: stri
     const roomCursor = wasResolved
         ? state.roomCursor
         : Math.min(state.roomCursor + 1, resolvedRooms.length);
+    const roomStates = {
+        ...state.roomStates,
+        [roomId]: 'resolved' as const,
+    };
+    const nextRoom = Object.keys(roomStates).find(key => roomStates[key] !== 'resolved') ?? null;
+    if (nextRoom && roomStates[nextRoom] === 'unseen') {
+        roomStates[nextRoom] = 'active';
+    }
     return {
         ...state,
         resolvedRooms,
         discoveredSecrets,
         roomCursor,
+        roomStates,
+        activeRoomId: nextRoom,
+    };
+}
+
+export function openDungeonDoor(state: DungeonRuntimeState, doorId: string): DungeonRuntimeState {
+    if (!state.roomGraph || !state.roomGraph.doors[doorId]) return state;
+    const door = state.roomGraph.doors[doorId];
+    const doorStates = { ...state.doorStates, [doorId]: 'open' as const };
+    const roomStates = { ...state.roomStates };
+
+    if (roomStates[door.toRoomId] === 'unseen') {
+        roomStates[door.toRoomId] = 'active';
+    }
+
+    return {
+        ...state,
+        doorStates,
+        roomStates,
+        discoveredRooms: state.discoveredRooms.includes(door.toRoomId)
+            ? state.discoveredRooms
+            : [...state.discoveredRooms, door.toRoomId],
     };
 }

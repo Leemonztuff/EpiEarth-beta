@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Canvas, useLoader } from '@react-three/fiber';
-import { OrbitControls } from '@react-three/drei';
+import { Canvas, useFrame, useLoader, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useGameStore } from '../store/gameStore';
 import { GameState, TrapType } from '../types';
@@ -11,7 +10,6 @@ import { TACTICAL_MAP_SIZE } from '../services/trapHuntMap';
 import { TRAP_DATA } from '../data/trapsData';
 
 const TILE_SIZE = 1;
-
 type LoadedTextureMap = Record<string, THREE.Texture>;
 
 function getWorldPosition(x: number, z: number): [number, number, number] {
@@ -28,7 +26,6 @@ const TILE_TEXTURE_URLS = {
 
 const TrapPlacementHighlight: React.FC<{ position: [number, number, number]; active: boolean }> = ({ position, active }) => {
     if (!active) return null;
-
     return (
         <mesh position={[position[0], 0.03, position[2]]} rotation={[-Math.PI / 2, 0, 0]}>
             <ringGeometry args={[0.35, 0.48, 24]} />
@@ -44,17 +41,50 @@ const SpriteBillboard: React.FC<{
 }> = ({ position, spriteUrl, scale = [1.4, 1.8, 1] }) => {
     const safeUrl = AssetManager.getSafeSprite(spriteUrl || AssetManager.FALLBACK_SPRITE);
     const texture = useLoader(THREE.TextureLoader, safeUrl);
+    const spriteRef = React.useRef<THREE.Sprite>(null!);
+    const target = useMemo(() => new THREE.Vector3(position[0], position[1] + 0.9, position[2]), [position]);
 
     useMemo(() => {
         texture.magFilter = THREE.NearestFilter;
         texture.minFilter = THREE.NearestFilter;
     }, [texture]);
 
+    useFrame(() => {
+        if (!spriteRef.current) return;
+        spriteRef.current.position.lerp(target, 0.24);
+    });
+
     return (
-        <sprite position={[position[0], position[1] + 0.9, position[2]]} scale={scale}>
+        <sprite ref={spriteRef} position={[position[0], position[1] + 0.9, position[2]]} scale={scale}>
             <spriteMaterial map={texture} transparent alphaTest={0.2} />
         </sprite>
     );
+};
+
+const ThirdPersonCameraRig: React.FC<{
+    playerPos: { x: number; z: number };
+    cameraMode: 'OVER_SHOULDER' | 'TACTICAL_ZOOM' | 'CINEMATIC';
+}> = ({ playerPos, cameraMode }) => {
+    const { camera } = useThree();
+    const lookTarget = useMemo(() => new THREE.Vector3(), []);
+    const camTarget = useMemo(() => new THREE.Vector3(), []);
+
+    useFrame(() => {
+        const [wx, _, wz] = getWorldPosition(playerPos.x, playerPos.z);
+        lookTarget.set(wx, 0.8, wz);
+        if (cameraMode === 'TACTICAL_ZOOM') {
+            camTarget.set(wx, 12, wz + 10);
+        } else if (cameraMode === 'CINEMATIC') {
+            camTarget.set(wx + 4, 8, wz + 7);
+        } else {
+            camTarget.set(wx, 5.2, wz + 5.6);
+        }
+
+        camera.position.lerp(camTarget, 0.12);
+        camera.lookAt(lookTarget);
+    });
+
+    return null;
 };
 
 const TacticalBoard: React.FC<{
@@ -77,7 +107,6 @@ const TacticalBoard: React.FC<{
         });
         return next;
     }, [textureEntries]);
-
     const highlightSet = useMemo(() => new Set(highlightedTiles.map(tile => `${tile.x},${tile.z}`)), [highlightedTiles]);
 
     return (
@@ -91,13 +120,7 @@ const TacticalBoard: React.FC<{
                     if (cell.type === 'WALL' || cell.type === 'STONE') {
                         return (
                             <group key={`cell-${x}-${cell.z}`}>
-                                <mesh
-                                    position={[pos[0], cell.height / 2, pos[2]]}
-                                    onClick={() => onTilePress(x, cell.z)}
-                                    onPointerDown={() => onTilePress(x, cell.z)}
-                                    castShadow
-                                    receiveShadow
-                                >
+                                <mesh position={[pos[0], cell.height / 2, pos[2]]} onClick={() => onTilePress(x, cell.z)} onPointerDown={() => onTilePress(x, cell.z)} castShadow receiveShadow>
                                     <boxGeometry args={[TILE_SIZE, Math.max(0.8, cell.height), TILE_SIZE]} />
                                     <meshStandardMaterial map={texture} />
                                 </mesh>
@@ -108,12 +131,7 @@ const TacticalBoard: React.FC<{
 
                     return (
                         <group key={`cell-${x}-${cell.z}`}>
-                            <mesh
-                                position={[pos[0], cell.height / 2 - 0.05, pos[2]]}
-                                onClick={() => onTilePress(x, cell.z)}
-                                onPointerDown={() => onTilePress(x, cell.z)}
-                                receiveShadow
-                            >
+                            <mesh position={[pos[0], cell.height / 2 - 0.05, pos[2]]} onClick={() => onTilePress(x, cell.z)} onPointerDown={() => onTilePress(x, cell.z)} receiveShadow>
                                 <boxGeometry args={[TILE_SIZE, 0.12, TILE_SIZE]} />
                                 <meshStandardMaterial map={texture} />
                             </mesh>
@@ -142,27 +160,22 @@ const TacticalBoard: React.FC<{
                 )
             )}
             {traps.map(trap => (
-                <TrapMarker
-                    key={trap.id}
-                    position={[getWorldPosition(trap.x, trap.z)[0], 0.02, getWorldPosition(trap.x, trap.z)[2]]}
-                    trapType={trap.type}
-                    isArmed={trap.isArmed}
-                />
+                <TrapMarker key={trap.id} position={[getWorldPosition(trap.x, trap.z)[0], 0.02, getWorldPosition(trap.x, trap.z)[2]]} trapType={trap.type} isArmed={trap.isArmed} />
             ))}
         </group>
     );
 };
 
 const DirectionPad: React.FC<{ onMove: (dx: number, dz: number) => void }> = ({ onMove }) => (
-    <div className="grid grid-cols-3 gap-2 w-[180px] sm:w-[210px]">
+    <div className="grid grid-cols-3 gap-2 w-[170px]">
         <div />
-        <button className="h-14 rounded-2xl bg-slate-900/85 border border-white/10 text-white font-black" onClick={() => onMove(0, -1)}>N</button>
+        <button className="h-12 rounded-xl bg-slate-900/90 border border-cyan-300/25 text-white font-black text-sm active:scale-95 transition-transform" onClick={() => onMove(0, -1)}>N</button>
         <div />
-        <button className="h-14 rounded-2xl bg-slate-900/85 border border-white/10 text-white font-black" onClick={() => onMove(-1, 0)}>W</button>
-        <button className="h-14 rounded-2xl bg-slate-800/85 border border-amber-500/30 text-amber-300 font-black">STEP</button>
-        <button className="h-14 rounded-2xl bg-slate-900/85 border border-white/10 text-white font-black" onClick={() => onMove(1, 0)}>E</button>
+        <button className="h-12 rounded-xl bg-slate-900/90 border border-cyan-300/25 text-white font-black text-sm active:scale-95 transition-transform" onClick={() => onMove(-1, 0)}>W</button>
+        <button className="h-12 rounded-xl bg-slate-800/90 border border-amber-500/40 text-amber-300 font-black text-[10px] tracking-wide">STEP</button>
+        <button className="h-12 rounded-xl bg-slate-900/90 border border-cyan-300/25 text-white font-black text-sm active:scale-95 transition-transform" onClick={() => onMove(1, 0)}>E</button>
         <div />
-        <button className="h-14 rounded-2xl bg-slate-900/85 border border-white/10 text-white font-black" onClick={() => onMove(0, 1)}>S</button>
+        <button className="h-12 rounded-xl bg-slate-900/90 border border-cyan-300/25 text-white font-black text-sm active:scale-95 transition-transform" onClick={() => onMove(0, 1)}>S</button>
         <div />
     </div>
 );
@@ -175,11 +188,14 @@ export const Exploration3DScene: React.FC = () => {
     const supplies = useGameStore(s => s.supplies);
     const explorationState = useGameStore(s => s.explorationState);
     const tacticalUiState = useGameStore(s => s.tacticalUiState);
+    const activeDungeonId = useGameStore(s => s.activeDungeonId);
+    const dungeonRuntimeById = useGameStore(s => s.dungeonRuntimeById);
     const initZone = useGameStore(s => s.initZone);
     const dispatchTacticalAction = useGameStore(s => s.dispatchTacticalAction);
     const setInputMode = useGameStore(s => s.setInputMode);
 
     const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
+    const [showDetails, setShowDetails] = useState(false);
 
     useEffect(() => {
         const onResize = () => setIsMobile(window.innerWidth < 768);
@@ -199,6 +215,14 @@ export const Exploration3DScene: React.FC = () => {
 
     const player = party[0];
     const selectedTrap = explorationState.selectedTrapType;
+    const statusMessage = tacticalUiState.blockReason || tacticalUiState.message || 'Mueve 1 casillero y fuerza errores del enemigo.';
+    const activeRuntime = activeDungeonId ? dungeonRuntimeById[activeDungeonId] : null;
+    const currentRoomDoors = useMemo(() => {
+        if (!explorationState.roomGraphRef || !explorationState.currentRoomId) return [];
+        return Object.values(explorationState.roomGraphRef.doors).filter(
+            door => door.fromRoomId === explorationState.currentRoomId || door.toRoomId === explorationState.currentRoomId
+        );
+    }, [explorationState.roomGraphRef, explorationState.currentRoomId]);
 
     const attemptMove = useCallback((dx: number, dz: number) => {
         dispatchTacticalAction({ type: 'MoveStep', dx, dz });
@@ -206,6 +230,7 @@ export const Exploration3DScene: React.FC = () => {
 
     const handleTilePress = useCallback((x: number, z: number) => {
         if (selectedTrap) {
+            dispatchTacticalAction({ type: 'AimTrapAt', x, z });
             dispatchTacticalAction({ type: 'PlaceTrap', x, z, trapType: selectedTrap });
             return;
         }
@@ -231,6 +256,9 @@ export const Exploration3DScene: React.FC = () => {
             } else if (event.key.toLowerCase() === 'p') {
                 event.preventDefault();
                 dispatchTacticalAction({ type: 'ToggleTacticalPause' });
+            } else if (event.key.toLowerCase() === 'm') {
+                event.preventDefault();
+                dispatchTacticalAction({ type: 'ToggleMinimap' });
             }
         };
 
@@ -242,11 +270,15 @@ export const Exploration3DScene: React.FC = () => {
 
     return (
         <div className="w-full h-full relative overflow-hidden bg-[#04070b]">
-            <Canvas shadows camera={{ position: [0, 16, 13], fov: 48 }} className="touch-none">
+            <Canvas shadows camera={{ position: [0, 6, 6], fov: 55 }} className="touch-none">
                 <color attach="background" args={['#0b1220']} />
                 <ambientLight intensity={0.75} />
                 <directionalLight position={[10, 18, 8]} intensity={1.2} castShadow shadow-mapSize-width={2048} shadow-mapSize-height={2048} />
-                <fog attach="fog" args={['#0b1220', 12, 28]} />
+                <fog attach="fog" args={['#0b1220', 8, 26]} />
+                <ThirdPersonCameraRig
+                    playerPos={explorationState.playerMapPos}
+                    cameraMode={explorationState.cameraMode}
+                />
 
                 <TacticalBoard
                     map={explorationState.map}
@@ -263,149 +295,151 @@ export const Exploration3DScene: React.FC = () => {
                     onTilePress={handleTilePress}
                     playerSpriteUrl={player?.visual?.spriteUrl}
                 />
-
-                {!isMobile && (
-                    <OrbitControls enablePan={false} enableZoom minDistance={10} maxDistance={22} minPolarAngle={0.7} maxPolarAngle={1.15} target={[0, 0, 0]} />
-                )}
             </Canvas>
 
             <div className="absolute inset-0 pointer-events-none flex flex-col">
-                <div className="pointer-events-auto p-3 sm:p-4">
-                    <div className="rounded-3xl border border-white/10 bg-slate-950/80 backdrop-blur-md p-3 sm:p-4">
-                        <div className="flex items-start justify-between gap-3">
-                            <div>
-                                <div className="text-[10px] sm:text-xs uppercase tracking-[0.24em] text-amber-300/80">
+                <div className="pointer-events-auto p-2 sm:p-3">
+                    <div className="mx-auto max-w-[1080px] rounded-2xl border border-cyan-300/25 bg-gradient-to-b from-slate-950/88 to-slate-900/72 shadow-[0_10px_30px_rgba(0,0,0,0.48)] backdrop-blur-md">
+                        <div className="p-2 sm:p-3 flex items-start justify-between gap-2 sm:gap-3">
+                            <div className="min-w-0">
+                                <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-300/90 font-bold">
                                     {explorationState.zoneContext?.kind === 'dungeon' ? 'Dungeon Hunt' : 'Trap Hunt'}
                                 </div>
-                                <h2 className="text-white font-black text-lg sm:text-2xl leading-none">{tacticalUiState.zoneName}</h2>
-                                <p className="text-white/65 text-xs sm:text-sm mt-1 max-w-xl">{tacticalUiState.message || 'Mueve un casillero, obliga a perseguir y castiga con trampas.'}</p>
-                                {tacticalUiState.blockReason && (
-                                    <p className="text-amber-300 text-[11px] sm:text-xs mt-1">{tacticalUiState.blockReason}</p>
-                                )}
+                                <h2 className="text-white font-black text-base sm:text-lg leading-none truncate tracking-wide">{tacticalUiState.zoneName}</h2>
+                                <p className={`text-cyan-100/75 text-[11px] mt-1 truncate ${tacticalUiState.blockReason ? 'motion-safe:animate-pulse text-amber-200' : ''}`}>{statusMessage}</p>
+                                <div className="mt-1.5 flex flex-wrap gap-1 text-[10px] sm:text-[11px]">
+                                    <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-white/10 text-white font-bold">HP {player?.stats.hp ?? 0}/{player?.stats.maxHp ?? 0}</span>
+                                    <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-white/10 text-white font-bold">ENEM {tacticalUiState.enemyCount}</span>
+                                    <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-white/10 text-white font-bold">TURNO {tacticalUiState.turnStep}</span>
+                                    <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-white/10 text-white font-bold">TRAPS {tacticalUiState.trapCount}/{tacticalUiState.maxTraps}</span>
+                                    <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-white/10 text-white font-bold">{explorationState.mode3DState}</span>
+                                </div>
                             </div>
-                            <div className="flex gap-2">
-                                <button
-                                    onClick={() => dispatchTacticalAction({ type: 'ToggleTacticalPause' })}
-                                    className={`px-3 py-2 rounded-2xl text-xs sm:text-sm font-black ${explorationState.tacticalPaused ? 'bg-amber-400 text-black' : 'bg-slate-800 text-white'}`}
-                                >
+                            <div className="flex items-center gap-1.5 sm:gap-2">
+                                <button onClick={() => setShowDetails(prev => !prev)} className="px-2 py-1.5 rounded-lg text-[10px] sm:text-xs font-black bg-slate-800/90 text-white border border-white/10 hover:border-cyan-300/40 transition-colors">
+                                    {showDetails ? 'DETALLE -' : 'DETALLE +'}
+                                </button>
+                                <button onClick={() => dispatchTacticalAction({ type: 'ToggleMinimap' })} className="px-2 py-1.5 rounded-lg text-[10px] sm:text-xs font-black bg-slate-800/90 text-white border border-white/10 hover:border-cyan-300/40 transition-colors">
+                                    {explorationState.showMinimap ? 'RADAR OFF' : 'RADAR ON'}
+                                </button>
+                                <button onClick={() => dispatchTacticalAction({ type: 'ToggleTacticalPause' })} className={`px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg text-[10px] sm:text-xs font-black transition-all ${explorationState.tacticalPaused ? 'bg-amber-400 text-black motion-safe:animate-pulse' : 'bg-slate-800/90 text-white border border-white/10 hover:border-cyan-300/40'}`}>
                                     {explorationState.tacticalPaused ? 'Reanudar' : 'Pausa'}
                                 </button>
-                                <button
-                                    onClick={() => dispatchTacticalAction({ type: 'ExitTrapZone' })}
-                                    className="px-3 py-2 rounded-2xl bg-blue-600 text-white text-xs sm:text-sm font-black"
-                                >
-                                    Volver al Hex
+                                <button onClick={() => dispatchTacticalAction({ type: 'ExitTrapZone' })} className="px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[10px] sm:text-xs font-black transition-colors">
+                                    Salir
                                 </button>
                             </div>
                         </div>
-
-                        <div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-9 gap-2 mt-3">
-                            <div className="rounded-2xl bg-slate-900/90 p-2">
-                                <div className="text-[10px] uppercase text-white/40 font-bold">HP</div>
-                                <div className="text-white font-black">{player?.stats.hp ?? 0}/{player?.stats.maxHp ?? 0}</div>
+                        {showDetails && (
+                            <div className="px-2 pb-2 sm:px-3 sm:pb-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-1.5 text-[10px] sm:text-[11px]">
+                                <div className="rounded-xl bg-slate-900/85 border border-white/10 p-2"><span className="text-white/50">Fatiga</span><div className="text-white font-black">{fatigue.toFixed(1)}</div></div>
+                                <div className="rounded-xl bg-slate-900/85 border border-white/10 p-2"><span className="text-white/50">Sumin.</span><div className="text-white font-black">{supplies.toFixed(1)}</div></div>
+                                <div className="rounded-xl bg-slate-900/85 border border-white/10 p-2"><span className="text-white/50">Objetivo</span><div className="text-white font-black">{tacticalUiState.objectiveLabel || 'Explorar'}</div></div>
+                                <div className="rounded-xl bg-slate-900/85 border border-white/10 p-2"><span className="text-white/50">Riesgo</span><div className="text-white font-black">{tacticalUiState.riskLabel || 'Moderado'}</div></div>
+                                <div className="rounded-xl bg-slate-900/85 border border-white/10 p-2"><span className="text-white/50">Timeline</span><div className="text-white font-black">{tacticalUiState.timelineLabel || 'Dia 0'}</div></div>
+                                <div className="rounded-xl bg-slate-900/85 border border-white/10 p-2"><span className="text-white/50">Sala</span><div className="text-white font-black">{explorationState.currentRoomId || '-'}</div></div>
                             </div>
-                            <div className="rounded-2xl bg-slate-900/90 p-2">
-                                <div className="text-[10px] uppercase text-white/40 font-bold">Fatiga</div>
-                                <div className="text-white font-black">{fatigue.toFixed(1)}</div>
-                            </div>
-                            <div className="rounded-2xl bg-slate-900/90 p-2">
-                                <div className="text-[10px] uppercase text-white/40 font-bold">Suministros</div>
-                                <div className="text-white font-black">{supplies.toFixed(1)}</div>
-                            </div>
-                            <div className="rounded-2xl bg-slate-900/90 p-2">
-                                <div className="text-[10px] uppercase text-white/40 font-bold">Enemigos</div>
-                                <div className="text-white font-black">{tacticalUiState.enemyCount}</div>
-                            </div>
-                            <div className="rounded-2xl bg-slate-900/90 p-2">
-                                <div className="text-[10px] uppercase text-white/40 font-bold">Turno</div>
-                                <div className="text-white font-black">{tacticalUiState.turnStep}</div>
-                            </div>
-                            <div className="rounded-2xl bg-slate-900/90 p-2">
-                                <div className="text-[10px] uppercase text-white/40 font-bold">Objetivo</div>
-                                <div className="text-white font-black text-xs">{tacticalUiState.objectiveLabel || 'Explorar'}</div>
-                            </div>
-                            <div className="rounded-2xl bg-slate-900/90 p-2">
-                                <div className="text-[10px] uppercase text-white/40 font-bold">Riesgo</div>
-                                <div className="text-white font-black text-xs">{tacticalUiState.riskLabel || 'Moderado'}</div>
-                            </div>
-                            <div className="rounded-2xl bg-slate-900/90 p-2">
-                                <div className="text-[10px] uppercase text-white/40 font-bold">Timeline</div>
-                                <div className="text-white font-black text-xs">{tacticalUiState.timelineLabel || 'Dia 0'}</div>
-                            </div>
-                            <div className="rounded-2xl bg-slate-900/90 p-2">
-                                <div className="text-[10px] uppercase text-white/40 font-bold">Twist</div>
-                                <div className="text-white font-black text-xs">{tacticalUiState.twistLabel || '-'}</div>
-                            </div>
-                        </div>
+                        )}
                     </div>
                 </div>
 
                 <div className="flex-1" />
 
-                <div className="pointer-events-auto p-3 sm:p-4 grid gap-3 md:grid-cols-[auto,1fr] items-end">
-                    <div className="order-2 md:order-1">
-                        <DirectionPad onMove={attemptMove} />
-                    </div>
-
-                    <div className="order-1 md:order-2 rounded-3xl border border-white/10 bg-slate-950/85 backdrop-blur-md p-3">
-                        <div className="flex items-center justify-between mb-2">
-                            <div>
-                                <div className="text-[10px] uppercase tracking-[0.2em] text-white/45 font-bold">Trap Deck</div>
-                                <div className="text-white font-black text-sm sm:text-base">
-                                    {tacticalUiState.trapCount}/{tacticalUiState.maxTraps} colocadas
-                                </div>
+                <div className="pointer-events-auto p-2 sm:p-3 grid gap-2 md:grid-cols-[1fr,auto] items-end">
+                    <div className="order-2 md:order-1 mx-auto w-full max-w-[1080px] rounded-2xl border border-cyan-300/25 bg-gradient-to-b from-slate-950/84 to-slate-900/74 backdrop-blur-md p-2 sm:p-2.5">
+                        <div className="flex items-center justify-between mb-1.5">
+                            <div className="text-white font-black text-xs sm:text-sm tracking-wide">
+                                {tacticalUiState.trapCount}/{tacticalUiState.maxTraps} colocadas
                             </div>
-                            <div className="text-right text-xs text-white/60">
+                            <div className="text-right text-[10px] sm:text-[11px] text-cyan-100/70">
                                 {selectedTrap
-                                    ? `${TRAP_DATA[selectedTrap].name} - alcance ${tacticalUiState.selectedTrapRange ?? TRAP_DATA[selectedTrap].range}`
+                                    ? `${TRAP_DATA[selectedTrap].name} - Alc ${tacticalUiState.selectedTrapRange ?? TRAP_DATA[selectedTrap].range}`
                                     : 'Elige una trampa'}
                             </div>
                         </div>
-
-                        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                        <div className="flex gap-1.5 overflow-x-auto pb-1 md:grid md:grid-cols-6 md:gap-2 md:overflow-visible md:pb-0">
                             {(Object.keys(TRAP_DATA) as TrapType[]).slice(0, 6).map(type => (
                                 <button
                                     key={type}
                                     onClick={() => dispatchTacticalAction({ type: 'SelectTrap', trapType: selectedTrap === type ? null : type })}
-                                    className={`rounded-2xl px-2 py-3 text-left border transition ${
+                                    className={`min-w-[112px] md:min-w-0 rounded-xl px-2 py-2 text-left border transition-all duration-150 hover:-translate-y-[1px] ${
                                         selectedTrap === type
-                                            ? 'bg-amber-400 text-black border-amber-300'
-                                            : 'bg-slate-900 text-white border-white/10'
+                                            ? 'bg-amber-400 text-black border-amber-300 shadow-[0_0_14px_rgba(251,191,36,0.25)]'
+                                            : 'bg-slate-900/88 text-white border-white/10 hover:border-cyan-300/45'
                                     }`}
                                 >
                                     <div className="text-[10px] uppercase font-black">{type}</div>
-                                    <div className={`text-xs mt-1 ${selectedTrap === type ? 'text-black/75' : 'text-white/60'}`}>
-                                        Alc. {TRAP_DATA[type].range}
+                                    <div className={`text-[11px] mt-1 ${selectedTrap === type ? 'text-black/75' : 'text-white/65'}`}>
+                                        Alc {TRAP_DATA[type].range}
                                     </div>
                                 </button>
                             ))}
                         </div>
-                        <div className="mt-2 text-[11px] text-white/55">
-                            {tacticalUiState.inputHints.join(' - ')}
+
+                        {explorationState.currentRoomId && currentRoomDoors.length > 0 && (
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                                {currentRoomDoors.map(door => {
+                                    const stateDoor = explorationState.doorStates[door.id] || door.state;
+                                    const nextRoom = door.fromRoomId === explorationState.currentRoomId ? door.toRoomId : door.fromRoomId;
+                                    return (
+                                        <button
+                                            key={door.id}
+                                            onClick={() => dispatchTacticalAction({ type: 'OpenDoor', doorId: door.id })}
+                                            className={`px-2 py-1 rounded-md text-[10px] font-black border ${
+                                                stateDoor === 'open'
+                                                    ? 'bg-emerald-900/50 text-emerald-200 border-emerald-400/40'
+                                                    : stateDoor === 'locked'
+                                                        ? 'bg-red-900/50 text-red-200 border-red-400/40'
+                                                        : 'bg-amber-900/50 text-amber-200 border-amber-400/40'
+                                            }`}
+                                        >
+                                            {stateDoor === 'open' ? `Ir ${nextRoom}` : `${stateDoor === 'locked' ? 'Bloq' : 'Abrir'} ${nextRoom}`}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
+
+                        <div className="mt-2 text-[11px] text-white/50">
+                            {isMobile
+                                ? 'Mobile: Pad para mover · Tap para colocar · Boton Pausa · Mapa desde RADAR'
+                                : 'Desktop: WASD/Flechas mover · Click colocar/interactuar · P pausa · M radar'}
                         </div>
                     </div>
+
+                    {isMobile && (
+                        <div className="order-1 flex justify-center">
+                            <DirectionPad onMove={attemptMove} />
+                        </div>
+                    )}
                 </div>
             </div>
 
-            <Exploration3DMinimap
-                mapSize={explorationState.mapSize || TACTICAL_MAP_SIZE}
-                playerPos={explorationState.playerMapPos}
-                enemies={explorationState.zoneEnemies.map(enemy => ({
-                    id: enemy.id,
-                    x: enemy.x,
-                    z: enemy.z,
-                    type: enemy.name,
-                    isDefeated: enemy.isDefeated,
-                }))}
-                traps={explorationState.traps.map(trap => ({
-                    id: trap.id,
-                    x: trap.position.x,
-                    z: trap.position.z,
-                    type: trap.type,
-                    isArmed: trap.isArmed,
-                }))}
-                targetPos={selectedTrap ? null : undefined}
-            />
+            {explorationState.showMinimap && (
+                <Exploration3DMinimap
+                    mapSize={explorationState.mapSize || TACTICAL_MAP_SIZE}
+                    playerPos={explorationState.playerMapPos}
+                    enemies={explorationState.zoneEnemies.map(enemy => ({
+                        id: enemy.id,
+                        x: enemy.x,
+                        z: enemy.z,
+                        type: enemy.name,
+                        isDefeated: enemy.isDefeated,
+                    }))}
+                    traps={explorationState.traps.map(trap => ({
+                        id: trap.id,
+                        x: trap.position.x,
+                        z: trap.position.z,
+                        type: trap.type,
+                        isArmed: trap.isArmed,
+                    }))}
+                    targetPos={selectedTrap ? explorationState.trapAimTarget : undefined}
+                    roomGraph={explorationState.roomGraphRef}
+                    doorStates={explorationState.doorStates}
+                    discoveredRooms={activeRuntime?.discoveredRooms || []}
+                    currentRoomId={explorationState.currentRoomId}
+                />
+            )}
         </div>
     );
 };

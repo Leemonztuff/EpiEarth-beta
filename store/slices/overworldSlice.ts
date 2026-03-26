@@ -377,7 +377,12 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
     const dungeonId = tile.poiId || `${dimension}:DUNGEON:${playerPos.x},${playerPos.y}`;
     const state = get();
     const existingRuntime = state.dungeonRuntimeById[dungeonId];
-    const runtimeBase = existingRuntime || createDungeonRuntime(dungeonId, 'dorgotar-crypt', state.worldDay);
+    const runtimeBase = existingRuntime || createDungeonRuntime(
+      dungeonId,
+      'dorgotar-crypt',
+      state.worldDay,
+      `${dimension}:${playerPos.x},${playerPos.y}:${state.worldDay}`
+    );
     const deltaDays = Math.max(0, state.worldDay - runtimeBase.lastSyncedWorldDay);
     const { next: runtimeAdvanced, eventsApplied } = advanceDungeonTimeline(runtimeBase, deltaDays);
     const runtimeNext = {
@@ -404,6 +409,8 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
         tier: tile.poiTier || 1,
         twistSeed: `${dimension}:${playerPos.x},${playerPos.y}`,
         blueprintId: runtimeNext.blueprintId,
+        layoutVariantSeed: `${dimension}:${playerPos.x},${playerPos.y}:${state.worldDay}`,
+        entryRoomId: runtimeNext.roomGraph?.entryRoomId,
     });
 
     if (!existingRuntime) {

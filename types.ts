@@ -116,6 +116,9 @@ export type InputMode = 'mobile' | 'desktop';
 export type EncounterReturnPolicy = 'RETURN_TO_OVERWORLD' | 'RETURN_TO_TRAP_HUNT';
 export type EncounterLossPolicy = 'DROP_LOOT' | 'LIGHT_PENALTY' | 'NONE';
 export type PoiStateTag = 'Dormant' | 'Active' | 'Contested' | 'Collapsing';
+export type Mode3DState = 'FREE_MOVE' | 'TACTICAL_PAUSE' | 'TRAP_AIM' | 'ENEMY_REACT' | 'CONTACT_RESOLVE' | 'ROOM_RESULT';
+export type CameraMode = 'OVER_SHOULDER' | 'TACTICAL_ZOOM' | 'CINEMATIC';
+export type DoorState = 'closed' | 'open' | 'locked';
 
 export type DungeonRoomObjectiveType =
     | 'clear'
@@ -130,6 +133,30 @@ export interface DungeonRoomDefinition {
     label: string;
     isSecret?: boolean;
     elite?: boolean;
+}
+
+export interface DungeonRoomNode {
+    id: string;
+    label: string;
+    objective: DungeonRoomObjectiveType;
+    biomeTag?: string;
+    isSecret?: boolean;
+    elite?: boolean;
+    neighbors: string[];
+}
+
+export interface DungeonDoorConnection {
+    id: string;
+    fromRoomId: string;
+    toRoomId: string;
+    state: DoorState;
+    blocksLineOfSight: boolean;
+}
+
+export interface DungeonRoomGraph {
+    rooms: Record<string, DungeonRoomNode>;
+    doors: Record<string, DungeonDoorConnection>;
+    entryRoomId: string;
 }
 
 export interface DungeonTimelineEvent {
@@ -165,6 +192,11 @@ export interface DungeonRuntimeState {
     nextTimelineEventIndex: number;
     roomCursor: number;
     stateTag: PoiStateTag;
+    roomStates: Record<string, 'unseen' | 'active' | 'resolved'>;
+    doorStates: Record<string, DoorState>;
+    discoveredRooms: string[];
+    activeRoomId: string | null;
+    roomGraph: DungeonRoomGraph | null;
 }
 
 export interface ZoneContext {
@@ -173,6 +205,8 @@ export interface ZoneContext {
     tier?: number;
     twistSeed?: string;
     blueprintId?: string;
+    layoutVariantSeed?: string;
+    entryRoomId?: string;
 }
 
 export interface EncounterContext {
@@ -189,6 +223,13 @@ export type TacticalAction =
     | { type: 'ToggleTacticalPause'; forced?: boolean }
     | { type: 'SelectTrap'; trapType: TrapType | null }
     | { type: 'PlaceTrap'; x: number; z: number; trapType?: TrapType }
+    | { type: 'EnterTrapAim' }
+    | { type: 'AimTrapAt'; x: number; z: number }
+    | { type: 'ConfirmTrapPlacement' }
+    | { type: 'CancelTrapAim' }
+    | { type: 'OpenDoor'; doorId: string }
+    | { type: 'ToggleMinimap' }
+    | { type: 'SetCameraMode'; cameraMode: CameraMode }
     | { type: 'ExitTrapZone' };
 
 export type EncounterOutcomeType = 'VICTORY' | 'DEFEAT' | 'FLEE';
@@ -216,6 +257,9 @@ export interface TacticalUiState {
     timelineLabel: string | null;
     twistLabel: string | null;
     poiStateTag: PoiStateTag | null;
+    mode3DState?: Mode3DState;
+    currentRoomId?: string | null;
+    stepBudget?: number;
 }
 
 export interface Trap {

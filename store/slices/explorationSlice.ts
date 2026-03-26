@@ -2,6 +2,10 @@ import { StateCreator } from 'zustand';
 import {
     BattleAction,
     DungeonRuntimeState,
+    CameraMode,
+    Mode3DState,
+    DoorState,
+    DungeonRoomGraph,
     EnemyAiState,
     EncounterContext,
     EncounterLossPolicy,
@@ -32,7 +36,7 @@ import {
     manhattanDistance,
 } from '../../services/trapHuntMap';
 import { getDungeonBlueprint } from '../../data/dungeonBlueprints';
-import { createDungeonRuntime, markDungeonRoomResolved } from '../../services/dungeonRuntime';
+import { createDungeonRuntime, markDungeonRoomResolved, openDungeonDoor } from '../../services/dungeonRuntime';
 
 export interface ZoneEnemy {
     id: string;
@@ -52,6 +56,7 @@ export interface ZoneEnemy {
     investigateStepsLeft: number;
     patrolSeed: number;
     decoyTurns: number;
+    isElite?: boolean;
 }
 
 interface ExplorationState {
@@ -81,6 +86,16 @@ interface ExplorationState {
     dungeonObjectiveType: string | null;
     roomObjectiveResolved: boolean;
     roomObjectiveTile: TacticalPosition | null;
+    mode3DState: Mode3DState;
+    cameraMode: CameraMode;
+    currentRoomId: string | null;
+    doorStates: Record<string, DoorState>;
+    roomGraphRef: DungeonRoomGraph | null;
+    stepBudget: number;
+    lineOfSightMask: string[];
+    eliteContactPending: string | null;
+    trapAimTarget: TacticalPosition | null;
+    showMinimap: boolean;
 }
 
 interface VersusState {
@@ -115,6 +130,7 @@ export interface ExplorationSlice {
     endVersusBattle: (victory: boolean) => void;
     fleeFromBattle: () => void;
     nextCharacterTurn: () => void;
+    openDoor: (doorId: string) => void;
     exitTrapZone: () => void;
 }
 
@@ -282,6 +298,9 @@ function buildTacticalUiState(
         timelineLabel,
         twistLabel,
         poiStateTag: dungeonRuntime?.stateTag ?? null,
+        mode3DState: explorationState.mode3DState,
+        currentRoomId: explorationState.currentRoomId,
+        stepBudget: explorationState.stepBudget,
     };
 }
 
@@ -347,6 +366,16 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
         dungeonObjectiveType: null,
         roomObjectiveResolved: false,
         roomObjectiveTile: null,
+        mode3DState: 'FREE_MOVE',
+        cameraMode: 'OVER_SHOULDER',
+        currentRoomId: null,
+        doorStates: {},
+        roomGraphRef: null,
+        stepBudget: 1,
+        lineOfSightMask: [],
+        eliteContactPending: null,
+        trapAimTarget: null,
+        showMinimap: false,
     },
     versusState: createInitialVersusState(),
 
@@ -378,6 +407,30 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             case 'SelectTrap':
                 get().selectTrapType(action.trapType);
                 break;
+            case 'EnterTrapAim':
+                if (state.explorationState.selectedTrapType) {
+                    get().togglePlacementPause(true);
+                }
+                break;
+            case 'AimTrapAt': {
+                const range = state.explorationState.selectedTrapType
+                    ? TRAP_DATA[state.explorationState.selectedTrapType].range
+                    : state.explorationState.placementRange;
+                const clamped = clampPlacementToRange(
+                    state.explorationState.playerMapPos,
+                    { x: action.x, z: action.z },
+                    range
+                );
+                const nextExplorationState: ExplorationState = {
+                    ...state.explorationState,
+                    trapAimTarget: clamped ?? null,
+                };
+                set({
+                    explorationState: nextExplorationState,
+                    tacticalUiState: buildTacticalUiState(nextExplorationState, state.inputMode),
+                });
+                break;
+            }
             case 'PlaceTrap': {
                 const trapType = action.trapType ?? state.explorationState.selectedTrapType;
                 if (!trapType) {
@@ -394,6 +447,54 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
                     return;
                 }
                 get().placeTrap(trapType, action.x, action.z);
+                break;
+            }
+            case 'ConfirmTrapPlacement': {
+                const trapType = state.explorationState.selectedTrapType;
+                const target = state.explorationState.trapAimTarget;
+                if (trapType && target) {
+                    get().placeTrap(trapType, target.x, target.z);
+                }
+                break;
+            }
+            case 'CancelTrapAim': {
+                const nextExplorationState: ExplorationState = {
+                    ...state.explorationState,
+                    placementMode: false,
+                    tacticalPaused: false,
+                    mode3DState: 'FREE_MOVE',
+                    cameraMode: 'OVER_SHOULDER',
+                    trapAimTarget: null,
+                };
+                set({
+                    explorationState: nextExplorationState,
+                    tacticalUiState: buildTacticalUiState(nextExplorationState, state.inputMode),
+                });
+                break;
+            }
+            case 'OpenDoor':
+                get().openDoor(action.doorId);
+                break;
+            case 'ToggleMinimap': {
+                const nextExplorationState: ExplorationState = {
+                    ...state.explorationState,
+                    showMinimap: !state.explorationState.showMinimap,
+                };
+                set({
+                    explorationState: nextExplorationState,
+                    tacticalUiState: buildTacticalUiState(nextExplorationState, state.inputMode),
+                });
+                break;
+            }
+            case 'SetCameraMode': {
+                const nextExplorationState: ExplorationState = {
+                    ...state.explorationState,
+                    cameraMode: action.cameraMode,
+                };
+                set({
+                    explorationState: nextExplorationState,
+                    tacticalUiState: buildTacticalUiState(nextExplorationState, state.inputMode),
+                });
                 break;
             }
             case 'ExitTrapZone':
@@ -413,11 +514,19 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
         const dungeonId = zoneContext.poiId || null;
         const existingRuntime = dungeonId ? state.dungeonRuntimeById[dungeonId] : null;
         const dungeonRuntime = isDungeon && dungeonId
-            ? (existingRuntime ?? createDungeonRuntime(dungeonId, zoneContext.blueprintId || 'dorgotar-crypt'))
+            ? (existingRuntime ?? createDungeonRuntime(
+                dungeonId,
+                zoneContext.blueprintId || 'dorgotar-crypt',
+                state.worldDay || 0,
+                zoneContext.layoutVariantSeed
+            ))
             : null;
         const blueprint = dungeonRuntime ? getDungeonBlueprint(dungeonRuntime.blueprintId) : null;
+        const roomId = dungeonRuntime?.activeRoomId || zoneContext.entryRoomId || null;
         const room = (blueprint && dungeonRuntime)
-            ? blueprint.rooms[Math.min(dungeonRuntime.roomCursor, blueprint.rooms.length - 1)]
+            ? (roomId
+                ? blueprint.rooms.find(item => item.id === roomId) ?? blueprint.rooms[Math.min(dungeonRuntime.roomCursor, blueprint.rooms.length - 1)]
+                : blueprint.rooms[Math.min(dungeonRuntime.roomCursor, blueprint.rooms.length - 1)])
             : null;
         const roomObjectiveTile = isDungeon && (room?.objective === 'disarm_trap' || room?.objective === 'investigate')
             ? pickRoomObjectiveTile(map, playerStart)
@@ -434,6 +543,7 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
                 hp: enemy.hp + hpBonus,
                 maxHp: enemy.maxHp + hpBonus,
                 movement,
+                isElite: !!room?.elite && index === 0,
                 name: room?.elite && index === 0 ? `${enemy.name} Elite` : enemy.name,
             };
         });
@@ -466,6 +576,16 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             dungeonObjectiveType: room?.objective || null,
             roomObjectiveResolved: false,
             roomObjectiveTile,
+            mode3DState: 'FREE_MOVE',
+            cameraMode: 'OVER_SHOULDER',
+            currentRoomId: room?.id || null,
+            doorStates: dungeonRuntime?.doorStates || {},
+            roomGraphRef: dungeonRuntime?.roomGraph || null,
+            stepBudget: 1,
+            lineOfSightMask: [],
+            eliteContactPending: null,
+            trapAimTarget: null,
+            showMinimap: false,
         };
 
         set({
@@ -497,10 +617,13 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             selectedTrapType: type,
             placementMode: !!type,
             tacticalPaused: !!type,
+            mode3DState: type ? 'TRAP_AIM' : 'FREE_MOVE',
+            cameraMode: type ? 'TACTICAL_ZOOM' : 'OVER_SHOULDER',
             placementRange: range,
             highlightedTiles: type
                 ? buildTrapHighlights(explorationState.playerMapPos, range, explorationState.map)
                 : [],
+            trapAimTarget: type ? explorationState.playerMapPos : null,
             tacticalMessage: type
                 ? `Coloca ${TRAP_DATA[type].name} dentro de alcance ${range}.`
                 : null,
@@ -519,6 +642,10 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             ...explorationState,
             tacticalPaused: nextPaused,
             placementMode: nextPaused && !!explorationState.selectedTrapType,
+            mode3DState: nextPaused
+                ? (explorationState.selectedTrapType ? 'TRAP_AIM' : 'TACTICAL_PAUSE')
+                : 'FREE_MOVE',
+            cameraMode: nextPaused ? 'TACTICAL_ZOOM' : 'OVER_SHOULDER',
             tacticalMessage: nextPaused ? 'Tiempo detenido: coloca trampas o reanuda la caceria.' : null,
         };
         set({
@@ -597,8 +724,11 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             selectedTrapType: null,
             placementMode: false,
             tacticalPaused: false,
+            mode3DState: 'FREE_MOVE',
+            cameraMode: 'OVER_SHOULDER',
             placementRange: 1,
             highlightedTiles: [],
+            trapAimTarget: null,
             tacticalMessage: `${trapData.name} colocada en ${x},${z}.`,
         };
         set({
@@ -691,6 +821,17 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
     movePlayer: (newX, newZ) => {
         const state = get();
         const { explorationState } = state;
+        if (explorationState.stepBudget <= 0) {
+            const nextExplorationState: ExplorationState = {
+                ...explorationState,
+                tacticalMessage: 'Sin acciones disponibles en este paso.',
+            };
+            set({
+                explorationState: nextExplorationState,
+                tacticalUiState: buildTacticalUiState(nextExplorationState, get().inputMode, 'Sin acciones disponibles.'),
+            });
+            return;
+        }
         const isSameTile =
             newX === explorationState.playerMapPos.x && newZ === explorationState.playerMapPos.z;
 
@@ -783,7 +924,33 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
 
         const directContact = explorationState.zoneEnemies.find(enemy => !enemy.isDefeated && enemy.x === newX && enemy.z === newZ);
         if (directContact) {
-            get().startEncounter(directContact.id);
+            if (directContact.isElite) {
+                get().startEncounter(directContact.id);
+            } else {
+                const leader = (get().party || [])[0];
+                if (leader) {
+                    const updatedParty = get().party.map((member: Entity, index: number) =>
+                        index === 0
+                            ? { ...member, stats: { ...member.stats, hp: Math.max(1, member.stats.hp - 4) } }
+                            : member
+                    );
+                    set({
+                        party: updatedParty,
+                        explorationState: {
+                            ...explorationState,
+                            tacticalMessage: `${directContact.name} te impacta y sigue la persecucion.`,
+                            mode3DState: 'CONTACT_RESOLVE',
+                            stepBudget: 0,
+                        },
+                        tacticalUiState: buildTacticalUiState({
+                            ...explorationState,
+                            tacticalMessage: `${directContact.name} te impacta y sigue la persecucion.`,
+                            mode3DState: 'CONTACT_RESOLVE',
+                            stepBudget: 0,
+                        }, get().inputMode),
+                    });
+                }
+            }
             return;
         }
 
@@ -940,8 +1107,10 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             playerMapPos,
             currentEnemyId,
             turnStep: nextTurnStep,
+            mode3DState: currentEnemyId ? 'CONTACT_RESOLVE' : 'ROOM_RESULT',
             zoneCompleted,
             roomObjectiveResolved,
+            stepBudget: 1,
             traps: decayTrapDurations(get().explorationState.traps),
             tacticalMessage: zoneCompleted
                 ? 'La zona quedo limpia. Puedes volver al mapa hex.'
@@ -994,6 +1163,8 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             ...explorationState,
             currentEnemyId: enemyId,
             tacticalMessage: `Contacto con ${enemy.name}.`,
+            mode3DState: 'CONTACT_RESOLVE',
+            eliteContactPending: enemyId,
         };
         set({
             explorationState: nextExplorationState,
@@ -1134,6 +1305,8 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
                 zoneCompleted,
                 roomObjectiveResolved: explorationState.roomObjectiveResolved || roomResolvedByVs,
                 wasZoneCompletedBeforeLevelUp: zoneCompleted,
+                eliteContactPending: null,
+                mode3DState: 'FREE_MOVE',
                 tacticalMessage: zoneCompleted
                     ? 'Has limpiado la zona. Regresa al overworld cuando quieras.'
                     : `${defeatedEnemy?.name || 'El enemigo'} ya no esta en el mapa.`,
@@ -1178,6 +1351,8 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             const nextExplorationState: ExplorationState = {
                 ...explorationState,
                 currentEnemyId: null,
+                eliteContactPending: null,
+                mode3DState: 'FREE_MOVE',
                 tacticalMessage: 'Derrota. Regresas al mapa hex sin loot.',
             };
             const shouldReturnToTrap = returnPolicy === 'RETURN_TO_TRAP_HUNT';
@@ -1232,6 +1407,8 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
         const nextExplorationState: ExplorationState = {
             ...explorationState,
             currentEnemyId: null,
+            eliteContactPending: null,
+            mode3DState: 'FREE_MOVE',
             tacticalMessage: 'Huyes y retomas la caceria con el enemigo aun activo.',
         };
         set({
@@ -1254,6 +1431,101 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
 
     nextCharacterTurn: () => {},
 
+    openDoor: (doorId) => {
+        const state = get();
+        const { explorationState, activeDungeonId } = state;
+        if (!activeDungeonId || !explorationState.roomGraphRef) {
+            return;
+        }
+
+        const runtime = state.dungeonRuntimeById[activeDungeonId];
+        if (!runtime?.roomGraph) {
+            return;
+        }
+
+        const door = runtime.roomGraph.doors[doorId];
+        if (!door) {
+            return;
+        }
+
+        if (runtime.doorStates[doorId] === 'locked') {
+            const nextExplorationState: ExplorationState = {
+                ...explorationState,
+                tacticalMessage: 'Puerta bloqueada. Requiere activar un mecanismo.',
+            };
+            set({
+                explorationState: nextExplorationState,
+                tacticalUiState: buildTacticalUiState(nextExplorationState, state.inputMode, 'Puerta bloqueada.'),
+            });
+            return;
+        }
+
+        const runtimeWithOpenDoor = openDungeonDoor(runtime, doorId);
+        const currentRoom = explorationState.currentRoomId || runtimeWithOpenDoor.activeRoomId || runtimeWithOpenDoor.roomGraph.entryRoomId;
+        const targetRoom = door.fromRoomId === currentRoom ? door.toRoomId : door.fromRoomId;
+        const roomDefinition = getDungeonBlueprint(runtimeWithOpenDoor.blueprintId).rooms.find(room => room.id === targetRoom);
+
+        const seed = `${runtimeWithOpenDoor.dungeonId}:${targetRoom}:${Date.now()}`;
+        const map = generateTacticalMap(seed);
+        const playerStart = { ...DEFAULT_PLAYER_START };
+        const roomObjectiveTile = (roomDefinition?.objective === 'disarm_trap' || roomDefinition?.objective === 'investigate')
+            ? pickRoomObjectiveTile(map, playerStart)
+            : null;
+        const zoneEnemies = createZoneEnemies(map, playerStart).map((enemy, index) => {
+            if (!roomDefinition) return enemy;
+            const elite = !!roomDefinition.elite && index === 0;
+            return {
+                ...enemy,
+                isElite: elite,
+                hp: enemy.hp + (elite ? 24 : 0),
+                maxHp: enemy.maxHp + (elite ? 24 : 0),
+                name: elite ? `${enemy.name} Elite` : enemy.name,
+            };
+        });
+
+        const nextRuntime: DungeonRuntimeState = {
+            ...runtimeWithOpenDoor,
+            activeRoomId: targetRoom,
+            roomStates: {
+                ...runtimeWithOpenDoor.roomStates,
+                [targetRoom]: runtimeWithOpenDoor.roomStates[targetRoom] === 'resolved'
+                    ? 'resolved'
+                    : 'active',
+            },
+            discoveredRooms: runtimeWithOpenDoor.discoveredRooms.includes(targetRoom)
+                ? runtimeWithOpenDoor.discoveredRooms
+                : [...runtimeWithOpenDoor.discoveredRooms, targetRoom],
+        };
+
+        const nextExplorationState: ExplorationState = {
+            ...explorationState,
+            map,
+            zoneEnemies,
+            playerMapPos: playerStart,
+            entrancePos: playerStart,
+            currentEnemyId: null,
+            currentRoomId: targetRoom,
+            dungeonRoomId: targetRoom,
+            dungeonObjectiveType: roomDefinition?.objective || null,
+            roomObjectiveResolved: false,
+            roomObjectiveTile,
+            doorStates: nextRuntime.doorStates,
+            roomGraphRef: nextRuntime.roomGraph,
+            tacticalMessage: `Abres una puerta y entras en ${roomDefinition?.label || targetRoom}.`,
+            mode3DState: 'FREE_MOVE',
+            stepBudget: 1,
+        };
+
+        set({
+            dungeonRuntimeById: {
+                ...state.dungeonRuntimeById,
+                [activeDungeonId]: nextRuntime,
+            },
+            explorationState: nextExplorationState,
+            tacticalUiState: buildTacticalUiState(nextExplorationState, state.inputMode, null, nextRuntime),
+        });
+    },
+
     exitTrapZone: () => {
         const { explorationState, encounterContext } = get();
         if (explorationState.zoneCompleted) {
@@ -1267,6 +1539,11 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             tacticalPaused: false,
             highlightedTiles: [],
             tacticalMessage: null,
+            mode3DState: 'FREE_MOVE',
+            cameraMode: 'OVER_SHOULDER',
+            trapAimTarget: null,
+            eliteContactPending: null,
+            stepBudget: 1,
         };
         set({
             gameState: GameState.OVERWORLD,
