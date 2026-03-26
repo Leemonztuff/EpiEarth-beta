@@ -103,6 +103,56 @@ export enum TrapType {
     DECOY = 'DECOY', TRAP_DOOR = 'TRAP_DOOR', ALARM = 'ALARM'
 }
 
+export enum EnemyAiState {
+    PATROL = 'PATROL',
+    CHASE = 'CHASE',
+    INVESTIGATE = 'INVESTIGATE',
+    STUNNED = 'STUNNED',
+    DECOYED = 'DECOYED'
+}
+
+export type InputMode = 'mobile' | 'desktop';
+
+export type EncounterReturnPolicy = 'RETURN_TO_OVERWORLD' | 'RETURN_TO_TRAP_HUNT';
+export type EncounterLossPolicy = 'DROP_LOOT' | 'LIGHT_PENALTY' | 'NONE';
+
+export interface EncounterContext {
+    sourceMode: GameState;
+    originTile: PositionComponent | null;
+    enemyId: string | null;
+    returnPolicy: EncounterReturnPolicy;
+    lossPolicy: EncounterLossPolicy;
+}
+
+export type TacticalAction =
+    | { type: 'MoveStep'; dx: number; dz: number }
+    | { type: 'ToggleTacticalPause'; forced?: boolean }
+    | { type: 'SelectTrap'; trapType: TrapType | null }
+    | { type: 'PlaceTrap'; x: number; z: number; trapType?: TrapType }
+    | { type: 'ExitTrapZone' };
+
+export type EncounterOutcomeType = 'VICTORY' | 'DEFEAT' | 'FLEE';
+
+export interface EncounterOutcome {
+    type: EncounterOutcomeType;
+    enemyId?: string | null;
+}
+
+export interface TacticalUiState {
+    zoneName: string;
+    message: string | null;
+    blockReason: string | null;
+    inputHints: string[];
+    turnStep: number;
+    trapCount: number;
+    maxTraps: number;
+    enemyCount: number;
+    selectedTrapType: TrapType | null;
+    selectedTrapRange: number | null;
+    tacticalPaused: boolean;
+    placementMode: boolean;
+}
+
 export interface Trap {
     id: string;
     type: TrapType;
@@ -302,6 +352,7 @@ export interface LootDrop { id: string; position: PositionComponent; rarity: Ite
 
 export interface GameStateData {
     gameState: GameState;
+    inputMode: InputMode;
     dimension: Dimension;
     difficulty: Difficulty;
     exploredTiles: Record<Dimension, Set<string>>;
@@ -328,6 +379,8 @@ export interface GameStateData {
     currentSettlementName: string | null;
     activeNarrativeEvent: any | null;
     activeIncursion: any | null;
+    encounterContext: EncounterContext | null;
+    tacticalUiState: TacticalUiState;
     standingOnPort: boolean;
     inspectedEntityId: string | null;
     eternumShards: number;

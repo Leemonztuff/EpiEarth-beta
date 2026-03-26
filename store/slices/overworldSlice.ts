@@ -201,9 +201,8 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
 
     // EVENTO DE COMBATE (CALAVERAS) - Entrar a Zona de Caza 3D
     if (!isLocal && tile.hasEncounter) {
-        const { initZone, setGameState } = useGameStore.getState();
+        const { initZone } = useGameStore.getState();
         initZone('forest', { x: q, y: r });
-        setGameState(GameState.EXPLORATION_3D);
         set({ isPlayerMoving: false });
         return true; 
     }

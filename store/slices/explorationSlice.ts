@@ -1,5 +1,20 @@
 import { StateCreator } from 'zustand';
-import { BattleAction, Entity, GameState, PositionComponent, Trap, TrapType } from '../../types';
+import {
+    BattleAction,
+    EnemyAiState,
+    EncounterContext,
+    EncounterLossPolicy,
+    EncounterOutcome,
+    EncounterReturnPolicy,
+    Entity,
+    GameState,
+    InputMode,
+    PositionComponent,
+    TacticalAction,
+    TacticalUiState,
+    Trap,
+    TrapType
+} from '../../types';
 import { TRAP_DATA, PLAYER_TRAP_LIMIT } from '../../data/trapsData';
 import { generateId, randomElement, randomInt } from '../utils';
 import {
@@ -28,6 +43,11 @@ export interface ZoneEnemy {
     alertRange: number;
     stunnedTurns: number;
     poisonTurns: number;
+    aiState: EnemyAiState;
+    lastKnownPlayerPos: TacticalPosition | null;
+    investigateStepsLeft: number;
+    patrolSeed: number;
+    decoyTurns: number;
 }
 
 interface ExplorationState {
@@ -71,6 +91,9 @@ export interface ExplorationSlice {
     versusState: VersusState;
 
     initZone: (biome?: string, origin?: PositionComponent | null) => void;
+    setInputMode: (mode: InputMode) => void;
+    dispatchTacticalAction: (action: TacticalAction) => void;
+    resolveEncounterOutcome: (outcome: EncounterOutcome) => void;
     selectTrapType: (type: TrapType | null) => void;
     togglePlacementPause: (forced?: boolean) => void;
     placeTrap: (type: TrapType, x: number, z: number) => boolean;
@@ -144,6 +167,11 @@ function createZoneEnemies(map: TacticalMapCell[][], playerStart: TacticalPositi
             alertRange: 8,
             stunnedTurns: 0,
             poisonTurns: 0,
+            aiState: EnemyAiState.PATROL,
+            lastKnownPlayerPos: null,
+            investigateStepsLeft: 0,
+            patrolSeed: randomInt(1, 999_999),
+            decoyTurns: 0,
         };
     });
 }
@@ -170,6 +198,89 @@ function decayTrapDurations(traps: Trap[]): Trap[] {
         .filter(trap => trap.isArmed && (trap.duration ?? 0) > 0);
 }
 
+function createEncounterContext(
+    sourceMode: GameState,
+    originTile: PositionComponent | null,
+    enemyId: string | null = null,
+    returnPolicy: EncounterReturnPolicy = 'RETURN_TO_OVERWORLD',
+    lossPolicy: EncounterLossPolicy = 'DROP_LOOT'
+): EncounterContext {
+    return {
+        sourceMode,
+        originTile,
+        enemyId,
+        returnPolicy,
+        lossPolicy,
+    };
+}
+
+function createInitialVersusState(): VersusState {
+    return {
+        isActive: false,
+        playerIndex: 0,
+        playerCurrentHp: 0,
+        playerMaxHp: 0,
+        enemyCurrentHp: 0,
+        enemyMaxHp: 0,
+        turn: 'PLAYER',
+        battleLog: [],
+        isPlayerTurn: true,
+    };
+}
+
+function getInputHints(inputMode: InputMode): string[] {
+    if (inputMode === 'mobile') {
+        return ['Pad: mover', 'Tap en tile: colocar', 'Tap Pausa: plan tactico'];
+    }
+
+    return ['WASD/Flechas: mover', 'Click: colocar/interactuar', 'P: pausa tactica'];
+}
+
+function buildTacticalUiState(
+    explorationState: ExplorationState,
+    inputMode: InputMode = 'desktop',
+    blockReason: string | null = null
+): TacticalUiState {
+    return {
+        zoneName: explorationState.zoneName,
+        message: explorationState.tacticalMessage,
+        blockReason,
+        inputHints: getInputHints(inputMode),
+        turnStep: explorationState.turnStep,
+        trapCount: explorationState.traps.length,
+        maxTraps: explorationState.maxTraps,
+        enemyCount: explorationState.zoneEnemies.filter(enemy => !enemy.isDefeated).length,
+        selectedTrapType: explorationState.selectedTrapType,
+        selectedTrapRange: explorationState.selectedTrapType ? explorationState.placementRange : null,
+        tacticalPaused: explorationState.tacticalPaused,
+        placementMode: explorationState.placementMode,
+    };
+}
+
+function buildPatrolStep(
+    map: TacticalMapCell[][],
+    enemy: ZoneEnemy,
+    blocked: Set<string>,
+    turnStep: number,
+    playerMapPos: TacticalPosition
+): TacticalPosition {
+    const neighbors = getNeighbors(map, { x: enemy.x, z: enemy.z }).filter(
+        next => !blocked.has(`${next.x},${next.z}`) && !(next.x === playerMapPos.x && next.z === playerMapPos.z)
+    );
+
+    if (neighbors.length === 0) {
+        return { x: enemy.x, z: enemy.z };
+    }
+
+    neighbors.sort((left, right) => {
+        const leftScore = ((left.x * 31 + left.z * 17 + enemy.patrolSeed + turnStep) % 97 + 97) % 97;
+        const rightScore = ((right.x * 31 + right.z * 17 + enemy.patrolSeed + turnStep) % 97 + 97) % 97;
+        return leftScore - rightScore;
+    });
+
+    return neighbors[0];
+}
+
 export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice> = (set, get) => ({
     explorationState: {
         map: [],
@@ -194,16 +305,52 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
         tacticalMessage: null,
         returnOverworldPos: null,
     },
-    versusState: {
-        isActive: false,
-        playerIndex: 0,
-        playerCurrentHp: 0,
-        playerMaxHp: 0,
-        enemyCurrentHp: 0,
-        enemyMaxHp: 0,
-        turn: 'PLAYER',
-        battleLog: [],
-        isPlayerTurn: true,
+    versusState: createInitialVersusState(),
+
+    setInputMode: (mode) =>
+        set(state => ({
+            inputMode: mode,
+            tacticalUiState: buildTacticalUiState(state.explorationState, mode, state.tacticalUiState?.blockReason ?? null),
+        })),
+
+    dispatchTacticalAction: (action) => {
+        const state = get();
+        const playerPos = state.explorationState.playerMapPos;
+
+        switch (action.type) {
+            case 'MoveStep':
+                get().movePlayer(playerPos.x + action.dx, playerPos.z + action.dz);
+                break;
+            case 'ToggleTacticalPause':
+                get().togglePlacementPause(action.forced);
+                break;
+            case 'SelectTrap':
+                get().selectTrapType(action.trapType);
+                break;
+            case 'PlaceTrap': {
+                const trapType = action.trapType ?? state.explorationState.selectedTrapType;
+                if (!trapType) {
+                    set({
+                        explorationState: {
+                            ...state.explorationState,
+                            tacticalMessage: 'Selecciona una trampa antes de colocar.',
+                        },
+                        tacticalUiState: buildTacticalUiState({
+                            ...state.explorationState,
+                            tacticalMessage: 'Selecciona una trampa antes de colocar.',
+                        }, state.inputMode, 'Selecciona una trampa antes de colocar.'),
+                    });
+                    return;
+                }
+                get().placeTrap(trapType, action.x, action.z);
+                break;
+            }
+            case 'ExitTrapZone':
+                get().exitTrapZone();
+                break;
+            default:
+                break;
+        }
     },
 
     initZone: (biome = 'forest', origin = null) => {
@@ -211,31 +358,40 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
         const map = generateTacticalMap(seed);
         const playerStart = { ...DEFAULT_PLAYER_START };
         const enemies = createZoneEnemies(map, playerStart);
+        const nextExplorationState: ExplorationState = {
+            map,
+            mapSize: TACTICAL_MAP_SIZE,
+            playerMapPos: playerStart,
+            entrancePos: playerStart,
+            traps: [],
+            maxTraps: PLAYER_TRAP_LIMIT,
+            currentBiome: biome,
+            zoneEnemies: enemies,
+            currentEnemyId: null,
+            zoneCompleted: false,
+            zoneName: getZoneName(biome),
+            wasZoneCompletedBeforeLevelUp: false,
+            selectedTrapType: null,
+            placementMode: false,
+            placementRange: 1,
+            highlightedTiles: [],
+            turnStep: 0,
+            isResolvingTurn: false,
+            tacticalPaused: false,
+            tacticalMessage: 'Pausa tactica: coloca trampas y mueve al enemigo a tu terreno.',
+            returnOverworldPos: origin,
+        };
 
         set({
-            explorationState: {
-                map,
-                mapSize: TACTICAL_MAP_SIZE,
-                playerMapPos: playerStart,
-                entrancePos: playerStart,
-                traps: [],
-                maxTraps: PLAYER_TRAP_LIMIT,
-                currentBiome: biome,
-                zoneEnemies: enemies,
-                currentEnemyId: null,
-                zoneCompleted: false,
-                zoneName: getZoneName(biome),
-                wasZoneCompletedBeforeLevelUp: false,
-                selectedTrapType: null,
-                placementMode: false,
-                placementRange: 1,
-                highlightedTiles: [],
-                turnStep: 0,
-                isResolvingTurn: false,
-                tacticalPaused: false,
-                tacticalMessage: 'Pausa tactica: coloca trampas y mueve al enemigo a tu terreno.',
-                returnOverworldPos: origin,
-            },
+            explorationState: nextExplorationState,
+            tacticalUiState: buildTacticalUiState(nextExplorationState, get().inputMode),
+            encounterContext: createEncounterContext(
+                get().gameState,
+                origin,
+                null,
+                'RETURN_TO_OVERWORLD',
+                'DROP_LOOT'
+            ),
             gameState: GameState.EXPLORATION_3D,
         });
     },
@@ -243,54 +399,90 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
     selectTrapType: (type) => {
         const { explorationState } = get();
         const range = type ? TRAP_DATA[type].range : 1;
+        const nextExplorationState: ExplorationState = {
+            ...explorationState,
+            selectedTrapType: type,
+            placementMode: !!type,
+            tacticalPaused: !!type,
+            placementRange: range,
+            highlightedTiles: type
+                ? buildTrapHighlights(explorationState.playerMapPos, range, explorationState.map)
+                : [],
+            tacticalMessage: type
+                ? `Coloca ${TRAP_DATA[type].name} dentro de alcance ${range}.`
+                : null,
+        };
 
         set({
-            explorationState: {
-                ...explorationState,
-                selectedTrapType: type,
-                placementMode: !!type,
-                tacticalPaused: !!type,
-                placementRange: range,
-                highlightedTiles: type
-                    ? buildTrapHighlights(explorationState.playerMapPos, range, explorationState.map)
-                    : [],
-                tacticalMessage: type
-                    ? `Coloca ${TRAP_DATA[type].name} dentro de alcance ${range}.`
-                    : null,
-            },
+            explorationState: nextExplorationState,
+            tacticalUiState: buildTacticalUiState(nextExplorationState, get().inputMode),
         });
     },
 
     togglePlacementPause: (forced) => {
         const { explorationState } = get();
         const nextPaused = typeof forced === 'boolean' ? forced : !explorationState.tacticalPaused;
+        const nextExplorationState: ExplorationState = {
+            ...explorationState,
+            tacticalPaused: nextPaused,
+            placementMode: nextPaused && !!explorationState.selectedTrapType,
+            tacticalMessage: nextPaused ? 'Tiempo detenido: coloca trampas o reanuda la caceria.' : null,
+        };
         set({
-            explorationState: {
-                ...explorationState,
-                tacticalPaused: nextPaused,
-                placementMode: nextPaused && !!explorationState.selectedTrapType,
-                tacticalMessage: nextPaused ? 'Tiempo detenido: coloca trampas o reanuda la caceria.' : null,
-            },
+            explorationState: nextExplorationState,
+            tacticalUiState: buildTacticalUiState(nextExplorationState, get().inputMode),
         });
     },
 
     placeTrap: (type, x, z) => {
         const { explorationState } = get();
         if (explorationState.traps.length >= explorationState.maxTraps) {
+            const nextExplorationState: ExplorationState = {
+                ...explorationState,
+                tacticalMessage: 'No puedes colocar mas trampas en esta zona.',
+            };
+            set({
+                explorationState: nextExplorationState,
+                tacticalUiState: buildTacticalUiState(nextExplorationState, get().inputMode, 'No puedes colocar mas trampas en esta zona.'),
+            });
             return false;
         }
 
         if (!isWalkable(explorationState.map, x, z)) {
+            const nextExplorationState: ExplorationState = {
+                ...explorationState,
+                tacticalMessage: 'Celda invalida: solo puedes colocar en terreno caminable.',
+            };
+            set({
+                explorationState: nextExplorationState,
+                tacticalUiState: buildTacticalUiState(nextExplorationState, get().inputMode, 'Celda invalida para trampa.'),
+            });
             return false;
         }
 
         const clamped = clampPlacementToRange(explorationState.playerMapPos, { x, z }, TRAP_DATA[type].range);
         if (!clamped) {
+            const nextExplorationState: ExplorationState = {
+                ...explorationState,
+                tacticalMessage: `Fuera de alcance (${TRAP_DATA[type].range}).`,
+            };
+            set({
+                explorationState: nextExplorationState,
+                tacticalUiState: buildTacticalUiState(nextExplorationState, get().inputMode, `Fuera de alcance (${TRAP_DATA[type].range}).`),
+            });
             return false;
         }
 
         const occupied = explorationState.traps.some(trap => trap.position.x === x && trap.position.z === z && trap.isArmed);
         if (occupied) {
+            const nextExplorationState: ExplorationState = {
+                ...explorationState,
+                tacticalMessage: 'Ya hay una trampa activa en esa celda.',
+            };
+            set({
+                explorationState: nextExplorationState,
+                tacticalUiState: buildTacticalUiState(nextExplorationState, get().inputMode, 'Ya hay una trampa activa en esa celda.'),
+            });
             return false;
         }
 
@@ -306,17 +498,19 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             description: trapData.description,
         };
 
+        const nextExplorationState: ExplorationState = {
+            ...explorationState,
+            traps: [...explorationState.traps, trap],
+            selectedTrapType: null,
+            placementMode: false,
+            tacticalPaused: false,
+            placementRange: 1,
+            highlightedTiles: [],
+            tacticalMessage: `${trapData.name} colocada en ${x},${z}.`,
+        };
         set({
-            explorationState: {
-                ...explorationState,
-                traps: [...explorationState.traps, trap],
-                selectedTrapType: null,
-                placementMode: false,
-                tacticalPaused: false,
-                placementRange: 1,
-                highlightedTiles: [],
-                tacticalMessage: `${trapData.name} colocada en ${x},${z}.`,
-            },
+            explorationState: nextExplorationState,
+            tacticalUiState: buildTacticalUiState(nextExplorationState, get().inputMode),
         });
 
         return true;
@@ -324,11 +518,13 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
 
     removeTrap: (trapId) => {
         const { explorationState } = get();
+        const nextExplorationState: ExplorationState = {
+            ...explorationState,
+            traps: explorationState.traps.filter(trap => trap.id !== trapId),
+        };
         set({
-            explorationState: {
-                ...explorationState,
-                traps: explorationState.traps.filter(trap => trap.id !== trapId),
-            },
+            explorationState: nextExplorationState,
+            tacticalUiState: buildTacticalUiState(nextExplorationState, get().inputMode),
         });
     },
 
@@ -351,10 +547,16 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
 
             if (trap.type === TrapType.STUN || trap.type === TrapType.ICE) {
                 nextEnemy.stunnedTurns = 1;
+                nextEnemy.aiState = EnemyAiState.STUNNED;
             }
 
             if (trap.type === TrapType.POISON) {
                 nextEnemy.poisonTurns = 2;
+            }
+
+            if (trap.type === TrapType.DECOY) {
+                nextEnemy.decoyTurns = Math.max(nextEnemy.decoyTurns, 2);
+                nextEnemy.aiState = EnemyAiState.DECOYED;
             }
 
             if (trap.type === TrapType.TELEPORT) {
@@ -363,6 +565,9 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
                 if (nextDestination) {
                     nextEnemy.x = nextDestination.x;
                     nextEnemy.z = nextDestination.z;
+                    nextEnemy.aiState = EnemyAiState.INVESTIGATE;
+                    nextEnemy.lastKnownPlayerPos = { ...explorationState.playerMapPos };
+                    nextEnemy.investigateStepsLeft = 2;
                     message = 'La trampa desvia al enemigo a otro sector del mapa.';
                 }
             }
@@ -374,15 +579,17 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             return nextEnemy;
         });
 
+        const nextExplorationState: ExplorationState = {
+            ...explorationState,
+            zoneEnemies: enemies,
+            traps: explorationState.traps
+                .map(item => item.id === trapId ? { ...item, isArmed: false, isTriggered: true, duration: 0 } : item)
+                .filter(item => item.isArmed),
+            tacticalMessage: message,
+        };
         set({
-            explorationState: {
-                ...explorationState,
-                zoneEnemies: enemies,
-                traps: explorationState.traps
-                    .map(item => item.id === trapId ? { ...item, isArmed: false, isTriggered: true, duration: 0 } : item)
-                    .filter(item => item.isArmed),
-                tacticalMessage: message,
-            },
+            explorationState: nextExplorationState,
+            tacticalUiState: buildTacticalUiState(nextExplorationState, get().inputMode),
         });
 
         return { damage: trapData.damage, message };
@@ -392,14 +599,38 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
         const state = get();
         const { explorationState } = state;
         if (explorationState.isResolvingTurn || explorationState.placementMode || explorationState.tacticalPaused) {
+            const nextExplorationState: ExplorationState = {
+                ...explorationState,
+                tacticalMessage: 'Accion bloqueada: reanuda la caceria para mover.',
+            };
+            set({
+                explorationState: nextExplorationState,
+                tacticalUiState: buildTacticalUiState(nextExplorationState, get().inputMode, 'Accion bloqueada: reanuda la caceria para mover.'),
+            });
             return;
         }
 
         if (!isWalkable(explorationState.map, newX, newZ)) {
+            const nextExplorationState: ExplorationState = {
+                ...explorationState,
+                tacticalMessage: 'Accion bloqueada: celda no caminable.',
+            };
+            set({
+                explorationState: nextExplorationState,
+                tacticalUiState: buildTacticalUiState(nextExplorationState, get().inputMode, 'Accion bloqueada: celda no caminable.'),
+            });
             return;
         }
 
         if (manhattanDistance(explorationState.playerMapPos, { x: newX, z: newZ }) !== 1) {
+            const nextExplorationState: ExplorationState = {
+                ...explorationState,
+                tacticalMessage: 'Accion bloqueada: solo puedes moverte 1 casillero por paso.',
+            };
+            set({
+                explorationState: nextExplorationState,
+                tacticalUiState: buildTacticalUiState(nextExplorationState, get().inputMode, 'Accion bloqueada: solo puedes moverte 1 casillero por paso.'),
+            });
             return;
         }
 
@@ -423,6 +654,7 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
 
             let nextEnemy = { ...enemy };
 
+            // Effect resolution order: poison -> stun -> decoy -> chase/investigate/patrol.
             if (nextEnemy.poisonTurns > 0) {
                 nextEnemy.poisonTurns -= 1;
                 nextEnemy.hp = Math.max(0, nextEnemy.hp - 6);
@@ -433,53 +665,97 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
 
             if (nextEnemy.stunnedTurns > 0) {
                 nextEnemy.stunnedTurns -= 1;
+                nextEnemy.aiState = EnemyAiState.STUNNED;
                 blockedPositions.add(`${nextEnemy.x},${nextEnemy.z}`);
                 return nextEnemy;
             }
 
-            const activeDecoy = explorationState.traps.find(trap => trap.isArmed && trap.type === TrapType.DECOY);
-            const target = activeDecoy
-                ? { x: activeDecoy.position.x, z: activeDecoy.position.z }
-                : playerMapPos;
+            const activeDecoy = explorationState.traps.find(
+                trap =>
+                    trap.isArmed &&
+                    trap.type === TrapType.DECOY &&
+                    (trap.duration ?? 0) > 0
+            );
 
-            if (manhattanDistance({ x: nextEnemy.x, z: nextEnemy.z }, target) <= nextEnemy.alertRange) {
-                for (let step = 0; step < nextEnemy.movement; step++) {
-                    const nextStep = findClosestStepTowards(
+            const distanceToPlayer = manhattanDistance({ x: nextEnemy.x, z: nextEnemy.z }, playerMapPos);
+            const canSeePlayer = distanceToPlayer <= nextEnemy.alertRange;
+
+            let target: TacticalPosition | null = null;
+
+            if (activeDecoy && manhattanDistance({ x: nextEnemy.x, z: nextEnemy.z }, { x: activeDecoy.position.x, z: activeDecoy.position.z }) <= nextEnemy.alertRange) {
+                nextEnemy.aiState = EnemyAiState.DECOYED;
+                nextEnemy.decoyTurns = Math.max(nextEnemy.decoyTurns, 1);
+                target = { x: activeDecoy.position.x, z: activeDecoy.position.z };
+            } else if (canSeePlayer) {
+                nextEnemy.aiState = EnemyAiState.CHASE;
+                nextEnemy.lastKnownPlayerPos = { ...playerMapPos };
+                nextEnemy.investigateStepsLeft = 2;
+                nextEnemy.decoyTurns = 0;
+                target = playerMapPos;
+            } else if (nextEnemy.lastKnownPlayerPos && nextEnemy.investigateStepsLeft > 0) {
+                nextEnemy.aiState = EnemyAiState.INVESTIGATE;
+                target = { ...nextEnemy.lastKnownPlayerPos };
+            } else {
+                nextEnemy.aiState = EnemyAiState.PATROL;
+                nextEnemy.lastKnownPlayerPos = null;
+                nextEnemy.investigateStepsLeft = 0;
+                target = null;
+            }
+
+            for (let step = 0; step < nextEnemy.movement; step++) {
+                const dynamicBlocked = new Set([...blockedPositions, `${playerMapPos.x},${playerMapPos.z}`]);
+                let nextStep = { x: nextEnemy.x, z: nextEnemy.z };
+
+                if (nextEnemy.aiState === EnemyAiState.PATROL) {
+                    nextStep = buildPatrolStep(explorationState.map, nextEnemy, dynamicBlocked, explorationState.turnStep + 1, playerMapPos);
+                } else if (target) {
+                    nextStep = findClosestStepTowards(
                         explorationState.map,
                         { x: nextEnemy.x, z: nextEnemy.z },
                         target,
-                        new Set([...blockedPositions, `${playerMapPos.x},${playerMapPos.z}`])
+                        dynamicBlocked
                     );
+                }
 
-                    if (nextStep.x === nextEnemy.x && nextStep.z === nextEnemy.z) {
-                        break;
+                if (nextStep.x === nextEnemy.x && nextStep.z === nextEnemy.z) {
+                    break;
+                }
+
+                nextEnemy.x = nextStep.x;
+                nextEnemy.z = nextStep.z;
+
+                const trap = explorationState.traps.find(item => item.isArmed && item.position.x === nextEnemy.x && item.position.z === nextEnemy.z);
+                if (trap) {
+                    const trapResult = get().triggerTrap(trap.id, nextEnemy.id);
+                    triggeredMessage = trapResult.message;
+                    const refreshedEnemy = get().explorationState.zoneEnemies.find(item => item.id === nextEnemy.id);
+                    if (refreshedEnemy) {
+                        nextEnemy = { ...refreshedEnemy };
                     }
+                }
 
-                    nextEnemy.x = nextStep.x;
-                    nextEnemy.z = nextStep.z;
+                if (nextEnemy.isDefeated) {
+                    break;
+                }
 
-                    const trap = explorationState.traps.find(item => item.isArmed && item.position.x === nextEnemy.x && item.position.z === nextEnemy.z);
-                    if (trap) {
-                        const trapResult = get().triggerTrap(trap.id, nextEnemy.id);
-                        triggeredMessage = trapResult.message;
-                        const refreshedEnemy = get().explorationState.zoneEnemies.find(item => item.id === nextEnemy.id);
-                        if (refreshedEnemy) {
-                            nextEnemy = { ...refreshedEnemy };
-                        }
-                    }
+                if (nextEnemy.x === playerMapPos.x && nextEnemy.z === playerMapPos.z) {
+                    currentEnemyId = nextEnemy.id;
+                    break;
+                }
+            }
 
-                    if (nextEnemy.isDefeated) {
-                        break;
-                    }
-
-                    if (nextEnemy.x === playerMapPos.x && nextEnemy.z === playerMapPos.z) {
-                        currentEnemyId = nextEnemy.id;
-                        break;
-                    }
+            if (nextEnemy.aiState === EnemyAiState.INVESTIGATE) {
+                nextEnemy.investigateStepsLeft = Math.max(0, nextEnemy.investigateStepsLeft - 1);
+                if (nextEnemy.investigateStepsLeft <= 0) {
+                    nextEnemy.aiState = EnemyAiState.PATROL;
+                    nextEnemy.lastKnownPlayerPos = null;
                 }
             }
 
             if (!nextEnemy.isDefeated) {
+                if (nextEnemy.aiState !== EnemyAiState.DECOYED) {
+                    nextEnemy.decoyTurns = 0;
+                }
                 blockedPositions.add(`${nextEnemy.x},${nextEnemy.z}`);
             }
 
@@ -488,20 +764,25 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
 
         const aliveEnemies = enemies.filter(enemy => !enemy.isDefeated);
         const zoneCompleted = aliveEnemies.length === 0;
+        const reactionSummary = aliveEnemies.length > 0
+            ? `Reaccion enemiga: ${aliveEnemies.length} hostiles activos.`
+            : 'Sin hostiles en la zona.';
 
+        const nextExplorationState: ExplorationState = {
+            ...get().explorationState,
+            zoneEnemies: enemies,
+            playerMapPos,
+            currentEnemyId,
+            turnStep: explorationState.turnStep + 1,
+            zoneCompleted,
+            traps: decayTrapDurations(get().explorationState.traps),
+            tacticalMessage: zoneCompleted
+                ? 'La zona quedo limpia. Puedes volver al mapa hex.'
+                : triggeredMessage ?? reactionSummary,
+        };
         set({
-            explorationState: {
-                ...get().explorationState,
-                zoneEnemies: enemies,
-                playerMapPos,
-                currentEnemyId,
-                turnStep: explorationState.turnStep + 1,
-                zoneCompleted,
-                traps: decayTrapDurations(get().explorationState.traps),
-                tacticalMessage: zoneCompleted
-                    ? 'La zona quedo limpia. Puedes volver al mapa hex.'
-                    : triggeredMessage ?? 'Muevete, prepara emboscadas y no dejes que te rodeen.',
-            },
+            explorationState: nextExplorationState,
+            tacticalUiState: buildTacticalUiState(nextExplorationState, get().inputMode),
         });
 
         if (currentEnemyId) {
@@ -522,11 +803,17 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
         }
 
         const player = party[playerIndex];
+        const nextExplorationState: ExplorationState = {
+            ...explorationState,
+            currentEnemyId: enemyId,
+            tacticalMessage: `Contacto con ${enemy.name}.`,
+        };
         set({
-            explorationState: {
-                ...explorationState,
-                currentEnemyId: enemyId,
-                tacticalMessage: `Contacto con ${enemy.name}.`,
+            explorationState: nextExplorationState,
+            tacticalUiState: buildTacticalUiState(nextExplorationState, get().inputMode),
+            encounterContext: {
+                ...(get().encounterContext ?? createEncounterContext(GameState.OVERWORLD, explorationState.returnOverworldPos, null)),
+                enemyId,
             },
             versusState: {
                 isActive: true,
@@ -621,11 +908,14 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
         }, 900);
     },
 
-    endVersusBattle: (victory) => {
+    resolveEncounterOutcome: (outcome) => {
         const state = get();
-        const { explorationState, versusState, party } = state;
-        const currentEnemyId = explorationState.currentEnemyId;
+        const { explorationState, versusState, party, encounterContext } = state;
+        const currentEnemyId = outcome.enemyId ?? encounterContext?.enemyId ?? explorationState.currentEnemyId;
         const defeatedEnemy = explorationState.zoneEnemies.find(enemy => enemy.id === currentEnemyId);
+        const resetVersusState = createInitialVersusState();
+        const returnPolicy = encounterContext?.returnPolicy ?? 'RETURN_TO_OVERWORLD';
+        const lossPolicy = encounterContext?.lossPolicy ?? 'DROP_LOOT';
 
         const updatedParty = party.map((member, index) =>
             index === versusState.playerIndex
@@ -633,43 +923,36 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
                     ...member,
                     stats: {
                         ...member.stats,
-                        hp: victory ? versusState.playerCurrentHp : 0,
+                        hp: outcome.type === 'VICTORY' ? versusState.playerCurrentHp : 0,
                     },
                 }
                 : member
         );
 
-        if (victory && currentEnemyId) {
+        if (outcome.type === 'VICTORY' && currentEnemyId) {
             const enemies = explorationState.zoneEnemies.map(enemy =>
                 enemy.id === currentEnemyId
                     ? { ...enemy, isDefeated: true, hp: 0, x: -99, z: -99 }
                     : enemy
             );
             const zoneCompleted = enemies.every(enemy => enemy.isDefeated);
+            const nextExplorationState: ExplorationState = {
+                ...explorationState,
+                zoneEnemies: enemies,
+                currentEnemyId: null,
+                zoneCompleted,
+                wasZoneCompletedBeforeLevelUp: zoneCompleted,
+                tacticalMessage: zoneCompleted
+                    ? 'Has limpiado la zona. Regresa al overworld cuando quieras.'
+                    : `${defeatedEnemy?.name || 'El enemigo'} ya no esta en el mapa.`,
+            };
 
             set({
                 party: updatedParty,
-                explorationState: {
-                    ...explorationState,
-                    zoneEnemies: enemies,
-                    currentEnemyId: null,
-                    zoneCompleted,
-                    wasZoneCompletedBeforeLevelUp: zoneCompleted,
-                    tacticalMessage: zoneCompleted
-                        ? 'Has limpiado la zona. Regresa al overworld cuando quieras.'
-                        : `${defeatedEnemy?.name || 'El enemigo'} ya no esta en el mapa.`,
-                },
-                versusState: {
-                    isActive: false,
-                    playerIndex: 0,
-                    playerCurrentHp: 0,
-                    playerMaxHp: 0,
-                    enemyCurrentHp: 0,
-                    enemyMaxHp: 0,
-                    turn: 'PLAYER',
-                    battleLog: [],
-                    isPlayerTurn: true,
-                },
+                explorationState: nextExplorationState,
+                tacticalUiState: buildTacticalUiState(nextExplorationState, get().inputMode),
+                encounterContext: encounterContext ? { ...encounterContext, enemyId: null } : null,
+                versusState: resetVersusState,
                 gameState: GameState.EXPLORATION_3D,
             });
 
@@ -680,63 +963,105 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             return;
         }
 
-        const penalty = applyLootPenalty(state);
-        set({
-            ...penalty,
-            party: penalty.party,
-            explorationState: {
+        if (outcome.type === 'DEFEAT') {
+            const nextExplorationState: ExplorationState = {
                 ...explorationState,
                 currentEnemyId: null,
                 tacticalMessage: 'Derrota. Regresas al mapa hex sin loot.',
-            },
-            versusState: {
-                isActive: false,
-                playerIndex: 0,
-                playerCurrentHp: 0,
-                playerMaxHp: 0,
-                enemyCurrentHp: 0,
-                enemyMaxHp: 0,
-                turn: 'PLAYER',
-                battleLog: [],
-                isPlayerTurn: true,
-            },
-            gameState: GameState.OVERWORLD,
-        });
+            };
+            const shouldReturnToTrap = returnPolicy === 'RETURN_TO_TRAP_HUNT';
+            const nextGameState = shouldReturnToTrap ? GameState.EXPLORATION_3D : GameState.OVERWORLD;
 
-        get().syncOverworldEnemies();
-        get().addLog('Has sido derrotado y pierdes el loot que llevabas encima.', 'narrative');
+            if (lossPolicy === 'DROP_LOOT') {
+                const penalty = applyLootPenalty(state);
+                set({
+                    ...penalty,
+                    party: penalty.party,
+                    explorationState: nextExplorationState,
+                    tacticalUiState: buildTacticalUiState(nextExplorationState, get().inputMode),
+                    encounterContext: null,
+                    versusState: resetVersusState,
+                    gameState: nextGameState,
+                });
+            } else if (lossPolicy === 'LIGHT_PENALTY') {
+                set({
+                    party: updatedParty.map(member => ({
+                        ...member,
+                        stats: {
+                            ...member.stats,
+                            hp: Math.max(1, member.stats.hp),
+                        },
+                    })),
+                    gold: Math.max(0, state.gold - 25),
+                    fatigue: Math.min(100, state.fatigue + 6),
+                    explorationState: nextExplorationState,
+                    tacticalUiState: buildTacticalUiState(nextExplorationState, get().inputMode),
+                    encounterContext: null,
+                    versusState: resetVersusState,
+                    gameState: nextGameState,
+                });
+            } else {
+                set({
+                    party: updatedParty,
+                    explorationState: nextExplorationState,
+                    tacticalUiState: buildTacticalUiState(nextExplorationState, get().inputMode),
+                    encounterContext: null,
+                    versusState: resetVersusState,
+                    gameState: nextGameState,
+                });
+            }
+
+            if (!shouldReturnToTrap) {
+                get().syncOverworldEnemies();
+            }
+            get().addLog('Has sido derrotado y pierdes el loot que llevabas encima.', 'narrative');
+            return;
+        }
+
+        const nextExplorationState: ExplorationState = {
+            ...explorationState,
+            currentEnemyId: null,
+            tacticalMessage: 'Huyes y retomas la caceria con el enemigo aun activo.',
+        };
+        set({
+            fatigue: Math.min(100, state.fatigue + 2),
+            explorationState: nextExplorationState,
+            tacticalUiState: buildTacticalUiState(nextExplorationState, get().inputMode),
+            encounterContext: encounterContext ? { ...encounterContext, enemyId: null } : null,
+            versusState: resetVersusState,
+            gameState: GameState.EXPLORATION_3D,
+        });
+    },
+
+    endVersusBattle: (victory) => {
+        get().resolveEncounterOutcome({ type: victory ? 'VICTORY' : 'DEFEAT' });
     },
 
     fleeFromBattle: () => {
-        const { versusState } = get();
-        set({
-            versusState: {
-                ...versusState,
-                isActive: false,
-                battleLog: [],
-            },
-            gameState: GameState.EXPLORATION_3D,
-        });
+        get().resolveEncounterOutcome({ type: 'FLEE' });
     },
 
     nextCharacterTurn: () => {},
 
     exitTrapZone: () => {
-        const { explorationState } = get();
+        const { explorationState, encounterContext } = get();
         if (explorationState.zoneCompleted) {
             get().clearCurrentEncounter();
         }
 
+        const nextExplorationState: ExplorationState = {
+            ...explorationState,
+            selectedTrapType: null,
+            placementMode: false,
+            tacticalPaused: false,
+            highlightedTiles: [],
+            tacticalMessage: null,
+        };
         set({
             gameState: GameState.OVERWORLD,
-            explorationState: {
-                ...explorationState,
-                selectedTrapType: null,
-                placementMode: false,
-                tacticalPaused: false,
-                highlightedTiles: [],
-                tacticalMessage: null,
-            },
+            explorationState: nextExplorationState,
+            tacticalUiState: buildTacticalUiState(nextExplorationState, get().inputMode),
+            encounterContext: encounterContext ? { ...encounterContext, enemyId: null } : null,
         });
         get().syncOverworldEnemies();
     },
