@@ -212,8 +212,6 @@ export const Exploration3DScene: React.FC = () => {
     }, [gameState, explorationState.map.length, initZone, playerPosHex]);
 
     const player = party[0];
-    const trapCount = explorationState.traps.length;
-    const aliveEnemies = explorationState.zoneEnemies.filter(enemy => !enemy.isDefeated);
     const selectedTrap = explorationState.selectedTrapType;
 
     const attemptMove = useCallback((dx: number, dz: number) => {
@@ -226,15 +224,8 @@ export const Exploration3DScene: React.FC = () => {
             return;
         }
 
-        const distance = Math.abs(explorationState.playerMapPos.x - x) + Math.abs(explorationState.playerMapPos.z - z);
-        if (distance === 1) {
-            dispatchTacticalAction({
-                type: 'MoveStep',
-                dx: x - explorationState.playerMapPos.x,
-                dz: z - explorationState.playerMapPos.z,
-            });
-        }
-    }, [selectedTrap, dispatchTacticalAction, explorationState.playerMapPos]);
+        dispatchTacticalAction({ type: 'MoveToTile', x, z });
+    }, [selectedTrap, dispatchTacticalAction]);
 
     useEffect(() => {
         const onKeyDown = (event: KeyboardEvent) => {
@@ -352,11 +343,11 @@ export const Exploration3DScene: React.FC = () => {
                             </div>
                             <div className="rounded-2xl bg-slate-900/90 p-2">
                                 <div className="text-[10px] uppercase text-white/40 font-bold">Enemigos</div>
-                                <div className="text-white font-black">{aliveEnemies.length}</div>
+                                <div className="text-white font-black">{tacticalUiState.enemyCount}</div>
                             </div>
                             <div className="rounded-2xl bg-slate-900/90 p-2">
                                 <div className="text-[10px] uppercase text-white/40 font-bold">Turno</div>
-                                <div className="text-white font-black">{explorationState.turnStep}</div>
+                                <div className="text-white font-black">{tacticalUiState.turnStep}</div>
                             </div>
                         </div>
                     </div>
@@ -374,11 +365,13 @@ export const Exploration3DScene: React.FC = () => {
                             <div>
                                 <div className="text-[10px] uppercase tracking-[0.2em] text-white/45 font-bold">Trap Deck</div>
                                 <div className="text-white font-black text-sm sm:text-base">
-                                    {trapCount}/{explorationState.maxTraps} colocadas
+                                    {tacticalUiState.trapCount}/{tacticalUiState.maxTraps} colocadas
                                 </div>
                             </div>
                             <div className="text-right text-xs text-white/60">
-                                {selectedTrap ? `${TRAP_DATA[selectedTrap].name} · alcance ${TRAP_DATA[selectedTrap].range}` : 'Elige una trampa'}
+                                {selectedTrap
+                                    ? `${TRAP_DATA[selectedTrap].name} · alcance ${tacticalUiState.selectedTrapRange ?? TRAP_DATA[selectedTrap].range}`
+                                    : 'Elige una trampa'}
                             </div>
                         </div>
 

@@ -126,6 +126,7 @@ export interface EncounterContext {
 
 export type TacticalAction =
     | { type: 'MoveStep'; dx: number; dz: number }
+    | { type: 'MoveToTile'; x: number; z: number }
     | { type: 'ToggleTacticalPause'; forced?: boolean }
     | { type: 'SelectTrap'; trapType: TrapType | null }
     | { type: 'PlaceTrap'; x: number; z: number; trapType?: TrapType }

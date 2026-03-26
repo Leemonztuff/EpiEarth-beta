@@ -321,6 +321,9 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             case 'MoveStep':
                 get().movePlayer(playerPos.x + action.dx, playerPos.z + action.dz);
                 break;
+            case 'MoveToTile':
+                get().movePlayer(action.x, action.z);
+                break;
             case 'ToggleTacticalPause':
                 get().togglePlacementPause(action.forced);
                 break;
