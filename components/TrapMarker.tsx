@@ -6,6 +6,7 @@ interface TrapMarkerProps {
     position: [number, number, number];
     trapType: string;
     isArmed: boolean;
+    forceVector?: { x: number; z: number };
 }
 
 const TRAP_TEXTURES: Record<string, string> = {
@@ -23,7 +24,7 @@ const TRAP_TEXTURES: Record<string, string> = {
 
 const FALLBACK_TEXTURE = '/assets/minecraft/bricks.png';
 
-export const TrapMarker: React.FC<TrapMarkerProps> = ({ position, trapType, isArmed }) => {
+export const TrapMarker: React.FC<TrapMarkerProps> = ({ position, trapType, isArmed, forceVector }) => {
     const groupRef = useRef<THREE.Group>(null);
     const haloRef = useRef<THREE.Mesh>(null);
     const textureUrl = TRAP_TEXTURES[trapType] || FALLBACK_TEXTURE;
@@ -64,6 +65,18 @@ export const TrapMarker: React.FC<TrapMarkerProps> = ({ position, trapType, isAr
                 <ringGeometry args={[0.45, 0.62, 24]} />
                 <meshBasicMaterial color="#fbbf24" transparent opacity={0.25} side={THREE.DoubleSide} />
             </mesh>
+            {forceVector && (forceVector.x !== 0 || forceVector.z !== 0) && (
+                <group position={[0, 0.03, 0]} rotation={[0, Math.atan2(forceVector.x, forceVector.z), 0]}>
+                    <mesh position={[0, 0, 0.4]} rotation={[-Math.PI / 2, 0, 0]}>
+                        <coneGeometry args={[0.15, 0.25, 3]} />
+                        <meshBasicMaterial color="#ef4444" />
+                    </mesh>
+                    <mesh position={[0, 0, 0.2]} rotation={[-Math.PI / 2, 0, 0]}>
+                        <planeGeometry args={[0.08, 0.4]} />
+                        <meshBasicMaterial color="#ef4444" />
+                    </mesh>
+                </group>
+            )}
         </group>
     );
 };

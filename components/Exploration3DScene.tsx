@@ -59,13 +59,64 @@ const TrapPlacementHighlight: React.FC<{ position: [number, number, number]; act
     );
 };
 
-const TrapAimGhost: React.FC<{ position: [number, number, number] | null }> = ({ position }) => {
+const TrapAimGhost: React.FC<{
+    position: [number, number, number] | null;
+    trapType?: TrapType | null;
+    orientation?: TrapOrientation;
+}> = ({ position, trapType, orientation }) => {
     if (!position) return null;
+
+    let rangeMeshes = null;
+    let arrowMesh = null;
+
+    if (trapType && orientation) {
+        const data = TRAP_DATA[trapType];
+        
+        if (data && data.range > 0) {
+            rangeMeshes = (
+                <mesh position={[0, -0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+                    <planeGeometry args={[1 + data.range * 2, 1 + data.range * 2]} />
+                    <meshBasicMaterial color="#ef4444" transparent opacity={0.12} />
+                </mesh>
+            );
+        }
+
+        const force = data?.forceVector;
+        if (force && (force.x !== 0 || force.z !== 0)) {
+            let fx = force.x, fz = force.z;
+            if (orientation === 'E') { fx = -force.z; fz = force.x; }
+            else if (orientation === 'S') { fx = -force.x; fz = -force.z; }
+            else if (orientation === 'W') { fx = force.z; fz = -force.x; }
+            
+            const angle = Math.atan2(fx, fz);
+            arrowMesh = (
+                <group position={[0, 0.05, 0]} rotation={[0, angle, 0]}>
+                    <mesh position={[0, 0, 0.4]} rotation={[-Math.PI / 2, 0, 0]}>
+                        <coneGeometry args={[0.2, 0.35, 3]} />
+                        <meshBasicMaterial color="#ef4444" />
+                    </mesh>
+                    <mesh position={[0, 0, 0.15]} rotation={[-Math.PI / 2, 0, 0]}>
+                        <planeGeometry args={[0.1, 0.5]} />
+                        <meshBasicMaterial color="#ef4444" />
+                    </mesh>
+                </group>
+            );
+        }
+    }
+
     return (
-        <mesh position={[position[0], 0.07, position[2]]} rotation={[-Math.PI / 2, 0, 0]}>
-            <planeGeometry args={[0.78, 0.78]} />
-            <meshBasicMaterial color="#22d3ee" transparent opacity={0.45} />
-        </mesh>
+        <group position={[position[0], 0.07, position[2]]}>
+            <mesh rotation={[-Math.PI / 2, 0, 0]}>
+                <planeGeometry args={[0.86, 0.86]} />
+                <meshBasicMaterial color="#22c55e" transparent opacity={0.6} />
+            </mesh>
+            <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+                <ringGeometry args={[0.4, 0.44, 4]} />
+                <meshBasicMaterial color="#00ff66" />
+            </mesh>
+            {rangeMeshes}
+            {arrowMesh}
+        </group>
     );
 };
 
@@ -159,11 +210,12 @@ const TacticalBoard: React.FC<{
     trapAimTarget: { x: number; z: number } | null;
     selectedTrapRange: number | null;
     selectedTrapType: TrapType | null;
+    trapOrientation: TrapOrientation;
     showTargetingOverlays: boolean;
     showPlacementGrid: boolean;
     onTilePress: (x: number, z: number) => void;
     playerSpriteUrl?: string;
-}> = ({ map, playerPos, playerRenderPos, enemies, traps, environmentTraps, highlightedTiles, trapAimTarget, selectedTrapRange, selectedTrapType, showTargetingOverlays, showPlacementGrid, onTilePress, playerSpriteUrl }) => {
+}> = ({ map, playerPos, playerRenderPos, enemies, traps, environmentTraps, highlightedTiles, trapAimTarget, selectedTrapRange, selectedTrapType, trapOrientation, showTargetingOverlays, showPlacementGrid, onTilePress, playerSpriteUrl }) => {
     const textureEntries = useLoader(THREE.TextureLoader, Object.values(TILE_TEXTURE_URLS));
     const textures = useMemo<LoadedTextureMap>(() => {
         const next: LoadedTextureMap = {};
@@ -212,10 +264,14 @@ const TacticalBoard: React.FC<{
                                     <meshStandardMaterial map={texture} />
                                 </mesh>
                                 <TrapPlacementHighlight position={pos} active={isHighlight} />
-                                {showPlacementGrid && isHighlight && (
+                                {showPlacementGrid && cell.zone === 'ROOM' && (
                                     <mesh position={[pos[0], Math.max(0.1, cell.height + 0.02), pos[2]]} rotation={[-Math.PI / 2, 0, 0]}>
-                                        <planeGeometry args={[0.84, 0.84]} />
-                                        <meshBasicMaterial color={overlayColor} transparent opacity={overlayOpacity} />
+                                        <planeGeometry args={[0.96, 0.96]} />
+                                        <meshBasicMaterial color={isSurfaceValid ? '#22c55e' : '#ef4444'} transparent opacity={isSurfaceValid ? 0.15 : 0.25} />
+                                        <mesh position={[0, 0, 0]}>
+                                            <ringGeometry args={[0.46, 0.48, 4]} />
+                                            <meshBasicMaterial color={isSurfaceValid ? '#10b981' : '#f43f5e'} transparent opacity={0.4} />
+                                        </mesh>
                                     </mesh>
                                 )}
                             </group>
@@ -240,13 +296,17 @@ const TacticalBoard: React.FC<{
                                     <meshStandardMaterial color="#38bdf8" transparent opacity={0.7} />
                                 </mesh>
                             )}
-                            <TrapPlacementHighlight position={pos} active={showPlacementGrid && isHighlight} />
-                            {showPlacementGrid && (
-                                <mesh position={[pos[0], 0.01, pos[2]]} rotation={[-Math.PI / 2, 0, 0]}>
+                            {showPlacementGrid && cell.zone === 'ROOM' && (
+                                <mesh position={[pos[0], 0.015, pos[2]]} rotation={[-Math.PI / 2, 0, 0]}>
                                     <planeGeometry args={[0.96, 0.96]} />
-                                    <meshBasicMaterial color={isHighlight ? overlayColor : '#16a34a'} transparent opacity={isHighlight ? overlayOpacity : 0.06} />
+                                    <meshBasicMaterial color={isSurfaceValid ? '#22c55e' : '#ef4444'} transparent opacity={isSurfaceValid ? 0.15 : 0.25} />
+                                    <mesh position={[0, 0, 0]}>
+                                        <ringGeometry args={[0.46, 0.48, 4]} />
+                                        <meshBasicMaterial color={isSurfaceValid ? '#10b981' : '#f43f5e'} transparent opacity={0.4} />
+                                    </mesh>
                                 </mesh>
                             )}
+                            <TrapPlacementHighlight position={pos} active={showPlacementGrid && isHighlight} />
                         </group>
                     );
                 })
@@ -266,7 +326,7 @@ const TacticalBoard: React.FC<{
                 )
             )}
             {traps.map(trap => (
-                <TrapMarker key={trap.id} position={[getWorldPosition(trap.x, trap.z)[0], 0.02, getWorldPosition(trap.x, trap.z)[2]]} trapType={trap.type} isArmed={trap.isArmed} />
+                <TrapMarker key={trap.id} position={[getWorldPosition(trap.x, trap.z)[0], 0.02, getWorldPosition(trap.x, trap.z)[2]]} trapType={trap.type} isArmed={trap.isArmed} forceVector={trap.forceVector} />
             ))}
             {environmentTraps.map(env => (
                 <mesh key={env.id} position={[getWorldPosition(env.x, env.z)[0], 0.05, getWorldPosition(env.x, env.z)[2]]} rotation={[-Math.PI / 2, 0, 0]}>
@@ -280,8 +340,8 @@ const TacticalBoard: React.FC<{
                     <meshBasicMaterial color="#fbbf24" transparent opacity={0.22} />
                 </mesh>
             ) : null}
-            {showTargetingOverlays && <TrapAimGhost position={trapAimTarget ? getWorldPositionFromPos(trapAimTarget) : null} />}
-            <PlacementGridOverlay mapSize={map.length || TACTICAL_MAP_SIZE} active={showPlacementGrid} />
+            {showTargetingOverlays && <TrapAimGhost position={trapAimTarget ? getWorldPositionFromPos(trapAimTarget) : null} trapType={selectedTrapType} orientation={trapOrientation} />}
+            {/* <PlacementGridOverlay mapSize={map.length || TACTICAL_MAP_SIZE} active={showPlacementGrid} /> */}
             <SpriteBillboard position={getWorldPositionFromPos(playerRenderPos)} spriteUrl={playerSpriteUrl} scale={[1.2, 1.8, 1]} />
         </group>
     );
@@ -562,6 +622,7 @@ export const Exploration3DScene: React.FC = () => {
                         z: trap.position.z,
                         type: trap.type,
                         isArmed: trap.isArmed,
+                        forceVector: trap.forceVector,
                     }))}
                     environmentTraps={explorationState.environmentTraps.map(env => ({
                         id: env.id,
@@ -573,6 +634,7 @@ export const Exploration3DScene: React.FC = () => {
                     trapAimTarget={explorationState.trapAimTarget}
                     selectedTrapRange={selectedTrap ? (tacticalUiState.selectedTrapRange ?? TRAP_DATA[selectedTrap].range) : null}
                     selectedTrapType={selectedTrap}
+                    trapOrientation={explorationState.trapOrientation}
                     showTargetingOverlays={showTargetingOverlays}
                     showPlacementGrid={showPlacementGrid}
                     onTilePress={handleTilePress}
