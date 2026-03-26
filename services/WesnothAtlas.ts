@@ -89,17 +89,30 @@ export class WesnothAtlas {
         console.log(`[WesnothAtlas] Loaded atlas ${index} with ${atlasData.frames.length} sprites`);
     }
 
+    private resolveUrl(src: string): string {
+        if (/^(https?:|data:|blob:)/i.test(src)) {
+            return src;
+        }
+
+        const origin =
+            (typeof window !== 'undefined' && window.location?.origin)
+                ? window.location.origin
+                : 'http://localhost';
+
+        return new URL(src, origin).toString();
+    }
+
     private loadImage(src: string): Promise<HTMLImageElement> {
         return new Promise((resolve, reject) => {
             const img = new Image();
             img.onload = () => resolve(img);
             img.onerror = () => reject(new Error(`Failed to load image: ${src}`));
-            img.src = src;
+            img.src = this.resolveUrl(src);
         });
     }
 
     private loadJson<T>(src: string): Promise<T> {
-        return fetch(src)
+        return fetch(this.resolveUrl(src))
             .then(res => {
                 if (!res.ok) throw new Error(`Failed to fetch: ${src}`);
                 return res.json();

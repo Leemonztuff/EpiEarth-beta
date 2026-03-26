@@ -1,19 +1,20 @@
 // @ts-nocheck
-import { describe, it, expect, beforeAll } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { hexTileRenderer } from '../../services/HexTileRenderer';
 import { wesnothAtlas } from '../../services/WesnothAtlas';
 import { TerrainType } from '../../types';
-
-beforeAll(async () => {
-    await wesnothAtlas.load();
-});
 
 describe('HexTileRenderer', () => {
     beforeEach(() => {
         // silence warnings during tests except when explicitly checking
         vi.spyOn(console, 'warn').mockImplementation(() => {});
         vi.spyOn(console, 'debug').mockImplementation(() => {});
+        vi.spyOn(wesnothAtlas, 'hasSprite').mockReturnValue(true);
         hexTileRenderer.clear();
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
     });
 
     it('returns a valid base sprite for each terrain type', () => {
