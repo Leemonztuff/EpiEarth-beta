@@ -188,12 +188,10 @@ export const Exploration3DScene: React.FC = () => {
     const fatigue = useGameStore(s => s.fatigue);
     const supplies = useGameStore(s => s.supplies);
     const explorationState = useGameStore(s => s.explorationState);
+    const tacticalUiState = useGameStore(s => s.tacticalUiState);
     const initZone = useGameStore(s => s.initZone);
-    const movePlayer = useGameStore(s => s.movePlayer);
-    const placeTrap = useGameStore(s => s.placeTrap);
-    const selectTrapType = useGameStore(s => s.selectTrapType);
-    const togglePlacementPause = useGameStore(s => s.togglePlacementPause);
-    const exitTrapZone = useGameStore(s => s.exitTrapZone);
+    const dispatchTacticalAction = useGameStore(s => s.dispatchTacticalAction);
+    const setInputMode = useGameStore(s => s.setInputMode);
 
     const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
 
@@ -202,6 +200,10 @@ export const Exploration3DScene: React.FC = () => {
         window.addEventListener('resize', onResize);
         return () => window.removeEventListener('resize', onResize);
     }, []);
+
+    useEffect(() => {
+        setInputMode(isMobile ? 'mobile' : 'desktop');
+    }, [isMobile, setInputMode]);
 
     useEffect(() => {
         if (gameState === GameState.EXPLORATION_3D && explorationState.map.length === 0) {
@@ -215,22 +217,24 @@ export const Exploration3DScene: React.FC = () => {
     const selectedTrap = explorationState.selectedTrapType;
 
     const attemptMove = useCallback((dx: number, dz: number) => {
-        const nextX = explorationState.playerMapPos.x + dx;
-        const nextZ = explorationState.playerMapPos.z + dz;
-        movePlayer(nextX, nextZ);
-    }, [explorationState.playerMapPos, movePlayer]);
+        dispatchTacticalAction({ type: 'MoveStep', dx, dz });
+    }, [dispatchTacticalAction]);
 
     const handleTilePress = useCallback((x: number, z: number) => {
         if (selectedTrap) {
-            placeTrap(selectedTrap, x, z);
+            dispatchTacticalAction({ type: 'PlaceTrap', x, z, trapType: selectedTrap });
             return;
         }
 
         const distance = Math.abs(explorationState.playerMapPos.x - x) + Math.abs(explorationState.playerMapPos.z - z);
         if (distance === 1) {
-            movePlayer(x, z);
+            dispatchTacticalAction({
+                type: 'MoveStep',
+                dx: x - explorationState.playerMapPos.x,
+                dz: z - explorationState.playerMapPos.z,
+            });
         }
-    }, [selectedTrap, placeTrap, explorationState.playerMapPos, movePlayer]);
+    }, [selectedTrap, dispatchTacticalAction, explorationState.playerMapPos]);
 
     useEffect(() => {
         const onKeyDown = (event: KeyboardEvent) => {
@@ -252,13 +256,13 @@ export const Exploration3DScene: React.FC = () => {
                 attemptMove(1, 0);
             } else if (event.key.toLowerCase() === 'p') {
                 event.preventDefault();
-                togglePlacementPause();
+                dispatchTacticalAction({ type: 'ToggleTacticalPause' });
             }
         };
 
         window.addEventListener('keydown', onKeyDown);
         return () => window.removeEventListener('keydown', onKeyDown);
-    }, [attemptMove, gameState, togglePlacementPause]);
+    }, [attemptMove, gameState, dispatchTacticalAction]);
 
     if (gameState !== GameState.EXPLORATION_3D) {
         return null;
@@ -311,18 +315,21 @@ export const Exploration3DScene: React.FC = () => {
                         <div className="flex items-start justify-between gap-3">
                             <div>
                                 <div className="text-[10px] sm:text-xs uppercase tracking-[0.24em] text-amber-300/80">Trap Hunt</div>
-                                <h2 className="text-white font-black text-lg sm:text-2xl leading-none">{explorationState.zoneName}</h2>
-                                <p className="text-white/65 text-xs sm:text-sm mt-1 max-w-xl">{explorationState.tacticalMessage || 'Mueve un casillero, obliga a perseguir y castiga con trampas.'}</p>
+                                <h2 className="text-white font-black text-lg sm:text-2xl leading-none">{tacticalUiState.zoneName}</h2>
+                                <p className="text-white/65 text-xs sm:text-sm mt-1 max-w-xl">{tacticalUiState.message || 'Mueve un casillero, obliga a perseguir y castiga con trampas.'}</p>
+                                {tacticalUiState.blockReason && (
+                                    <p className="text-amber-300 text-[11px] sm:text-xs mt-1">{tacticalUiState.blockReason}</p>
+                                )}
                             </div>
                             <div className="flex gap-2">
                                 <button
-                                    onClick={() => togglePlacementPause()}
+                                    onClick={() => dispatchTacticalAction({ type: 'ToggleTacticalPause' })}
                                     className={`px-3 py-2 rounded-2xl text-xs sm:text-sm font-black ${explorationState.tacticalPaused ? 'bg-amber-400 text-black' : 'bg-slate-800 text-white'}`}
                                 >
                                     {explorationState.tacticalPaused ? 'Reanudar' : 'Pausa'}
                                 </button>
                                 <button
-                                    onClick={exitTrapZone}
+                                    onClick={() => dispatchTacticalAction({ type: 'ExitTrapZone' })}
                                     className="px-3 py-2 rounded-2xl bg-blue-600 text-white text-xs sm:text-sm font-black"
                                 >
                                     Volver al Hex
@@ -379,7 +386,7 @@ export const Exploration3DScene: React.FC = () => {
                             {(Object.keys(TRAP_DATA) as TrapType[]).slice(0, 6).map(type => (
                                 <button
                                     key={type}
-                                    onClick={() => selectTrapType(selectedTrap === type ? null : type)}
+                                    onClick={() => dispatchTacticalAction({ type: 'SelectTrap', trapType: selectedTrap === type ? null : type })}
                                     className={`rounded-2xl px-2 py-3 text-left border transition ${
                                         selectedTrap === type
                                             ? 'bg-amber-400 text-black border-amber-300'
@@ -392,6 +399,9 @@ export const Exploration3DScene: React.FC = () => {
                                     </div>
                                 </button>
                             ))}
+                        </div>
+                        <div className="mt-2 text-[11px] text-white/55">
+                            {tacticalUiState.inputHints.join(' · ')}
                         </div>
                     </div>
                 </div>
