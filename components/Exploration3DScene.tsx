@@ -303,6 +303,7 @@ export const Exploration3DScene: React.FC = () => {
     const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
     const [isShortViewport, setIsShortViewport] = useState(() => window.innerHeight < 760);
     const [mobileTrapDrawerOpen, setMobileTrapDrawerOpen] = useState(false);
+    const [trapSetPanel, setTrapSetPanel] = useState<'TRAP_SET' | 'ENEMY_DATA' | 'MAP'>('TRAP_SET');
     const [trapConfirmTarget, setTrapConfirmTarget] = useState<{ x: number; z: number } | null>(null);
 
     useEffect(() => {
@@ -553,6 +554,7 @@ export const Exploration3DScene: React.FC = () => {
             </Canvas>
 
             <div className="absolute inset-0 pointer-events-none flex flex-col">
+                {!trapSetMode && (
                 <div className={`pointer-events-auto ${isMobile ? 'px-2 pt-2' : 'p-2 sm:p-3'}`}>
                     <div className={`mx-auto rounded-xl border border-cyan-300/25 bg-gradient-to-b from-slate-950/78 to-slate-900/56 shadow-[0_6px_20px_rgba(0,0,0,0.42)] backdrop-blur-md ${isMobile ? 'max-w-[96vw]' : 'max-w-[920px]'}`}>
                         <div className={`flex items-start justify-between gap-2 ${isMobile ? 'p-2' : 'p-2 sm:p-2.5'}`}>
@@ -606,6 +608,66 @@ export const Exploration3DScene: React.FC = () => {
                         )}
                     </div>
                 </div>
+                )}
+
+                {trapSetMode && (
+                    <div className={`pointer-events-auto ${isMobile ? 'px-2 pt-2' : 'p-2 sm:p-3'}`}>
+                        <div className={`mx-auto rounded-xl border border-cyan-300/25 bg-slate-950/82 shadow-[0_6px_20px_rgba(0,0,0,0.42)] backdrop-blur-md ${isMobile ? 'max-w-[96vw]' : 'max-w-[980px]'}`}>
+                            <div className="p-2 sm:p-3 flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                    <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-300/90 font-bold">Trap Set</div>
+                                    <h2 className="text-white font-black text-base sm:text-lg leading-none truncate tracking-wide">{tacticalUiState.zoneName}</h2>
+                                    <p className="text-cyan-100/75 text-[11px] mt-1 truncate">{statusMessage}</p>
+                                </div>
+                                <div className="flex items-center gap-1.5 sm:gap-2">
+                                    <button onClick={() => setTrapSetPanel('TRAP_SET')} className={`px-2.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-black border ${trapSetPanel === 'TRAP_SET' ? 'bg-amber-400 text-black border-amber-300' : 'bg-slate-800/90 text-white border-white/10'}`}>TRAP SET</button>
+                                    <button onClick={() => setTrapSetPanel('ENEMY_DATA')} className={`px-2.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-black border ${trapSetPanel === 'ENEMY_DATA' ? 'bg-amber-400 text-black border-amber-300' : 'bg-slate-800/90 text-white border-white/10'}`}>ENEMY DATA</button>
+                                    <button onClick={() => setTrapSetPanel('MAP')} className={`px-2.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-black border ${trapSetPanel === 'MAP' ? 'bg-amber-400 text-black border-amber-300' : 'bg-slate-800/90 text-white border-white/10'}`}>MAP</button>
+                                    <button onClick={() => dispatchTacticalAction({ type: 'ToggleTacticalPause' })} className="px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg text-[10px] sm:text-xs font-black bg-amber-400 text-black">Run</button>
+                                    <button onClick={() => dispatchTacticalAction({ type: 'ExitTrapZone' })} className="px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[10px] sm:text-xs font-black transition-colors">Salir</button>
+                                </div>
+                            </div>
+                            <div className="px-2 pb-2">
+                                {trapSetPanel === 'TRAP_SET' && (
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-1.5 text-[10px] sm:text-[11px]">
+                                        <div className="rounded-xl bg-slate-900/85 border border-white/10 p-2"><span className="text-white/50">TRAPS</span><div className="text-white font-black">{tacticalUiState.trapCount}/{tacticalUiState.maxTraps}</div></div>
+                                        <div className="rounded-xl bg-slate-900/85 border border-white/10 p-2"><span className="text-white/50">FACING</span><div className="text-white font-black">{facing}</div></div>
+                                        <div className="rounded-xl bg-slate-900/85 border border-white/10 p-2"><span className="text-white/50">Riesgo</span><div className="text-white font-black">{tacticalUiState.riskLabel || 'Moderado'}</div></div>
+                                        <div className="rounded-xl bg-slate-900/85 border border-white/10 p-2"><span className="text-white/50">Timeline</span><div className="text-white font-black">{tacticalUiState.timelineLabel || 'Dia 0'}</div></div>
+                                        <div className="rounded-xl bg-slate-900/85 border border-white/10 p-2"><span className="text-white/50">Sala</span><div className="text-white font-black">{explorationState.currentRoomId || '-'}</div></div>
+                                        <div className="rounded-xl bg-slate-900/85 border border-white/10 p-2"><span className="text-white/50">COMBO</span><div className="text-white font-black">x{(tacticalUiState.comboMultiplier ?? 1).toFixed(2)}</div></div>
+                                        <div className="rounded-xl bg-slate-900/85 border border-white/10 p-2"><span className="text-white/50">ARK</span><div className="text-white font-black">{tacticalUiState.trapCurrency ?? 0}</div></div>
+                                        <div className="rounded-xl bg-slate-900/85 border border-white/10 p-2"><span className="text-white/50">PASO</span><div className="text-white font-black">{tacticalUiState.turnStep}</div></div>
+                                    </div>
+                                )}
+                                {trapSetPanel === 'ENEMY_DATA' && (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-[180px] overflow-y-auto">
+                                        {explorationState.zoneEnemies.filter(enemy => !enemy.isDefeated).map(enemy => (
+                                            <div key={enemy.id} className="rounded-lg border border-white/10 bg-slate-900/80 p-2 text-[11px] text-white">
+                                                <div className="font-black">{enemy.name}</div>
+                                                <div>HP {enemy.hp}/{enemy.maxHp}</div>
+                                                <div>AI {enemy.aiState} | IQ {enemy.intelligenceLevel}</div>
+                                                <div className="text-cyan-200/90">Res F/W/C: {Math.round(enemy.resistances.floor * 100)} / {Math.round(enemy.resistances.wall * 100)} / {Math.round(enemy.resistances.ceiling * 100)}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                {trapSetPanel === 'MAP' && (
+                                    <div className="text-[11px] text-cyan-100/85">
+                                        <div className="mb-1 font-black text-white">Room Network</div>
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 max-h-[160px] overflow-y-auto">
+                                            {(explorationState.roomGraphRef ? Object.values(explorationState.roomGraphRef.rooms) : []).map(room => (
+                                                <div key={room.id} className={`rounded-md px-2 py-1 border ${room.id === explorationState.currentRoomId ? 'border-amber-300 bg-amber-400/25 text-amber-100' : 'border-white/10 bg-slate-900/70 text-white'}`}>
+                                                    {room.label}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 <div className="flex-1" />
 
@@ -660,6 +722,34 @@ export const Exploration3DScene: React.FC = () => {
                             </>
                         ) : (
                             <>
+                                {trapSetPanel !== 'TRAP_SET' ? (
+                                    <div className="text-[11px] text-cyan-100/85">
+                                        {trapSetPanel === 'ENEMY_DATA' ? (
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[220px] overflow-y-auto">
+                                                {explorationState.zoneEnemies.filter(enemy => !enemy.isDefeated).map(enemy => (
+                                                    <div key={enemy.id} className="rounded-lg border border-white/10 bg-slate-900/80 p-2 text-[11px] text-white">
+                                                        <div className="font-black">{enemy.name}</div>
+                                                        <div>HP {enemy.hp}/{enemy.maxHp} | AI {enemy.aiState}</div>
+                                                        <div>IQ {enemy.intelligenceLevel} | Alert {enemy.alertRange}</div>
+                                                        <div className="text-cyan-200/90">Res F/W/C: {Math.round(enemy.resistances.floor * 100)} / {Math.round(enemy.resistances.wall * 100)} / {Math.round(enemy.resistances.ceiling * 100)}</div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <div className="mb-1 font-black text-white">Room Network</div>
+                                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 max-h-[170px] overflow-y-auto">
+                                                    {(explorationState.roomGraphRef ? Object.values(explorationState.roomGraphRef.rooms) : []).map(room => (
+                                                        <div key={room.id} className={`rounded-md px-2 py-1 border ${room.id === explorationState.currentRoomId ? 'border-amber-300 bg-amber-400/25 text-amber-100' : 'border-white/10 bg-slate-900/70 text-white'}`}>
+                                                            {room.label}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <>
                                 {isMobile && (
                                     <div className="mb-2 flex justify-end">
                                         <button
@@ -753,6 +843,8 @@ export const Exploration3DScene: React.FC = () => {
                                 </div>
                                     </>
                                 )}
+                                    </>
+                                )}
                             </>
                         )}
                     </div>
@@ -773,7 +865,7 @@ export const Exploration3DScene: React.FC = () => {
                 </div>
             </div>
 
-            {explorationState.showMinimap && (
+            {(explorationState.showMinimap || (trapSetMode && trapSetPanel === 'MAP')) && (
                 <Exploration3DMinimap
                     mapSize={explorationState.mapSize || TACTICAL_MAP_SIZE}
                     playerPos={explorationState.playerMapPos}
