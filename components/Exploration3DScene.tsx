@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, useFrame, useLoader, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useGameStore } from '../store/gameStore';
-import { GameState, TrapType } from '../types';
+import { GameState, TrapOrientation, TrapType } from '../types';
 import { TrapMarker } from './TrapMarker';
 import { Exploration3DMinimap } from './Exploration3DMinimap';
 import { AssetManager } from '../services/AssetManager';
@@ -18,6 +18,27 @@ function getWorldPosition(x: number, z: number): [number, number, number] {
 
 function getWorldPositionFromPos(pos: { x: number; z: number }): [number, number, number] {
     return getWorldPosition(pos.x, pos.z);
+}
+
+function orientationToVector(orientation: TrapOrientation): { x: number; z: number } {
+    if (orientation === 'N') return { x: 0, z: -1 };
+    if (orientation === 'E') return { x: 1, z: 0 };
+    if (orientation === 'S') return { x: 0, z: 1 };
+    return { x: -1, z: 0 };
+}
+
+function rotateOrientationLeft(orientation: TrapOrientation): TrapOrientation {
+    if (orientation === 'N') return 'W';
+    if (orientation === 'W') return 'S';
+    if (orientation === 'S') return 'E';
+    return 'N';
+}
+
+function rotateOrientationRight(orientation: TrapOrientation): TrapOrientation {
+    if (orientation === 'N') return 'E';
+    if (orientation === 'E') return 'S';
+    if (orientation === 'S') return 'W';
+    return 'N';
 }
 
 const TILE_TEXTURE_URLS = {
@@ -225,17 +246,28 @@ const TacticalBoard: React.FC<{
     );
 };
 
-const DirectionPad: React.FC<{ onMove: (dx: number, dz: number) => void }> = ({ onMove }) => (
-    <div className="grid grid-cols-3 gap-2 w-[170px]">
+const DirectionPad: React.FC<{
+    onForward: () => void;
+    onBackstep: () => void;
+    onRotateLeft: () => void;
+    onRotateRight: () => void;
+    onStrafeLeft: () => void;
+    onStrafeRight: () => void;
+    onQuickTurn: () => void;
+}> = ({ onForward, onBackstep, onRotateLeft, onRotateRight, onStrafeLeft, onStrafeRight, onQuickTurn }) => (
+    <div className="grid grid-cols-3 gap-2 w-[190px]">
         <div />
-        <button className="h-12 rounded-xl bg-slate-900/90 border border-cyan-300/25 text-white font-black text-sm active:scale-95 transition-transform" onClick={() => onMove(0, -1)}>N</button>
+        <button className="h-12 rounded-xl bg-slate-900/90 border border-cyan-300/25 text-white font-black text-xs active:scale-95 transition-transform" onClick={onForward}>Forward</button>
         <div />
-        <button className="h-12 rounded-xl bg-slate-900/90 border border-cyan-300/25 text-white font-black text-sm active:scale-95 transition-transform" onClick={() => onMove(-1, 0)}>W</button>
-        <button className="h-12 rounded-xl bg-slate-800/90 border border-amber-500/40 text-amber-300 font-black text-[10px] tracking-wide">STEP</button>
-        <button className="h-12 rounded-xl bg-slate-900/90 border border-cyan-300/25 text-white font-black text-sm active:scale-95 transition-transform" onClick={() => onMove(1, 0)}>E</button>
+        <button className="h-12 rounded-xl bg-slate-900/90 border border-cyan-300/25 text-white font-black text-xs active:scale-95 transition-transform" onClick={onRotateLeft}>Turn L</button>
+        <button className="h-12 rounded-xl bg-slate-800/90 border border-amber-500/40 text-amber-300 font-black text-[10px] tracking-wide active:scale-95 transition-transform" onClick={onQuickTurn}>180</button>
+        <button className="h-12 rounded-xl bg-slate-900/90 border border-cyan-300/25 text-white font-black text-xs active:scale-95 transition-transform" onClick={onRotateRight}>Turn R</button>
         <div />
-        <button className="h-12 rounded-xl bg-slate-900/90 border border-cyan-300/25 text-white font-black text-sm active:scale-95 transition-transform" onClick={() => onMove(0, 1)}>S</button>
+        <button className="h-12 rounded-xl bg-slate-900/90 border border-cyan-300/25 text-white font-black text-xs active:scale-95 transition-transform" onClick={onBackstep}>Back</button>
         <div />
+        <button className="h-10 rounded-xl bg-slate-900/90 border border-cyan-300/25 text-white font-black text-[10px] active:scale-95 transition-transform" onClick={onStrafeLeft}>Strafe L</button>
+        <div />
+        <button className="h-10 rounded-xl bg-slate-900/90 border border-cyan-300/25 text-white font-black text-[10px] active:scale-95 transition-transform" onClick={onStrafeRight}>Strafe R</button>
     </div>
 );
 
@@ -292,9 +324,56 @@ export const Exploration3DScene: React.FC = () => {
         );
     }, [explorationState.roomGraphRef, explorationState.currentRoomId]);
 
-    const attemptMove = useCallback((dx: number, dz: number) => {
-        dispatchTacticalAction({ type: 'MoveStep', dx, dz });
-    }, [dispatchTacticalAction]);
+    const facing = explorationState.trapOrientation;
+    const facingVector = useMemo(() => orientationToVector(facing), [facing]);
+    const leftVector = useMemo(() => ({ x: facingVector.z, z: -facingVector.x }), [facingVector.x, facingVector.z]);
+    const rightVector = useMemo(() => ({ x: -facingVector.z, z: facingVector.x }), [facingVector.x, facingVector.z]);
+
+    const attemptForward = useCallback(() => {
+        dispatchTacticalAction({ type: 'MoveStep', dx: facingVector.x, dz: facingVector.z });
+    }, [dispatchTacticalAction, facingVector.x, facingVector.z]);
+
+    const attemptBackstep = useCallback(() => {
+        dispatchTacticalAction({ type: 'MoveStep', dx: -facingVector.x, dz: -facingVector.z });
+    }, [dispatchTacticalAction, facingVector.x, facingVector.z]);
+
+    const attemptStrafeLeft = useCallback(() => {
+        dispatchTacticalAction({ type: 'MoveStep', dx: leftVector.x, dz: leftVector.z });
+    }, [dispatchTacticalAction, leftVector.x, leftVector.z]);
+
+    const attemptStrafeRight = useCallback(() => {
+        dispatchTacticalAction({ type: 'MoveStep', dx: rightVector.x, dz: rightVector.z });
+    }, [dispatchTacticalAction, rightVector.x, rightVector.z]);
+
+    const rotateLeft = useCallback(() => {
+        dispatchTacticalAction({ type: 'SetTrapOrientation', orientation: rotateOrientationLeft(facing) });
+    }, [dispatchTacticalAction, facing]);
+
+    const rotateRight = useCallback(() => {
+        dispatchTacticalAction({ type: 'SetTrapOrientation', orientation: rotateOrientationRight(facing) });
+    }, [dispatchTacticalAction, facing]);
+
+    const quickTurn = useCallback(() => {
+        dispatchTacticalAction({ type: 'SetTrapOrientation', orientation: rotateOrientationRight(rotateOrientationRight(facing)) });
+    }, [dispatchTacticalAction, facing]);
+
+    const lockOnNearestEnemy = useCallback(() => {
+        const aliveEnemies = explorationState.zoneEnemies.filter(enemy => !enemy.isDefeated);
+        if (aliveEnemies.length === 0) return;
+        const playerPos = explorationState.playerMapPos;
+        const nearest = [...aliveEnemies].sort((a, b) => {
+            const da = Math.abs(a.x - playerPos.x) + Math.abs(a.z - playerPos.z);
+            const db = Math.abs(b.x - playerPos.x) + Math.abs(b.z - playerPos.z);
+            return da - db;
+        })[0];
+        const deltaX = nearest.x - playerPos.x;
+        const deltaZ = nearest.z - playerPos.z;
+        const nextOrientation = Math.abs(deltaX) > Math.abs(deltaZ)
+            ? (deltaX > 0 ? 'E' : 'W')
+            : (deltaZ > 0 ? 'S' : 'N');
+        dispatchTacticalAction({ type: 'SetTrapOrientation', orientation: nextOrientation });
+        dispatchTacticalAction({ type: 'SetCameraMode', cameraMode: 'OVER_SHOULDER' });
+    }, [dispatchTacticalAction, explorationState.playerMapPos, explorationState.zoneEnemies]);
 
     const handleTilePress = useCallback((x: number, z: number) => {
         if (selectedTrap) {
@@ -307,9 +386,9 @@ export const Exploration3DScene: React.FC = () => {
             setTrapConfirmTarget({ x, z });
             return;
         }
+        if (!trapSetMode) return;
         setTrapConfirmTarget(null);
-        dispatchTacticalAction({ type: 'MoveToTile', x, z });
-    }, [selectedTrap, dispatchTacticalAction, trapConfirmTarget]);
+    }, [selectedTrap, trapSetMode, dispatchTacticalAction, trapConfirmTarget]);
 
     useEffect(() => {
         if (!selectedTrap) {
@@ -323,22 +402,46 @@ export const Exploration3DScene: React.FC = () => {
 
             if (event.key === 'w' || event.key === 'ArrowUp') {
                 event.preventDefault();
-                attemptMove(0, -1);
+                attemptForward();
             } else if (event.key === 's' || event.key === 'ArrowDown') {
                 event.preventDefault();
-                attemptMove(0, 1);
+                attemptBackstep();
             } else if (event.key === 'a' || event.key === 'ArrowLeft') {
                 event.preventDefault();
-                attemptMove(-1, 0);
+                rotateLeft();
             } else if (event.key === 'd' || event.key === 'ArrowRight') {
                 event.preventDefault();
-                attemptMove(1, 0);
+                rotateRight();
+            } else if (event.key.toLowerCase() === 'q') {
+                event.preventDefault();
+                if (trapSetMode) {
+                    const order = ['N', 'W', 'S', 'E'] as const;
+                    const idx = order.indexOf(explorationState.trapOrientation);
+                    dispatchTacticalAction({ type: 'SetTrapOrientation', orientation: order[(idx + 1) % order.length] });
+                } else {
+                    attemptStrafeLeft();
+                }
+            } else if (event.key.toLowerCase() === 'e') {
+                event.preventDefault();
+                if (trapSetMode) {
+                    const order = ['N', 'E', 'S', 'W'] as const;
+                    const idx = order.indexOf(explorationState.trapOrientation);
+                    dispatchTacticalAction({ type: 'SetTrapOrientation', orientation: order[(idx + 1) % order.length] });
+                } else {
+                    attemptStrafeRight();
+                }
             } else if (event.key.toLowerCase() === 'p') {
                 event.preventDefault();
                 dispatchTacticalAction({ type: 'ToggleTacticalPause' });
             } else if (event.key.toLowerCase() === 'm') {
                 event.preventDefault();
                 dispatchTacticalAction({ type: 'ToggleMinimap' });
+            } else if (event.key.toLowerCase() === 'l') {
+                event.preventDefault();
+                lockOnNearestEnemy();
+            } else if (event.key === ' ') {
+                event.preventDefault();
+                quickTurn();
             } else if (event.key === '1') {
                 event.preventDefault();
                 dispatchTacticalAction({ type: 'TriggerTrapSurface', surface: 'floor' });
@@ -348,22 +451,25 @@ export const Exploration3DScene: React.FC = () => {
             } else if (event.key === '3') {
                 event.preventDefault();
                 dispatchTacticalAction({ type: 'TriggerTrapSurface', surface: 'ceiling' });
-            } else if (event.key.toLowerCase() === 'q') {
-                event.preventDefault();
-                const order = ['N', 'W', 'S', 'E'] as const;
-                const idx = order.indexOf(explorationState.trapOrientation);
-                dispatchTacticalAction({ type: 'SetTrapOrientation', orientation: order[(idx + 1) % order.length] });
-            } else if (event.key.toLowerCase() === 'e') {
-                event.preventDefault();
-                const order = ['N', 'E', 'S', 'W'] as const;
-                const idx = order.indexOf(explorationState.trapOrientation);
-                dispatchTacticalAction({ type: 'SetTrapOrientation', orientation: order[(idx + 1) % order.length] });
             }
         };
 
         window.addEventListener('keydown', onKeyDown);
         return () => window.removeEventListener('keydown', onKeyDown);
-    }, [attemptMove, gameState, dispatchTacticalAction, explorationState.trapOrientation]);
+    }, [
+        attemptBackstep,
+        attemptForward,
+        attemptStrafeLeft,
+        attemptStrafeRight,
+        dispatchTacticalAction,
+        gameState,
+        lockOnNearestEnemy,
+        quickTurn,
+        rotateLeft,
+        rotateRight,
+        trapSetMode,
+        explorationState.trapOrientation,
+    ]);
 
     if (gameState !== GameState.EXPLORATION_3D) return null;
 
@@ -423,6 +529,7 @@ export const Exploration3DScene: React.FC = () => {
                                     <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-white/10 text-white font-bold">ENEM {tacticalUiState.enemyCount}</span>
                                     <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-white/10 text-white font-bold">PASO {tacticalUiState.turnStep}</span>
                                     <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-white/10 text-white font-bold">TRAPS {tacticalUiState.trapCount}/{tacticalUiState.maxTraps}</span>
+                                    <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-cyan-300/30 text-cyan-200 font-bold">FACING {facing}</span>
                                     {trapSetMode && (
                                         <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-amber-300/30 text-amber-200 font-bold">COMBO x{(tacticalUiState.comboMultiplier ?? 1).toFixed(2)}</span>
                                     )}
@@ -491,8 +598,8 @@ export const Exploration3DScene: React.FC = () => {
                                 </div>
                                 <div className="mt-2 text-[11px] text-white/50">
                                     {isMobile
-                                        ? 'Pad mover | Trap Set para preparar | Radar opcional'
-                                        : 'WASD/Flechas mover | 1/2/3 trigger | P Trap Set | M Radar'}
+                                        ? 'Tank: forward/back + turn + strafe | Trap Set para preparar'
+                                        : 'Tank: W/S avance-retroceso | A/D giro | Q/E strafe | Space 180 | L lock'}
                                 </div>
                             </>
                         ) : (
@@ -582,7 +689,15 @@ export const Exploration3DScene: React.FC = () => {
 
                     {isMobile && (
                         <div className="order-1 flex justify-center">
-                            <DirectionPad onMove={attemptMove} />
+                            <DirectionPad
+                                onForward={attemptForward}
+                                onBackstep={attemptBackstep}
+                                onRotateLeft={rotateLeft}
+                                onRotateRight={rotateRight}
+                                onStrafeLeft={attemptStrafeLeft}
+                                onStrafeRight={attemptStrafeRight}
+                                onQuickTurn={quickTurn}
+                            />
                         </div>
                     )}
                 </div>
