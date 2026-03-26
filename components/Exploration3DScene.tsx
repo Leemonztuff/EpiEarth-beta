@@ -423,9 +423,15 @@ export const Exploration3DScene: React.FC = () => {
                                     <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-white/10 text-white font-bold">ENEM {tacticalUiState.enemyCount}</span>
                                     <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-white/10 text-white font-bold">PASO {tacticalUiState.turnStep}</span>
                                     <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-white/10 text-white font-bold">TRAPS {tacticalUiState.trapCount}/{tacticalUiState.maxTraps}</span>
-                                    <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-amber-300/30 text-amber-200 font-bold">COMBO x{(tacticalUiState.comboMultiplier ?? 1).toFixed(2)}</span>
-                                    <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-emerald-300/30 text-emerald-200 font-bold">ARK {tacticalUiState.trapCurrency ?? 0}</span>
-                                    <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-cyan-300/30 text-cyan-200 font-bold">{tacticalUiState.stepPhase || 'PLAYER_STEP'}</span>
+                                    {trapSetMode && (
+                                        <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-amber-300/30 text-amber-200 font-bold">COMBO x{(tacticalUiState.comboMultiplier ?? 1).toFixed(2)}</span>
+                                    )}
+                                    {trapSetMode && (
+                                        <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-emerald-300/30 text-emerald-200 font-bold">ARK {tacticalUiState.trapCurrency ?? 0}</span>
+                                    )}
+                                    {trapSetMode && (
+                                        <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-cyan-300/30 text-cyan-200 font-bold">{tacticalUiState.stepPhase || 'PLAYER_STEP'}</span>
+                                    )}
                                     <span className={`px-2 py-[3px] rounded-md border font-bold ${trapSetMode ? 'bg-amber-400 text-black border-amber-300' : 'bg-slate-900/90 border-white/10 text-white'}`}>{trapSetMode ? 'TRAP SET' : 'RUN'}</span>
                                 </div>
                             </div>
@@ -465,28 +471,28 @@ export const Exploration3DScene: React.FC = () => {
                                         onClick={() => dispatchTacticalAction({ type: 'TriggerTrapSurface', surface: 'floor' })}
                                         className={`rounded-lg px-2 py-2 text-left border transition-all ${armedSurfaceCount.floor > 0 ? 'border-orange-300 bg-orange-950/40 text-orange-100 shadow-[0_0_12px_rgba(251,146,60,0.25)] motion-safe:animate-pulse' : 'border-white/15 bg-slate-900/88 text-white'}`}
                                     >
-                                        <div className="text-[10px] uppercase font-black tracking-wide">Piso</div>
-                                        <div className="text-[11px] font-bold">{isMobile ? 'Tap' : '1'} Trigger</div>
+                                        <div className="text-[10px] uppercase font-black tracking-wide">Piso (X)</div>
+                                        <div className="text-[11px] font-bold">{isMobile ? 'Tap directo' : 'Tecla 1'}</div>
                                     </button>
                                     <button
                                         onClick={() => dispatchTacticalAction({ type: 'TriggerTrapSurface', surface: 'wall' })}
                                         className={`rounded-lg px-2 py-2 text-left border transition-all ${armedSurfaceCount.wall > 0 ? 'border-cyan-300 bg-cyan-950/40 text-cyan-100 shadow-[0_0_12px_rgba(34,211,238,0.22)] motion-safe:animate-pulse' : 'border-white/15 bg-slate-900/88 text-white'}`}
                                     >
-                                        <div className="text-[10px] uppercase font-black tracking-wide">Pared</div>
-                                        <div className="text-[11px] font-bold">{isMobile ? 'Tap' : '2'} Trigger</div>
+                                        <div className="text-[10px] uppercase font-black tracking-wide">Pared ([])</div>
+                                        <div className="text-[11px] font-bold">{isMobile ? 'Tap directo' : 'Tecla 2'}</div>
                                     </button>
                                     <button
                                         onClick={() => dispatchTacticalAction({ type: 'TriggerTrapSurface', surface: 'ceiling' })}
                                         className={`rounded-lg px-2 py-2 text-left border transition-all ${armedSurfaceCount.ceiling > 0 ? 'border-violet-300 bg-violet-950/40 text-violet-100 shadow-[0_0_12px_rgba(167,139,250,0.22)] motion-safe:animate-pulse' : 'border-white/15 bg-slate-900/88 text-white'}`}
                                     >
-                                        <div className="text-[10px] uppercase font-black tracking-wide">Techo</div>
-                                        <div className="text-[11px] font-bold">{isMobile ? 'Tap' : '3'} Trigger</div>
+                                        <div className="text-[10px] uppercase font-black tracking-wide">Techo (/\\)</div>
+                                        <div className="text-[11px] font-bold">{isMobile ? 'Tap directo' : 'Tecla 3'}</div>
                                     </button>
                                 </div>
                                 <div className="mt-2 text-[11px] text-white/50">
                                     {isMobile
-                                        ? 'Pad mover · Trap Set para preparar · Radar opcional'
-                                        : 'WASD/Flechas mover · 1/2/3 trigger · P Trap Set · M Radar'}
+                                        ? 'Pad mover | Trap Set para preparar | Radar opcional'
+                                        : 'WASD/Flechas mover | 1/2/3 trigger | P Trap Set | M Radar'}
                                 </div>
                             </>
                         ) : (
@@ -567,8 +573,8 @@ export const Exploration3DScene: React.FC = () => {
                                 )}
                                 <div className="mt-2 text-[11px] text-white/50">
                                     {isMobile
-                                        ? 'Trap Set: Tap tile para colocar · Confirmacion al segundo tap'
-                                        : 'Trap Set: Click tile para apuntar/confirmar · Q/E rota rapido'}
+                                        ? 'Trap Set: tap en tile para colocar | confirma al segundo tap'
+                                        : 'Trap Set: click para apuntar/confirmar | Q/E rota rapido'}
                                 </div>
                             </>
                         )}
