@@ -20,9 +20,32 @@ export default defineConfig(({ mode }) => {
         minify: 'esbuild',
         rollupOptions: {
           output: {
-            manualChunks: {
-              'three': ['three', '@react-three/fiber', '@react-three/drei'],
-              'vendor': ['react', 'react-dom', 'zustand'],
+            manualChunks(id: string) {
+              if (
+                id.includes('node_modules/three/') ||
+                id.includes('node_modules/@react-three/') ||
+                id.includes('node_modules/three-stdlib/')
+              ) {
+                return 'three';
+              }
+
+              if (id.includes('node_modules/@google/genai/')) {
+                return 'ai';
+              }
+
+              if (
+                id.includes('node_modules/react/') ||
+                id.includes('node_modules/react-dom/') ||
+                id.includes('node_modules/scheduler/')
+              ) {
+                return 'react-vendor';
+              }
+
+              if (id.includes('node_modules/zustand/')) {
+                return 'state-vendor';
+              }
+
+              return undefined;
             },
           },
         },
