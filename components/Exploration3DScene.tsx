@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, useLoader, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useGameStore } from '../store/gameStore';
@@ -78,23 +78,36 @@ const SpriteBillboard: React.FC<{
 const ThirdPersonCameraRig: React.FC<{
     playerPos: { x: number; z: number };
     cameraMode: 'OVER_SHOULDER' | 'TACTICAL_ZOOM' | 'CINEMATIC';
-}> = ({ playerPos, cameraMode }) => {
+    movementIntent: { x: number; z: number } | null;
+    tacticalPaused: boolean;
+}> = ({ playerPos, cameraMode, movementIntent, tacticalPaused }) => {
     const { camera } = useThree();
     const lookTarget = useMemo(() => new THREE.Vector3(), []);
     const camTarget = useMemo(() => new THREE.Vector3(), []);
+    const heading = useRef(new THREE.Vector2(0, 1));
 
     useFrame(() => {
         const [wx, _, wz] = getWorldPosition(playerPos.x, playerPos.z);
-        lookTarget.set(wx, 0.8, wz);
-        if (cameraMode === 'TACTICAL_ZOOM') {
-            camTarget.set(wx, 12, wz + 10);
-        } else if (cameraMode === 'CINEMATIC') {
-            camTarget.set(wx + 4, 8, wz + 7);
-        } else {
-            camTarget.set(wx, 5.2, wz + 5.6);
+        if (movementIntent && (movementIntent.x !== 0 || movementIntent.z !== 0)) {
+            heading.current.set(movementIntent.x, movementIntent.z).normalize();
         }
 
-        camera.position.lerp(camTarget, 0.12);
+        if (cameraMode === 'TACTICAL_ZOOM' || tacticalPaused) {
+            lookTarget.set(wx, 0.6, wz);
+            camTarget.set(wx, 12, wz + 0.2);
+        } else if (cameraMode === 'CINEMATIC') {
+            lookTarget.set(wx, 0.9, wz);
+            camTarget.set(wx + 4, 8, wz + 7);
+        } else {
+            lookTarget.set(wx, 1.0, wz);
+            camTarget.set(
+                wx - heading.current.x * 2.4,
+                2.35,
+                wz - heading.current.y * 2.4
+            );
+        }
+
+        camera.position.lerp(camTarget, tacticalPaused ? 0.18 : 0.14);
         camera.lookAt(lookTarget);
     });
 
@@ -110,9 +123,10 @@ const TacticalBoard: React.FC<{
     highlightedTiles: { x: number; z: number }[];
     trapAimTarget: { x: number; z: number } | null;
     selectedTrapRange: number | null;
+    tacticalOverlay: boolean;
     onTilePress: (x: number, z: number) => void;
     playerSpriteUrl?: string;
-}> = ({ map, playerPos, playerRenderPos, enemies, traps, highlightedTiles, trapAimTarget, selectedTrapRange, onTilePress, playerSpriteUrl }) => {
+}> = ({ map, playerPos, playerRenderPos, enemies, traps, highlightedTiles, trapAimTarget, selectedTrapRange, tacticalOverlay, onTilePress, playerSpriteUrl }) => {
     const textureEntries = useLoader(THREE.TextureLoader, Object.values(TILE_TEXTURE_URLS));
     const textures = useMemo<LoadedTextureMap>(() => {
         const next: LoadedTextureMap = {};
@@ -165,6 +179,12 @@ const TacticalBoard: React.FC<{
                                 </mesh>
                             )}
                             <TrapPlacementHighlight position={pos} active={isHighlight} />
+                            {tacticalOverlay && (
+                                <mesh position={[pos[0], 0.01, pos[2]]} rotation={[-Math.PI / 2, 0, 0]}>
+                                    <ringGeometry args={[0.42, 0.46, 6]} />
+                                    <meshBasicMaterial color="#cbd5e1" transparent opacity={0.25} />
+                                </mesh>
+                            )}
                         </group>
                     );
                 })
@@ -172,7 +192,15 @@ const TacticalBoard: React.FC<{
 
             {enemies.map(enemy =>
                 enemy.isDefeated ? null : (
-                    <SpriteBillboard key={enemy.id} position={getWorldPosition(enemy.x, enemy.z)} spriteUrl={enemy.sprite} scale={[1.3, 1.7, 1]} />
+                    <group key={enemy.id}>
+                        <SpriteBillboard position={getWorldPosition(enemy.x, enemy.z)} spriteUrl={enemy.sprite} scale={[1.3, 1.7, 1]} />
+                        {tacticalOverlay && (
+                            <mesh position={[getWorldPosition(enemy.x, enemy.z)[0], 0.04, getWorldPosition(enemy.x, enemy.z)[2]]} rotation={[-Math.PI / 2, 0, 0]}>
+                                <ringGeometry args={[0.46, 0.58, 24]} />
+                                <meshBasicMaterial color="#ef4444" transparent opacity={0.42} />
+                            </mesh>
+                        )}
+                    </group>
                 )
             )}
             {traps.map(trap => (
@@ -220,6 +248,7 @@ export const Exploration3DScene: React.FC = () => {
 
     const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
     const [showDetails, setShowDetails] = useState(false);
+    const [trapConfirmTarget, setTrapConfirmTarget] = useState<{ x: number; z: number } | null>(null);
 
     useEffect(() => {
         const onResize = () => setIsMobile(window.innerWidth < 768);
@@ -255,11 +284,23 @@ export const Exploration3DScene: React.FC = () => {
     const handleTilePress = useCallback((x: number, z: number) => {
         if (selectedTrap) {
             dispatchTacticalAction({ type: 'AimTrapAt', x, z });
-            dispatchTacticalAction({ type: 'PlaceTrap', x, z, trapType: selectedTrap });
+            if (trapConfirmTarget && trapConfirmTarget.x === x && trapConfirmTarget.z === z) {
+                dispatchTacticalAction({ type: 'PlaceTrap', x, z, trapType: selectedTrap });
+                setTrapConfirmTarget(null);
+                return;
+            }
+            setTrapConfirmTarget({ x, z });
             return;
         }
+        setTrapConfirmTarget(null);
         dispatchTacticalAction({ type: 'MoveToTile', x, z });
-    }, [selectedTrap, dispatchTacticalAction]);
+    }, [selectedTrap, dispatchTacticalAction, trapConfirmTarget]);
+
+    useEffect(() => {
+        if (!selectedTrap) {
+            setTrapConfirmTarget(null);
+        }
+    }, [selectedTrap]);
 
     useEffect(() => {
         const onKeyDown = (event: KeyboardEvent) => {
@@ -302,6 +343,8 @@ export const Exploration3DScene: React.FC = () => {
                 <ThirdPersonCameraRig
                     playerPos={explorationState.smoothedWorldPos}
                     cameraMode={explorationState.cameraMode}
+                    movementIntent={explorationState.movementIntent}
+                    tacticalPaused={explorationState.tacticalPaused}
                 />
 
                 <TacticalBoard
@@ -319,6 +362,7 @@ export const Exploration3DScene: React.FC = () => {
                     highlightedTiles={explorationState.highlightedTiles}
                     trapAimTarget={explorationState.trapAimTarget}
                     selectedTrapRange={selectedTrap ? (tacticalUiState.selectedTrapRange ?? TRAP_DATA[selectedTrap].range) : null}
+                    tacticalOverlay={explorationState.tacticalPaused || !!selectedTrap}
                     onTilePress={handleTilePress}
                     playerSpriteUrl={player?.visual?.spriteUrl}
                 />
@@ -326,8 +370,8 @@ export const Exploration3DScene: React.FC = () => {
 
             <div className="absolute inset-0 pointer-events-none flex flex-col">
                 <div className="pointer-events-auto p-2 sm:p-3">
-                    <div className="mx-auto max-w-[1080px] rounded-2xl border border-cyan-300/25 bg-gradient-to-b from-slate-950/88 to-slate-900/72 shadow-[0_10px_30px_rgba(0,0,0,0.48)] backdrop-blur-md">
-                        <div className="p-2 sm:p-3 flex items-start justify-between gap-2 sm:gap-3">
+                    <div className="mx-auto max-w-[880px] rounded-xl border border-cyan-300/25 bg-gradient-to-b from-slate-950/80 to-slate-900/64 shadow-[0_6px_20px_rgba(0,0,0,0.42)] backdrop-blur-md">
+                        <div className="p-2 flex items-start justify-between gap-2">
                             <div className="min-w-0">
                                 <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-300/90 font-bold">
                                     {explorationState.zoneContext?.kind === 'dungeon' ? 'Dungeon Hunt' : 'Trap Hunt'}
@@ -339,7 +383,7 @@ export const Exploration3DScene: React.FC = () => {
                                     <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-white/10 text-white font-bold">ENEM {tacticalUiState.enemyCount}</span>
                                     <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-white/10 text-white font-bold">TURNO {tacticalUiState.turnStep}</span>
                                     <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-white/10 text-white font-bold">TRAPS {tacticalUiState.trapCount}/{tacticalUiState.maxTraps}</span>
-                                    <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-white/10 text-white font-bold">{explorationState.stepPhase}</span>
+                                    <span className={`px-2 py-[3px] rounded-md border font-bold ${explorationState.tacticalPaused ? 'bg-amber-400 text-black border-amber-300' : 'bg-slate-900/90 border-white/10 text-white'}`}>{explorationState.tacticalPaused ? 'SET TRAP' : 'RUN'}</span>
                                 </div>
                             </div>
                             <div className="flex items-center gap-1.5 sm:gap-2">
@@ -358,7 +402,7 @@ export const Exploration3DScene: React.FC = () => {
                             </div>
                         </div>
                         {showDetails && (
-                            <div className="px-2 pb-2 sm:px-3 sm:pb-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-1.5 text-[10px] sm:text-[11px]">
+                            <div className="px-2 pb-2 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-1.5 text-[10px] sm:text-[11px]">
                                 <div className="rounded-xl bg-slate-900/85 border border-white/10 p-2"><span className="text-white/50">Fatiga</span><div className="text-white font-black">{fatigue.toFixed(1)}</div></div>
                                 <div className="rounded-xl bg-slate-900/85 border border-white/10 p-2"><span className="text-white/50">Sumin.</span><div className="text-white font-black">{supplies.toFixed(1)}</div></div>
                                 <div className="rounded-xl bg-slate-900/85 border border-white/10 p-2"><span className="text-white/50">Objetivo</span><div className="text-white font-black">{tacticalUiState.objectiveLabel || 'Explorar'}</div></div>
@@ -373,13 +417,15 @@ export const Exploration3DScene: React.FC = () => {
                 <div className="flex-1" />
 
                 <div className="pointer-events-auto p-2 sm:p-3 grid gap-2 md:grid-cols-[1fr,auto] items-end">
-                    <div className="order-2 md:order-1 mx-auto w-full max-w-[1080px] rounded-2xl border border-cyan-300/25 bg-gradient-to-b from-slate-950/84 to-slate-900/74 backdrop-blur-md p-2 sm:p-2.5">
+                    <div className="order-2 md:order-1 mx-auto w-full max-w-[880px] rounded-xl border border-cyan-300/25 bg-gradient-to-b from-slate-950/78 to-slate-900/62 backdrop-blur-md p-2">
                         <div className="flex items-center justify-between mb-1.5">
                             <div className="text-white font-black text-xs sm:text-sm tracking-wide">
                                 {tacticalUiState.trapCount}/{tacticalUiState.maxTraps} colocadas
                             </div>
                             <div className="text-right text-[10px] sm:text-[11px] text-cyan-100/70">
-                                {selectedTrap
+                                {trapConfirmTarget && selectedTrap
+                                    ? `Confirmar en ${trapConfirmTarget.x},${trapConfirmTarget.z}`
+                                    : selectedTrap
                                     ? `${TRAP_DATA[selectedTrap].name} - Alc ${tacticalUiState.selectedTrapRange ?? TRAP_DATA[selectedTrap].range}`
                                     : 'Elige una trampa'}
                             </div>
