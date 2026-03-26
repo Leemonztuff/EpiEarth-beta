@@ -16,10 +16,12 @@ import {
     InputMode,
     PositionComponent,
     TacticalAction,
+    TacticalStepPhase,
     TacticalUiState,
     Trap,
     TrapType,
-    ZoneContext
+    ZoneContext,
+    SnapState
 } from '../../types';
 import { TRAP_DATA, PLAYER_TRAP_LIMIT } from '../../data/trapsData';
 import { generateId, randomElement, randomInt } from '../utils';
@@ -96,6 +98,12 @@ interface ExplorationState {
     eliteContactPending: string | null;
     trapAimTarget: TacticalPosition | null;
     showMinimap: boolean;
+    movementIntent: TacticalPosition | null;
+    smoothedWorldPos: TacticalPosition;
+    lastStableGridPos: TacticalPosition;
+    snapState: SnapState;
+    stepPhase: TacticalStepPhase;
+    contactCooldown: number;
 }
 
 interface VersusState {
@@ -143,6 +151,10 @@ const ENEMY_TEMPLATES = [
 ];
 
 const DEFAULT_PLAYER_START: TacticalPosition = { x: 3, z: Math.floor(TACTICAL_MAP_SIZE / 2) };
+const COMMON_CONTACT_DAMAGE = 4;
+const COMMON_CONTACT_KNOCKBACK = 1;
+const COMMON_CONTACT_COOLDOWN_STEPS = 1;
+const SNAP_DEADZONE = 0.2;
 
 function getZoneName(biome: string): string {
     const zoneNames: Record<string, string> = {
@@ -170,6 +182,66 @@ function buildTrapHighlights(origin: TacticalPosition, range: number, map: Tacti
     }
 
     return highlights;
+}
+
+function clampIntent(dx: number, dz: number): TacticalPosition {
+    if (Math.abs(dx) > Math.abs(dz)) {
+        return { x: dx > 0 ? 1 : -1, z: 0 };
+    }
+    if (Math.abs(dz) > 0) {
+        return { x: 0, z: dz > 0 ? 1 : -1 };
+    }
+    return { x: 0, z: 0 };
+}
+
+function computeLineOfSightMask(
+    map: TacticalMapCell[][],
+    origin: TacticalPosition,
+    roomGraph: DungeonRoomGraph | null,
+    currentRoomId: string | null,
+    doorStates: Record<string, DoorState>
+): string[] {
+    const radius = roomGraph && currentRoomId ? 7 : 6;
+    const allowedRooms = new Set<string>();
+
+    if (roomGraph && currentRoomId) {
+        allowedRooms.add(currentRoomId);
+        Object.values(roomGraph.doors).forEach(door => {
+            const state = doorStates[door.id] ?? door.state;
+            if (state !== 'open') return;
+            if (door.fromRoomId === currentRoomId) allowedRooms.add(door.toRoomId);
+            if (door.toRoomId === currentRoomId) allowedRooms.add(door.fromRoomId);
+        });
+    }
+
+    const mask: string[] = [];
+    for (let x = 0; x < map.length; x++) {
+        for (let z = 0; z < map[x].length; z++) {
+            if (manhattanDistance(origin, { x, z }) > radius) continue;
+            if (!isWalkable(map, x, z)) continue;
+            if (allowedRooms.size > 0 && !allowedRooms.has(currentRoomId || '')) continue;
+            mask.push(`${x},${z}`);
+        }
+    }
+    return mask;
+}
+
+function computeKnockbackTarget(
+    map: TacticalMapCell[][],
+    origin: TacticalPosition,
+    from: TacticalPosition,
+    blocked: Set<string>
+): TacticalPosition {
+    const dx = origin.x - from.x;
+    const dz = origin.z - from.z;
+    const intent = clampIntent(dx, dz);
+    const candidate = {
+        x: origin.x + intent.x * COMMON_CONTACT_KNOCKBACK,
+        z: origin.z + intent.z * COMMON_CONTACT_KNOCKBACK,
+    };
+    if (!isWalkable(map, candidate.x, candidate.z)) return origin;
+    if (blocked.has(`${candidate.x},${candidate.z}`)) return origin;
+    return candidate;
 }
 
 function createZoneEnemies(map: TacticalMapCell[][], playerStart: TacticalPosition): ZoneEnemy[] {
@@ -301,6 +373,7 @@ function buildTacticalUiState(
         mode3DState: explorationState.mode3DState,
         currentRoomId: explorationState.currentRoomId,
         stepBudget: explorationState.stepBudget,
+        stepPhase: explorationState.stepPhase,
     };
 }
 
@@ -376,6 +449,12 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
         eliteContactPending: null,
         trapAimTarget: null,
         showMinimap: false,
+        movementIntent: null,
+        smoothedWorldPos: { ...DEFAULT_PLAYER_START },
+        lastStableGridPos: { ...DEFAULT_PLAYER_START },
+        snapState: 'SNAPPED',
+        stepPhase: 'PLAYER_STEP',
+        contactCooldown: 0,
     },
     versusState: createInitialVersusState(),
 
@@ -396,11 +475,89 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
 
         switch (action.type) {
             case 'MoveStep':
-                get().movePlayer(playerPos.x + action.dx, playerPos.z + action.dz);
+                get().dispatchTacticalAction({ type: 'UpdateMovementIntent', dx: action.dx, dz: action.dz });
+                get().dispatchTacticalAction({ type: 'CommitStep' });
                 break;
             case 'MoveToTile':
-                get().movePlayer(action.x, action.z);
+                if (
+                    action.x === playerPos.x &&
+                    action.z === playerPos.z &&
+                    state.explorationState.zoneContext.kind === 'dungeon' &&
+                    state.explorationState.dungeonObjectiveType === 'disarm_trap' &&
+                    !state.explorationState.roomObjectiveResolved
+                ) {
+                    const objective = state.explorationState.roomObjectiveTile;
+                    if (objective && objective.x === action.x && objective.z === action.z) {
+                        const nextExplorationState: ExplorationState = {
+                            ...state.explorationState,
+                            roomObjectiveResolved: true,
+                            zoneCompleted: true,
+                            tacticalMessage: 'Desactivaste la trampa de la sala.',
+                            stepPhase: 'END_STEP',
+                        };
+                        set({
+                            explorationState: nextExplorationState,
+                            tacticalUiState: buildTacticalUiState(nextExplorationState, state.inputMode),
+                        });
+                    } else {
+                        const blockedState: ExplorationState = {
+                            ...state.explorationState,
+                            tacticalMessage: 'Debes estar en la celda objetivo para desarmar.',
+                            stepPhase: 'PLAYER_STEP',
+                        };
+                        set({
+                            explorationState: blockedState,
+                            tacticalUiState: buildTacticalUiState(blockedState, state.inputMode, 'Interaccion invalida.'),
+                        });
+                    }
+                    return;
+                }
+                get().dispatchTacticalAction({
+                    type: 'UpdateMovementIntent',
+                    dx: action.x - playerPos.x,
+                    dz: action.z - playerPos.z,
+                });
+                get().dispatchTacticalAction({ type: 'CommitStep' });
                 break;
+            case 'UpdateMovementIntent': {
+                const currentExploration = state.explorationState;
+                const intent = clampIntent(action.dx, action.dz);
+                const nextSmoothed = {
+                    x: currentExploration.smoothedWorldPos.x + intent.x * 0.35,
+                    z: currentExploration.smoothedWorldPos.z + intent.z * 0.35,
+                };
+                const stableDelta = manhattanDistance(currentExploration.lastStableGridPos, {
+                    x: Math.round(nextSmoothed.x),
+                    z: Math.round(nextSmoothed.z),
+                });
+                const nextExplorationState: ExplorationState = {
+                    ...currentExploration,
+                    movementIntent: intent,
+                    smoothedWorldPos: nextSmoothed,
+                    snapState: stableDelta > 0 ? 'SMOOTHING' : 'SNAPPED',
+                };
+                set({
+                    explorationState: nextExplorationState,
+                    tacticalUiState: buildTacticalUiState(nextExplorationState, state.inputMode),
+                });
+                break;
+            }
+            case 'CommitStep': {
+                const intent = state.explorationState.movementIntent;
+                if (!intent || (intent.x === 0 && intent.z === 0)) {
+                    const blockedState: ExplorationState = {
+                        ...state.explorationState,
+                        tacticalMessage: 'Sin direccion de movimiento.',
+                    };
+                    set({
+                        explorationState: blockedState,
+                        tacticalUiState: buildTacticalUiState(blockedState, state.inputMode, 'Sin direccion de movimiento.'),
+                    });
+                    return;
+                }
+                get().movePlayer(state.explorationState.playerMapPos.x + intent.x, state.explorationState.playerMapPos.z + intent.z);
+                break;
+            }
             case 'ToggleTacticalPause':
                 get().togglePlacementPause(action.forced);
                 break;
@@ -497,6 +654,17 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
                 });
                 break;
             }
+            case 'ClearFeedback': {
+                const nextExplorationState: ExplorationState = {
+                    ...state.explorationState,
+                    tacticalMessage: null,
+                };
+                set({
+                    explorationState: nextExplorationState,
+                    tacticalUiState: buildTacticalUiState(nextExplorationState, state.inputMode, null),
+                });
+                break;
+            }
             case 'ExitTrapZone':
                 get().exitTrapZone();
                 break;
@@ -582,10 +750,22 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             doorStates: dungeonRuntime?.doorStates || {},
             roomGraphRef: dungeonRuntime?.roomGraph || null,
             stepBudget: 1,
-            lineOfSightMask: [],
+            lineOfSightMask: computeLineOfSightMask(
+                map,
+                playerStart,
+                dungeonRuntime?.roomGraph || null,
+                room?.id || null,
+                dungeonRuntime?.doorStates || {}
+            ),
             eliteContactPending: null,
             trapAimTarget: null,
             showMinimap: false,
+            movementIntent: null,
+            smoothedWorldPos: { ...playerStart },
+            lastStableGridPos: { ...playerStart },
+            snapState: 'SNAPPED',
+            stepPhase: 'PLAYER_STEP',
+            contactCooldown: 0,
         };
 
         set({
@@ -821,329 +1001,260 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
     movePlayer: (newX, newZ) => {
         const state = get();
         const { explorationState } = state;
-        if (explorationState.stepBudget <= 0) {
-            const nextExplorationState: ExplorationState = {
-                ...explorationState,
-                tacticalMessage: 'Sin acciones disponibles en este paso.',
-            };
-            set({
-                explorationState: nextExplorationState,
-                tacticalUiState: buildTacticalUiState(nextExplorationState, get().inputMode, 'Sin acciones disponibles.'),
-            });
-            return;
-        }
-        const isSameTile =
-            newX === explorationState.playerMapPos.x && newZ === explorationState.playerMapPos.z;
-
-        if (
-            isSameTile &&
-            explorationState.zoneContext.kind === 'dungeon' &&
-            explorationState.dungeonObjectiveType === 'disarm_trap' &&
-            !explorationState.roomObjectiveResolved
-        ) {
-            const objectiveTile = explorationState.roomObjectiveTile;
-            if (objectiveTile && objectiveTile.x === newX && objectiveTile.z === newZ) {
-                const nextExplorationState: ExplorationState = {
-                    ...explorationState,
-                    roomObjectiveResolved: true,
-                    zoneCompleted: true,
-                    tacticalMessage: 'Desactivaste la trampa de la sala.',
-                };
-                let nextDungeonRuntime =
-                    nextExplorationState.zoneContext.kind === 'dungeon' && get().activeDungeonId
-                        ? get().dungeonRuntimeById[get().activeDungeonId]
-                        : null;
-
-                if (
-                    nextDungeonRuntime &&
-                    nextExplorationState.dungeonRoomId &&
-                    !nextDungeonRuntime.resolvedRooms.includes(nextExplorationState.dungeonRoomId)
-                ) {
-                    nextDungeonRuntime = markDungeonRoomResolved(nextDungeonRuntime, nextExplorationState.dungeonRoomId);
-                    set({
-                        dungeonRuntimeById: {
-                            ...get().dungeonRuntimeById,
-                            [nextDungeonRuntime.dungeonId]: nextDungeonRuntime,
-                        },
-                    });
-                }
-
-                set({
-                    explorationState: nextExplorationState,
-                    tacticalUiState: buildTacticalUiState(nextExplorationState, get().inputMode, null, nextDungeonRuntime),
-                });
-                return;
-            }
-
+        const block = (message: string) => {
             const blockedState: ExplorationState = {
-                ...explorationState,
-                tacticalMessage: 'Interaccion invalida: ve a la celda de desarme para desactivar la trampa.',
+                ...get().explorationState,
+                tacticalMessage: message,
+                stepPhase: 'PLAYER_STEP',
             };
             set({
                 explorationState: blockedState,
-                tacticalUiState: buildTacticalUiState(blockedState, get().inputMode, 'Debes estar sobre la celda objetivo para desarmar.'),
+                tacticalUiState: buildTacticalUiState(blockedState, get().inputMode, message),
             });
+        };
+
+        if (explorationState.stepBudget <= 0) {
+            block('Sin acciones disponibles en este paso.');
             return;
         }
-
         if (explorationState.isResolvingTurn || explorationState.placementMode || explorationState.tacticalPaused) {
-            const nextExplorationState: ExplorationState = {
-                ...explorationState,
-                tacticalMessage: 'Accion bloqueada: reanuda la caceria para mover.',
-            };
-            set({
-                explorationState: nextExplorationState,
-                tacticalUiState: buildTacticalUiState(nextExplorationState, get().inputMode, 'Accion bloqueada: reanuda la caceria para mover.'),
-            });
+            block('Accion bloqueada: reanuda la caceria para mover.');
             return;
         }
-
         if (!isWalkable(explorationState.map, newX, newZ)) {
-            const nextExplorationState: ExplorationState = {
-                ...explorationState,
-                tacticalMessage: 'Accion bloqueada: celda no caminable.',
-            };
-            set({
-                explorationState: nextExplorationState,
-                tacticalUiState: buildTacticalUiState(nextExplorationState, get().inputMode, 'Accion bloqueada: celda no caminable.'),
-            });
+            block('Accion bloqueada: celda no caminable.');
             return;
         }
-
         if (manhattanDistance(explorationState.playerMapPos, { x: newX, z: newZ }) !== 1) {
-            const nextExplorationState: ExplorationState = {
-                ...explorationState,
-                tacticalMessage: 'Accion bloqueada: solo puedes moverte 1 casillero por paso.',
-            };
-            set({
-                explorationState: nextExplorationState,
-                tacticalUiState: buildTacticalUiState(nextExplorationState, get().inputMode, 'Accion bloqueada: solo puedes moverte 1 casillero por paso.'),
-            });
+            block('Accion bloqueada: solo puedes moverte 1 casillero por paso.');
             return;
         }
 
-        const directContact = explorationState.zoneEnemies.find(enemy => !enemy.isDefeated && enemy.x === newX && enemy.z === newZ);
-        if (directContact) {
-            if (directContact.isElite) {
-                get().startEncounter(directContact.id);
-            } else {
-                const leader = (get().party || [])[0];
-                if (leader) {
-                    const updatedParty = get().party.map((member: Entity, index: number) =>
-                        index === 0
-                            ? { ...member, stats: { ...member.stats, hp: Math.max(1, member.stats.hp - 4) } }
-                            : member
-                    );
-                    set({
-                        party: updatedParty,
-                        explorationState: {
-                            ...explorationState,
-                            tacticalMessage: `${directContact.name} te impacta y sigue la persecucion.`,
-                            mode3DState: 'CONTACT_RESOLVE',
-                            stepBudget: 0,
-                        },
-                        tacticalUiState: buildTacticalUiState({
-                            ...explorationState,
-                            tacticalMessage: `${directContact.name} te impacta y sigue la persecucion.`,
-                            mode3DState: 'CONTACT_RESOLVE',
-                            stepBudget: 0,
-                        }, get().inputMode),
-                    });
-                }
-            }
-            return;
-        }
+        const resolveStepCycle = (committedPos: TacticalPosition) => {
+            const current = get().explorationState;
+            let phase: TacticalStepPhase = 'PLAYER_STEP';
+            let enemies = current.zoneEnemies.map(enemy => ({ ...enemy }));
+            let traps = current.traps.map(trap => ({ ...trap, position: { ...trap.position } }));
+            let playerMapPos = { ...committedPos };
+            let tacticalMessage: string | null = null;
+            let triggeredMessage: string | null = null;
+            let contactEnemyId: string | null = null;
+            let party = get().party;
 
-        let enemies = explorationState.zoneEnemies.map(enemy => ({ ...enemy }));
-        const playerMapPos = { x: newX, z: newZ };
-        let triggeredMessage: string | null = null;
-        let currentEnemyId = explorationState.currentEnemyId;
+            phase = 'ENEMY_REACT';
+            const blockedPositions = new Set<string>();
+            const activeDecoy = traps.find(trap => trap.isArmed && trap.type === TrapType.DECOY && (trap.duration ?? 0) > 0);
 
-        const blockedPositions = new Set<string>();
+            enemies = enemies.map(enemy => {
+                if (enemy.isDefeated) return enemy;
+                let nextEnemy = { ...enemy };
 
-        enemies = enemies.map(enemy => {
-            if (enemy.isDefeated) {
-                return enemy;
-            }
-
-            let nextEnemy = { ...enemy };
-
-            // Effect resolution order: poison -> stun -> decoy -> chase/investigate/patrol.
-            if (nextEnemy.poisonTurns > 0) {
-                nextEnemy.poisonTurns -= 1;
-                nextEnemy.hp = Math.max(0, nextEnemy.hp - 6);
-                if (nextEnemy.hp <= 0) {
-                    return { ...nextEnemy, hp: 0, isDefeated: true, x: -99, z: -99 };
-                }
-            }
-
-            if (nextEnemy.stunnedTurns > 0) {
-                nextEnemy.stunnedTurns -= 1;
-                nextEnemy.aiState = EnemyAiState.STUNNED;
-                blockedPositions.add(`${nextEnemy.x},${nextEnemy.z}`);
-                return nextEnemy;
-            }
-
-            const activeDecoy = explorationState.traps.find(
-                trap =>
-                    trap.isArmed &&
-                    trap.type === TrapType.DECOY &&
-                    (trap.duration ?? 0) > 0
-            );
-
-            const distanceToPlayer = manhattanDistance({ x: nextEnemy.x, z: nextEnemy.z }, playerMapPos);
-            const canSeePlayer = distanceToPlayer <= nextEnemy.alertRange;
-
-            let target: TacticalPosition | null = null;
-
-            if (activeDecoy && manhattanDistance({ x: nextEnemy.x, z: nextEnemy.z }, { x: activeDecoy.position.x, z: activeDecoy.position.z }) <= nextEnemy.alertRange) {
-                nextEnemy.aiState = EnemyAiState.DECOYED;
-                nextEnemy.decoyTurns = Math.max(nextEnemy.decoyTurns, 1);
-                target = { x: activeDecoy.position.x, z: activeDecoy.position.z };
-            } else if (canSeePlayer) {
-                nextEnemy.aiState = EnemyAiState.CHASE;
-                nextEnemy.lastKnownPlayerPos = { ...playerMapPos };
-                nextEnemy.investigateStepsLeft = 2;
-                nextEnemy.decoyTurns = 0;
-                target = playerMapPos;
-            } else if (nextEnemy.lastKnownPlayerPos && nextEnemy.investigateStepsLeft > 0) {
-                nextEnemy.aiState = EnemyAiState.INVESTIGATE;
-                target = { ...nextEnemy.lastKnownPlayerPos };
-            } else {
-                nextEnemy.aiState = EnemyAiState.PATROL;
-                nextEnemy.lastKnownPlayerPos = null;
-                nextEnemy.investigateStepsLeft = 0;
-                target = null;
-            }
-
-            for (let step = 0; step < nextEnemy.movement; step++) {
-                const dynamicBlocked = new Set([...blockedPositions, `${playerMapPos.x},${playerMapPos.z}`]);
-                let nextStep = { x: nextEnemy.x, z: nextEnemy.z };
-
-                if (nextEnemy.aiState === EnemyAiState.PATROL) {
-                    nextStep = buildPatrolStep(explorationState.map, nextEnemy, dynamicBlocked, explorationState.turnStep + 1, playerMapPos);
-                } else if (target) {
-                    nextStep = findClosestStepTowards(
-                        explorationState.map,
-                        { x: nextEnemy.x, z: nextEnemy.z },
-                        target,
-                        dynamicBlocked
-                    );
-                }
-
-                if (nextStep.x === nextEnemy.x && nextStep.z === nextEnemy.z) {
-                    break;
-                }
-
-                nextEnemy.x = nextStep.x;
-                nextEnemy.z = nextStep.z;
-
-                const trap = explorationState.traps.find(item => item.isArmed && item.position.x === nextEnemy.x && item.position.z === nextEnemy.z);
-                if (trap) {
-                    const trapResult = get().triggerTrap(trap.id, nextEnemy.id);
-                    triggeredMessage = trapResult.message;
-                    const refreshedEnemy = get().explorationState.zoneEnemies.find(item => item.id === nextEnemy.id);
-                    if (refreshedEnemy) {
-                        nextEnemy = { ...refreshedEnemy };
+                if (nextEnemy.poisonTurns > 0) {
+                    nextEnemy.poisonTurns -= 1;
+                    nextEnemy.hp = Math.max(0, nextEnemy.hp - 6);
+                    if (nextEnemy.hp <= 0) {
+                        return { ...nextEnemy, hp: 0, isDefeated: true, x: -99, z: -99 };
                     }
                 }
 
-                if (nextEnemy.isDefeated) {
-                    break;
+                if (nextEnemy.stunnedTurns > 0) {
+                    nextEnemy.stunnedTurns -= 1;
+                    nextEnemy.aiState = EnemyAiState.STUNNED;
+                    blockedPositions.add(`${nextEnemy.x},${nextEnemy.z}`);
+                    return nextEnemy;
                 }
 
-                if (nextEnemy.x === playerMapPos.x && nextEnemy.z === playerMapPos.z) {
-                    currentEnemyId = nextEnemy.id;
-                    break;
-                }
-            }
+                const distanceToPlayer = manhattanDistance({ x: nextEnemy.x, z: nextEnemy.z }, playerMapPos);
+                const canSeePlayer = distanceToPlayer <= nextEnemy.alertRange;
+                let target: TacticalPosition | null = null;
 
-            if (nextEnemy.aiState === EnemyAiState.INVESTIGATE) {
-                nextEnemy.investigateStepsLeft = Math.max(0, nextEnemy.investigateStepsLeft - 1);
-                if (nextEnemy.investigateStepsLeft <= 0) {
+                if (activeDecoy && manhattanDistance({ x: nextEnemy.x, z: nextEnemy.z }, { x: activeDecoy.position.x, z: activeDecoy.position.z }) <= nextEnemy.alertRange) {
+                    nextEnemy.aiState = EnemyAiState.DECOYED;
+                    nextEnemy.decoyTurns = Math.max(nextEnemy.decoyTurns, 1);
+                    target = { x: activeDecoy.position.x, z: activeDecoy.position.z };
+                } else if (canSeePlayer) {
+                    nextEnemy.aiState = EnemyAiState.CHASE;
+                    nextEnemy.lastKnownPlayerPos = { ...playerMapPos };
+                    nextEnemy.investigateStepsLeft = 2;
+                    nextEnemy.decoyTurns = 0;
+                    target = playerMapPos;
+                } else if (nextEnemy.lastKnownPlayerPos && nextEnemy.investigateStepsLeft > 0) {
+                    nextEnemy.aiState = EnemyAiState.INVESTIGATE;
+                    target = { ...nextEnemy.lastKnownPlayerPos };
+                } else {
                     nextEnemy.aiState = EnemyAiState.PATROL;
                     nextEnemy.lastKnownPlayerPos = null;
+                    nextEnemy.investigateStepsLeft = 0;
+                    target = null;
                 }
-            }
 
-            if (!nextEnemy.isDefeated) {
-                if (nextEnemy.aiState !== EnemyAiState.DECOYED) {
-                    nextEnemy.decoyTurns = 0;
+                for (let step = 0; step < nextEnemy.movement; step++) {
+                    const dynamicBlocked = new Set([...blockedPositions]);
+                    let nextStep = { x: nextEnemy.x, z: nextEnemy.z };
+
+                    if (nextEnemy.aiState === EnemyAiState.PATROL) {
+                        nextStep = buildPatrolStep(current.map, nextEnemy, dynamicBlocked, current.turnStep + 1, playerMapPos);
+                    } else if (target) {
+                        nextStep = findClosestStepTowards(current.map, { x: nextEnemy.x, z: nextEnemy.z }, target, dynamicBlocked);
+                    }
+
+                    if (nextStep.x === nextEnemy.x && nextStep.z === nextEnemy.z) break;
+                    nextEnemy.x = nextStep.x;
+                    nextEnemy.z = nextStep.z;
+
+                    phase = 'TRAP_RESOLVE';
+                    const trapIndex = traps.findIndex(item => item.isArmed && item.position.x === nextEnemy.x && item.position.z === nextEnemy.z);
+                    if (trapIndex >= 0) {
+                        const trap = traps[trapIndex];
+                        const trapData = TRAP_DATA[trap.type];
+                        nextEnemy.hp = Math.max(0, nextEnemy.hp - trapData.damage);
+                        triggeredMessage = trapData.triggerMessage;
+
+                        if (trap.type === TrapType.STUN || trap.type === TrapType.ICE) {
+                            nextEnemy.stunnedTurns = 1;
+                            nextEnemy.aiState = EnemyAiState.STUNNED;
+                        }
+                        if (trap.type === TrapType.POISON) {
+                            nextEnemy.poisonTurns = 2;
+                        }
+                        if (trap.type === TrapType.DECOY) {
+                            nextEnemy.decoyTurns = Math.max(nextEnemy.decoyTurns, 2);
+                            nextEnemy.aiState = EnemyAiState.DECOYED;
+                        }
+                        if (nextEnemy.hp <= 0) {
+                            nextEnemy = { ...nextEnemy, hp: 0, isDefeated: true, x: -99, z: -99 };
+                        }
+                        traps[trapIndex] = { ...trap, isArmed: false, isTriggered: true, duration: 0 };
+                    }
+
+                    if (nextEnemy.isDefeated) break;
+                    if (nextEnemy.x === playerMapPos.x && nextEnemy.z === playerMapPos.z) {
+                        contactEnemyId = nextEnemy.id;
+                        break;
+                    }
                 }
-                blockedPositions.add(`${nextEnemy.x},${nextEnemy.z}`);
-            }
 
-            return nextEnemy;
-        });
+                if (nextEnemy.aiState === EnemyAiState.INVESTIGATE) {
+                    nextEnemy.investigateStepsLeft = Math.max(0, nextEnemy.investigateStepsLeft - 1);
+                    if (nextEnemy.investigateStepsLeft <= 0) {
+                        nextEnemy.aiState = EnemyAiState.PATROL;
+                        nextEnemy.lastKnownPlayerPos = null;
+                    }
+                }
 
-        const aliveEnemies = enemies.filter(enemy => !enemy.isDefeated);
-        const nextTurnStep = explorationState.turnStep + 1;
-        const objectiveTileReached =
-            !!explorationState.roomObjectiveTile &&
-            explorationState.roomObjectiveTile.x === playerMapPos.x &&
-            explorationState.roomObjectiveTile.z === playerMapPos.z;
-        let roomObjectiveResolved = explorationState.roomObjectiveResolved;
-        let zoneCompleted = aliveEnemies.length === 0;
-        if (explorationState.zoneContext.kind === 'dungeon') {
-            if (explorationState.dungeonObjectiveType === 'survive_n_rounds' && nextTurnStep >= 4) {
-                roomObjectiveResolved = true;
-                zoneCompleted = true;
-            }
-            if (explorationState.dungeonObjectiveType === 'investigate' && objectiveTileReached) {
-                roomObjectiveResolved = true;
-                zoneCompleted = true;
-            }
-            if (explorationState.dungeonObjectiveType === 'disarm_trap' && roomObjectiveResolved) {
-                zoneCompleted = true;
-            }
-        }
-        const reactionSummary = aliveEnemies.length > 0
-            ? `Reaccion enemiga: ${aliveEnemies.length} hostiles activos.`
-            : 'Sin hostiles en la zona.';
-
-        const nextExplorationState: ExplorationState = {
-            ...get().explorationState,
-            zoneEnemies: enemies,
-            playerMapPos,
-            currentEnemyId,
-            turnStep: nextTurnStep,
-            mode3DState: currentEnemyId ? 'CONTACT_RESOLVE' : 'ROOM_RESULT',
-            zoneCompleted,
-            roomObjectiveResolved,
-            stepBudget: 1,
-            traps: decayTrapDurations(get().explorationState.traps),
-            tacticalMessage: zoneCompleted
-                ? 'La zona quedo limpia. Puedes volver al mapa hex.'
-                : triggeredMessage ?? reactionSummary,
-        };
-        let nextDungeonRuntime =
-            nextExplorationState.zoneContext.kind === 'dungeon' && get().activeDungeonId
-                ? get().dungeonRuntimeById[get().activeDungeonId]
-                : null;
-
-        if (
-            zoneCompleted &&
-            nextDungeonRuntime &&
-            nextExplorationState.dungeonRoomId &&
-            !nextDungeonRuntime.resolvedRooms.includes(nextExplorationState.dungeonRoomId)
-        ) {
-            nextDungeonRuntime = markDungeonRoomResolved(nextDungeonRuntime, nextExplorationState.dungeonRoomId);
-            set({
-                dungeonRuntimeById: {
-                    ...get().dungeonRuntimeById,
-                    [nextDungeonRuntime.dungeonId]: nextDungeonRuntime,
-                },
+                if (!nextEnemy.isDefeated) {
+                    if (nextEnemy.aiState !== EnemyAiState.DECOYED) nextEnemy.decoyTurns = 0;
+                    blockedPositions.add(`${nextEnemy.x},${nextEnemy.z}`);
+                }
+                return nextEnemy;
             });
-        }
 
-        set({
-            explorationState: nextExplorationState,
-            tacticalUiState: buildTacticalUiState(nextExplorationState, get().inputMode, null, nextDungeonRuntime),
-        });
+            phase = 'CONTACT_CHECK';
+            const contactEnemy = contactEnemyId ? enemies.find(enemy => enemy.id === contactEnemyId && !enemy.isDefeated) : null;
+            if (contactEnemy) {
+                if (contactEnemy.isElite) {
+                    tacticalMessage = `Contacto elite con ${contactEnemy.name}.`;
+                } else {
+                    const blocked = new Set<string>(enemies.filter(enemy => !enemy.isDefeated).map(enemy => `${enemy.x},${enemy.z}`));
+                    playerMapPos = computeKnockbackTarget(current.map, playerMapPos, { x: contactEnemy.x, z: contactEnemy.z }, blocked);
+                    party = party.map((member: Entity, index: number) =>
+                        index === 0
+                            ? { ...member, stats: { ...member.stats, hp: Math.max(1, member.stats.hp - COMMON_CONTACT_DAMAGE) } }
+                            : member
+                    );
+                    tacticalMessage = `${contactEnemy.name} te golpea (-${COMMON_CONTACT_DAMAGE}) y te empuja.`;
+                    contactEnemyId = null;
+                }
+            }
 
-        if (currentEnemyId) {
-            get().startEncounter(currentEnemyId);
-        }
+            phase = 'END_STEP';
+            const aliveEnemies = enemies.filter(enemy => !enemy.isDefeated);
+            const nextTurnStep = current.turnStep + 1;
+            const objectiveTileReached =
+                !!current.roomObjectiveTile &&
+                current.roomObjectiveTile.x === playerMapPos.x &&
+                current.roomObjectiveTile.z === playerMapPos.z;
+            let roomObjectiveResolved = current.roomObjectiveResolved;
+            let zoneCompleted = aliveEnemies.length === 0;
+
+            if (current.zoneContext.kind === 'dungeon') {
+                if (current.dungeonObjectiveType === 'survive_n_rounds' && nextTurnStep >= 4) {
+                    roomObjectiveResolved = true;
+                    zoneCompleted = true;
+                }
+                if (current.dungeonObjectiveType === 'investigate' && objectiveTileReached) {
+                    roomObjectiveResolved = true;
+                    zoneCompleted = true;
+                }
+                if (current.dungeonObjectiveType === 'disarm_trap' && roomObjectiveResolved) {
+                    zoneCompleted = true;
+                }
+            }
+
+            const reactionSummary = aliveEnemies.length > 0
+                ? `Reaccion enemiga: ${aliveEnemies.length} hostiles activos.`
+                : 'Sin hostiles en la zona.';
+
+            const snapped = {
+                x: Math.abs(playerMapPos.x - current.smoothedWorldPos.x) <= SNAP_DEADZONE ? playerMapPos.x : current.smoothedWorldPos.x,
+                z: Math.abs(playerMapPos.z - current.smoothedWorldPos.z) <= SNAP_DEADZONE ? playerMapPos.z : current.smoothedWorldPos.z,
+            };
+
+            const nextExplorationState: ExplorationState = {
+                ...current,
+                zoneEnemies: enemies,
+                traps: decayTrapDurations(traps.filter(trap => trap.isArmed)),
+                playerMapPos,
+                lastStableGridPos: { ...playerMapPos },
+                smoothedWorldPos: snapped,
+                snapState: 'SNAPPED',
+                movementIntent: null,
+                currentEnemyId: contactEnemyId,
+                turnStep: nextTurnStep,
+                mode3DState: contactEnemyId ? 'CONTACT_RESOLVE' : 'ROOM_RESULT',
+                stepPhase: phase,
+                zoneCompleted,
+                roomObjectiveResolved,
+                stepBudget: 1,
+                contactCooldown: Math.max(0, current.contactCooldown - 1) || (tacticalMessage ? COMMON_CONTACT_COOLDOWN_STEPS : 0),
+                lineOfSightMask: computeLineOfSightMask(current.map, playerMapPos, current.roomGraphRef, current.currentRoomId, current.doorStates),
+                tacticalMessage: zoneCompleted
+                    ? 'La zona quedo limpia. Puedes volver al mapa hex.'
+                    : tacticalMessage ?? triggeredMessage ?? reactionSummary,
+            };
+
+            let nextDungeonRuntime =
+                nextExplorationState.zoneContext.kind === 'dungeon' && get().activeDungeonId
+                    ? get().dungeonRuntimeById[get().activeDungeonId]
+                    : null;
+
+            if (
+                zoneCompleted &&
+                nextDungeonRuntime &&
+                nextExplorationState.dungeonRoomId &&
+                !nextDungeonRuntime.resolvedRooms.includes(nextExplorationState.dungeonRoomId)
+            ) {
+                nextDungeonRuntime = markDungeonRoomResolved(nextDungeonRuntime, nextExplorationState.dungeonRoomId);
+                set({
+                    dungeonRuntimeById: {
+                        ...get().dungeonRuntimeById,
+                        [nextDungeonRuntime.dungeonId]: nextDungeonRuntime,
+                    },
+                });
+            }
+
+            set({
+                party,
+                explorationState: nextExplorationState,
+                tacticalUiState: buildTacticalUiState(nextExplorationState, get().inputMode, null, nextDungeonRuntime),
+            });
+
+            if (contactEnemyId) {
+                get().startEncounter(contactEnemyId);
+            }
+        };
+
+        resolveStepCycle({ x: newX, z: newZ });
     },
 
     startEncounter: (enemyId) => {
@@ -1437,6 +1548,18 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
         if (!activeDungeonId || !explorationState.roomGraphRef) {
             return;
         }
+        if (explorationState.stepBudget <= 0) {
+            const blockedState: ExplorationState = {
+                ...explorationState,
+                tacticalMessage: 'Sin acciones disponibles para abrir puerta.',
+                stepPhase: 'PLAYER_STEP',
+            };
+            set({
+                explorationState: blockedState,
+                tacticalUiState: buildTacticalUiState(blockedState, state.inputMode, 'Sin acciones disponibles.'),
+            });
+            return;
+        }
 
         const runtime = state.dungeonRuntimeById[activeDungeonId];
         if (!runtime?.roomGraph) {
@@ -1452,6 +1575,7 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             const nextExplorationState: ExplorationState = {
                 ...explorationState,
                 tacticalMessage: 'Puerta bloqueada. Requiere activar un mecanismo.',
+                stepPhase: 'PLAYER_STEP',
             };
             set({
                 explorationState: nextExplorationState,
@@ -1514,6 +1638,20 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             tacticalMessage: `Abres una puerta y entras en ${roomDefinition?.label || targetRoom}.`,
             mode3DState: 'FREE_MOVE',
             stepBudget: 1,
+            turnStep: explorationState.turnStep + 1,
+            lineOfSightMask: computeLineOfSightMask(
+                map,
+                playerStart,
+                nextRuntime.roomGraph,
+                targetRoom,
+                nextRuntime.doorStates
+            ),
+            movementIntent: null,
+            smoothedWorldPos: { ...playerStart },
+            lastStableGridPos: { ...playerStart },
+            snapState: 'SNAPPED',
+            stepPhase: 'END_STEP',
+            contactCooldown: Math.max(0, explorationState.contactCooldown - 1),
         };
 
         set({
@@ -1544,6 +1682,12 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             trapAimTarget: null,
             eliteContactPending: null,
             stepBudget: 1,
+            movementIntent: null,
+            smoothedWorldPos: { ...explorationState.playerMapPos },
+            lastStableGridPos: { ...explorationState.playerMapPos },
+            snapState: 'SNAPPED',
+            stepPhase: 'PLAYER_STEP',
+            contactCooldown: 0,
         };
         set({
             gameState: GameState.OVERWORLD,

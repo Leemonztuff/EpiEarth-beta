@@ -119,6 +119,13 @@ export type PoiStateTag = 'Dormant' | 'Active' | 'Contested' | 'Collapsing';
 export type Mode3DState = 'FREE_MOVE' | 'TACTICAL_PAUSE' | 'TRAP_AIM' | 'ENEMY_REACT' | 'CONTACT_RESOLVE' | 'ROOM_RESULT';
 export type CameraMode = 'OVER_SHOULDER' | 'TACTICAL_ZOOM' | 'CINEMATIC';
 export type DoorState = 'closed' | 'open' | 'locked';
+export type SnapState = 'SNAPPED' | 'SMOOTHING';
+export type TacticalStepPhase =
+    | 'PLAYER_STEP'
+    | 'ENEMY_REACT'
+    | 'TRAP_RESOLVE'
+    | 'CONTACT_CHECK'
+    | 'END_STEP';
 
 export type DungeonRoomObjectiveType =
     | 'clear'
@@ -220,6 +227,8 @@ export interface EncounterContext {
 export type TacticalAction =
     | { type: 'MoveStep'; dx: number; dz: number }
     | { type: 'MoveToTile'; x: number; z: number }
+    | { type: 'UpdateMovementIntent'; dx: number; dz: number }
+    | { type: 'CommitStep' }
     | { type: 'ToggleTacticalPause'; forced?: boolean }
     | { type: 'SelectTrap'; trapType: TrapType | null }
     | { type: 'PlaceTrap'; x: number; z: number; trapType?: TrapType }
@@ -230,6 +239,7 @@ export type TacticalAction =
     | { type: 'OpenDoor'; doorId: string }
     | { type: 'ToggleMinimap' }
     | { type: 'SetCameraMode'; cameraMode: CameraMode }
+    | { type: 'ClearFeedback' }
     | { type: 'ExitTrapZone' };
 
 export type EncounterOutcomeType = 'VICTORY' | 'DEFEAT' | 'FLEE';
@@ -260,6 +270,7 @@ export interface TacticalUiState {
     mode3DState?: Mode3DState;
     currentRoomId?: string | null;
     stepBudget?: number;
+    stepPhase?: TacticalStepPhase;
 }
 
 export interface Trap {

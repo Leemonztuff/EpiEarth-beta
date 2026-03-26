@@ -16,6 +16,10 @@ function getWorldPosition(x: number, z: number): [number, number, number] {
     return [x - TACTICAL_MAP_SIZE / 2, 0, z - TACTICAL_MAP_SIZE / 2];
 }
 
+function getWorldPositionFromPos(pos: { x: number; z: number }): [number, number, number] {
+    return getWorldPosition(pos.x, pos.z);
+}
+
 const TILE_TEXTURE_URLS = {
     FLOOR: '/assets/minecraft/grass_block_top.png',
     WALL: '/assets/minecraft/cobblestone.png',
@@ -30,6 +34,16 @@ const TrapPlacementHighlight: React.FC<{ position: [number, number, number]; act
         <mesh position={[position[0], 0.03, position[2]]} rotation={[-Math.PI / 2, 0, 0]}>
             <ringGeometry args={[0.35, 0.48, 24]} />
             <meshBasicMaterial color="#fbbf24" transparent opacity={0.55} />
+        </mesh>
+    );
+};
+
+const TrapAimGhost: React.FC<{ position: [number, number, number] | null }> = ({ position }) => {
+    if (!position) return null;
+    return (
+        <mesh position={[position[0], 0.07, position[2]]} rotation={[-Math.PI / 2, 0, 0]}>
+            <circleGeometry args={[0.26, 18]} />
+            <meshBasicMaterial color="#60a5fa" transparent opacity={0.85} />
         </mesh>
     );
 };
@@ -90,12 +104,15 @@ const ThirdPersonCameraRig: React.FC<{
 const TacticalBoard: React.FC<{
     map: any[][];
     playerPos: { x: number; z: number };
+    playerRenderPos: { x: number; z: number };
     enemies: any[];
     traps: any[];
     highlightedTiles: { x: number; z: number }[];
+    trapAimTarget: { x: number; z: number } | null;
+    selectedTrapRange: number | null;
     onTilePress: (x: number, z: number) => void;
     playerSpriteUrl?: string;
-}> = ({ map, playerPos, enemies, traps, highlightedTiles, onTilePress, playerSpriteUrl }) => {
+}> = ({ map, playerPos, playerRenderPos, enemies, traps, highlightedTiles, trapAimTarget, selectedTrapRange, onTilePress, playerSpriteUrl }) => {
     const textureEntries = useLoader(THREE.TextureLoader, Object.values(TILE_TEXTURE_URLS));
     const textures = useMemo<LoadedTextureMap>(() => {
         const next: LoadedTextureMap = {};
@@ -153,7 +170,6 @@ const TacticalBoard: React.FC<{
                 })
             )}
 
-            <SpriteBillboard position={getWorldPosition(playerPos.x, playerPos.z)} spriteUrl={playerSpriteUrl} scale={[1.2, 1.8, 1]} />
             {enemies.map(enemy =>
                 enemy.isDefeated ? null : (
                     <SpriteBillboard key={enemy.id} position={getWorldPosition(enemy.x, enemy.z)} spriteUrl={enemy.sprite} scale={[1.3, 1.7, 1]} />
@@ -162,6 +178,14 @@ const TacticalBoard: React.FC<{
             {traps.map(trap => (
                 <TrapMarker key={trap.id} position={[getWorldPosition(trap.x, trap.z)[0], 0.02, getWorldPosition(trap.x, trap.z)[2]]} trapType={trap.type} isArmed={trap.isArmed} />
             ))}
+            {selectedTrapRange ? (
+                <mesh position={getWorldPosition(playerPos.x, playerPos.z)} rotation={[-Math.PI / 2, 0, 0]}>
+                    <ringGeometry args={[Math.max(0.65, selectedTrapRange - 0.2), selectedTrapRange + 0.25, 36]} />
+                    <meshBasicMaterial color="#fbbf24" transparent opacity={0.22} />
+                </mesh>
+            ) : null}
+            <TrapAimGhost position={trapAimTarget ? getWorldPositionFromPos(trapAimTarget) : null} />
+            <SpriteBillboard position={getWorldPositionFromPos(playerRenderPos)} spriteUrl={playerSpriteUrl} scale={[1.2, 1.8, 1]} />
         </group>
     );
 };
@@ -276,13 +300,14 @@ export const Exploration3DScene: React.FC = () => {
                 <directionalLight position={[10, 18, 8]} intensity={1.2} castShadow shadow-mapSize-width={2048} shadow-mapSize-height={2048} />
                 <fog attach="fog" args={['#0b1220', 8, 26]} />
                 <ThirdPersonCameraRig
-                    playerPos={explorationState.playerMapPos}
+                    playerPos={explorationState.smoothedWorldPos}
                     cameraMode={explorationState.cameraMode}
                 />
 
                 <TacticalBoard
                     map={explorationState.map}
                     playerPos={explorationState.playerMapPos}
+                    playerRenderPos={explorationState.smoothedWorldPos}
                     enemies={explorationState.zoneEnemies}
                     traps={explorationState.traps.map(trap => ({
                         id: trap.id,
@@ -292,6 +317,8 @@ export const Exploration3DScene: React.FC = () => {
                         isArmed: trap.isArmed,
                     }))}
                     highlightedTiles={explorationState.highlightedTiles}
+                    trapAimTarget={explorationState.trapAimTarget}
+                    selectedTrapRange={selectedTrap ? (tacticalUiState.selectedTrapRange ?? TRAP_DATA[selectedTrap].range) : null}
                     onTilePress={handleTilePress}
                     playerSpriteUrl={player?.visual?.spriteUrl}
                 />
@@ -312,7 +339,7 @@ export const Exploration3DScene: React.FC = () => {
                                     <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-white/10 text-white font-bold">ENEM {tacticalUiState.enemyCount}</span>
                                     <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-white/10 text-white font-bold">TURNO {tacticalUiState.turnStep}</span>
                                     <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-white/10 text-white font-bold">TRAPS {tacticalUiState.trapCount}/{tacticalUiState.maxTraps}</span>
-                                    <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-white/10 text-white font-bold">{explorationState.mode3DState}</span>
+                                    <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-white/10 text-white font-bold">{explorationState.stepPhase}</span>
                                 </div>
                             </div>
                             <div className="flex items-center gap-1.5 sm:gap-2">
@@ -402,8 +429,8 @@ export const Exploration3DScene: React.FC = () => {
 
                         <div className="mt-2 text-[11px] text-white/50">
                             {isMobile
-                                ? 'Mobile: Pad para mover · Tap para colocar · Boton Pausa · Mapa desde RADAR'
-                                : 'Desktop: WASD/Flechas mover · Click colocar/interactuar · P pausa · M radar'}
+                                ? 'Mobile: Pad mover | Tap colocar | Pausa | Radar'
+                                : 'Desktop: WASD/Flechas | Click colocar/interactuar | P pausa | M radar'}
                         </div>
                     </div>
 
