@@ -27,9 +27,7 @@ const TILE_TEXTURE_URLS = {
 };
 
 const TrapPlacementHighlight: React.FC<{ position: [number, number, number]; active: boolean }> = ({ position, active }) => {
-    if (!active) {
-        return null;
-    }
+    if (!active) return null;
 
     return (
         <mesh position={[position[0], 0.03, position[2]]} rotation={[-Math.PI / 2, 0, 0]}>
@@ -42,9 +40,8 @@ const TrapPlacementHighlight: React.FC<{ position: [number, number, number]; act
 const SpriteBillboard: React.FC<{
     position: [number, number, number];
     spriteUrl?: string;
-    fallbackColor: string;
     scale?: [number, number, number];
-}> = ({ position, spriteUrl, fallbackColor, scale = [1.4, 1.8, 1] }) => {
+}> = ({ position, spriteUrl, scale = [1.4, 1.8, 1] }) => {
     const safeUrl = AssetManager.getSafeSprite(spriteUrl || AssetManager.FALLBACK_SPRITE);
     const texture = useLoader(THREE.TextureLoader, safeUrl);
 
@@ -81,10 +78,7 @@ const TacticalBoard: React.FC<{
         return next;
     }, [textureEntries]);
 
-    const highlightSet = useMemo(
-        () => new Set(highlightedTiles.map(tile => `${tile.x},${tile.z}`)),
-        [highlightedTiles]
-    );
+    const highlightSet = useMemo(() => new Set(highlightedTiles.map(tile => `${tile.x},${tile.z}`)), [highlightedTiles]);
 
     return (
         <group>
@@ -141,20 +135,12 @@ const TacticalBoard: React.FC<{
                 })
             )}
 
-            <SpriteBillboard position={getWorldPosition(playerPos.x, playerPos.z)} spriteUrl={playerSpriteUrl} fallbackColor="#3b82f6" scale={[1.2, 1.8, 1]} />
-
-            {enemies.map(enemy => (
+            <SpriteBillboard position={getWorldPosition(playerPos.x, playerPos.z)} spriteUrl={playerSpriteUrl} scale={[1.2, 1.8, 1]} />
+            {enemies.map(enemy =>
                 enemy.isDefeated ? null : (
-                    <SpriteBillboard
-                        key={enemy.id}
-                        position={getWorldPosition(enemy.x, enemy.z)}
-                        spriteUrl={enemy.sprite}
-                        fallbackColor="#ef4444"
-                        scale={[1.3, 1.7, 1]}
-                    />
+                    <SpriteBillboard key={enemy.id} position={getWorldPosition(enemy.x, enemy.z)} spriteUrl={enemy.sprite} scale={[1.3, 1.7, 1]} />
                 )
-            ))}
-
+            )}
             {traps.map(trap => (
                 <TrapMarker
                     key={trap.id}
@@ -170,13 +156,13 @@ const TacticalBoard: React.FC<{
 const DirectionPad: React.FC<{ onMove: (dx: number, dz: number) => void }> = ({ onMove }) => (
     <div className="grid grid-cols-3 gap-2 w-[180px] sm:w-[210px]">
         <div />
-        <button className="h-14 rounded-2xl bg-slate-900/85 border border-white/10 text-white font-black" onClick={() => onMove(0, -1)}>↑</button>
+        <button className="h-14 rounded-2xl bg-slate-900/85 border border-white/10 text-white font-black" onClick={() => onMove(0, -1)}>N</button>
         <div />
-        <button className="h-14 rounded-2xl bg-slate-900/85 border border-white/10 text-white font-black" onClick={() => onMove(-1, 0)}>←</button>
+        <button className="h-14 rounded-2xl bg-slate-900/85 border border-white/10 text-white font-black" onClick={() => onMove(-1, 0)}>W</button>
         <button className="h-14 rounded-2xl bg-slate-800/85 border border-amber-500/30 text-amber-300 font-black">STEP</button>
-        <button className="h-14 rounded-2xl bg-slate-900/85 border border-white/10 text-white font-black" onClick={() => onMove(1, 0)}>→</button>
+        <button className="h-14 rounded-2xl bg-slate-900/85 border border-white/10 text-white font-black" onClick={() => onMove(1, 0)}>E</button>
         <div />
-        <button className="h-14 rounded-2xl bg-slate-900/85 border border-white/10 text-white font-black" onClick={() => onMove(0, 1)}>↓</button>
+        <button className="h-14 rounded-2xl bg-slate-900/85 border border-white/10 text-white font-black" onClick={() => onMove(0, 1)}>S</button>
         <div />
     </div>
 );
@@ -223,15 +209,12 @@ export const Exploration3DScene: React.FC = () => {
             dispatchTacticalAction({ type: 'PlaceTrap', x, z, trapType: selectedTrap });
             return;
         }
-
         dispatchTacticalAction({ type: 'MoveToTile', x, z });
     }, [selectedTrap, dispatchTacticalAction]);
 
     useEffect(() => {
         const onKeyDown = (event: KeyboardEvent) => {
-            if (gameState !== GameState.EXPLORATION_3D) {
-                return;
-            }
+            if (gameState !== GameState.EXPLORATION_3D) return;
 
             if (event.key === 'w' || event.key === 'ArrowUp') {
                 event.preventDefault();
@@ -255,17 +238,11 @@ export const Exploration3DScene: React.FC = () => {
         return () => window.removeEventListener('keydown', onKeyDown);
     }, [attemptMove, gameState, dispatchTacticalAction]);
 
-    if (gameState !== GameState.EXPLORATION_3D) {
-        return null;
-    }
+    if (gameState !== GameState.EXPLORATION_3D) return null;
 
     return (
         <div className="w-full h-full relative overflow-hidden bg-[#04070b]">
-            <Canvas
-                shadows
-                camera={{ position: [0, 16, 13], fov: 48 }}
-                className="touch-none"
-            >
+            <Canvas shadows camera={{ position: [0, 16, 13], fov: 48 }} className="touch-none">
                 <color attach="background" args={['#0b1220']} />
                 <ambientLight intensity={0.75} />
                 <directionalLight position={[10, 18, 8]} intensity={1.2} castShadow shadow-mapSize-width={2048} shadow-mapSize-height={2048} />
@@ -288,15 +265,7 @@ export const Exploration3DScene: React.FC = () => {
                 />
 
                 {!isMobile && (
-                    <OrbitControls
-                        enablePan={false}
-                        enableZoom
-                        minDistance={10}
-                        maxDistance={22}
-                        minPolarAngle={0.7}
-                        maxPolarAngle={1.15}
-                        target={[0, 0, 0]}
-                    />
+                    <OrbitControls enablePan={false} enableZoom minDistance={10} maxDistance={22} minPolarAngle={0.7} maxPolarAngle={1.15} target={[0, 0, 0]} />
                 )}
             </Canvas>
 
@@ -305,7 +274,9 @@ export const Exploration3DScene: React.FC = () => {
                     <div className="rounded-3xl border border-white/10 bg-slate-950/80 backdrop-blur-md p-3 sm:p-4">
                         <div className="flex items-start justify-between gap-3">
                             <div>
-                                <div className="text-[10px] sm:text-xs uppercase tracking-[0.24em] text-amber-300/80">Trap Hunt</div>
+                                <div className="text-[10px] sm:text-xs uppercase tracking-[0.24em] text-amber-300/80">
+                                    {explorationState.zoneContext?.kind === 'dungeon' ? 'Dungeon Hunt' : 'Trap Hunt'}
+                                </div>
                                 <h2 className="text-white font-black text-lg sm:text-2xl leading-none">{tacticalUiState.zoneName}</h2>
                                 <p className="text-white/65 text-xs sm:text-sm mt-1 max-w-xl">{tacticalUiState.message || 'Mueve un casillero, obliga a perseguir y castiga con trampas.'}</p>
                                 {tacticalUiState.blockReason && (
@@ -328,7 +299,7 @@ export const Exploration3DScene: React.FC = () => {
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mt-3">
+                        <div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-9 gap-2 mt-3">
                             <div className="rounded-2xl bg-slate-900/90 p-2">
                                 <div className="text-[10px] uppercase text-white/40 font-bold">HP</div>
                                 <div className="text-white font-black">{player?.stats.hp ?? 0}/{player?.stats.maxHp ?? 0}</div>
@@ -348,6 +319,22 @@ export const Exploration3DScene: React.FC = () => {
                             <div className="rounded-2xl bg-slate-900/90 p-2">
                                 <div className="text-[10px] uppercase text-white/40 font-bold">Turno</div>
                                 <div className="text-white font-black">{tacticalUiState.turnStep}</div>
+                            </div>
+                            <div className="rounded-2xl bg-slate-900/90 p-2">
+                                <div className="text-[10px] uppercase text-white/40 font-bold">Objetivo</div>
+                                <div className="text-white font-black text-xs">{tacticalUiState.objectiveLabel || 'Explorar'}</div>
+                            </div>
+                            <div className="rounded-2xl bg-slate-900/90 p-2">
+                                <div className="text-[10px] uppercase text-white/40 font-bold">Riesgo</div>
+                                <div className="text-white font-black text-xs">{tacticalUiState.riskLabel || 'Moderado'}</div>
+                            </div>
+                            <div className="rounded-2xl bg-slate-900/90 p-2">
+                                <div className="text-[10px] uppercase text-white/40 font-bold">Timeline</div>
+                                <div className="text-white font-black text-xs">{tacticalUiState.timelineLabel || 'Dia 0'}</div>
+                            </div>
+                            <div className="rounded-2xl bg-slate-900/90 p-2">
+                                <div className="text-[10px] uppercase text-white/40 font-bold">Twist</div>
+                                <div className="text-white font-black text-xs">{tacticalUiState.twistLabel || '-'}</div>
                             </div>
                         </div>
                     </div>
@@ -370,7 +357,7 @@ export const Exploration3DScene: React.FC = () => {
                             </div>
                             <div className="text-right text-xs text-white/60">
                                 {selectedTrap
-                                    ? `${TRAP_DATA[selectedTrap].name} · alcance ${tacticalUiState.selectedTrapRange ?? TRAP_DATA[selectedTrap].range}`
+                                    ? `${TRAP_DATA[selectedTrap].name} - alcance ${tacticalUiState.selectedTrapRange ?? TRAP_DATA[selectedTrap].range}`
                                     : 'Elige una trampa'}
                             </div>
                         </div>
@@ -394,7 +381,7 @@ export const Exploration3DScene: React.FC = () => {
                             ))}
                         </div>
                         <div className="mt-2 text-[11px] text-white/55">
-                            {tacticalUiState.inputHints.join(' · ')}
+                            {tacticalUiState.inputHints.join(' - ')}
                         </div>
                     </div>
                 </div>

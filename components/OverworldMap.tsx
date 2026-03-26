@@ -45,12 +45,16 @@ const OverworldMap = ({ playerPos, onMove, dimension = Dimension.NORMAL }: Overw
     const townMapData = useGameStore(s => s.townMapData);
     const isAssetsLoaded = useGameStore(s => s.isAssetsLoaded);
     const overworldEnemies = useGameStore(s => s.enemies);
+    const dungeonRuntimeById = useGameStore(s => s.dungeonRuntimeById);
 
     const clearedEncounters = useGameStore(s => s.clearedEncounters);
     const safeDimension = dimension || Dimension.NORMAL;
     const isLocal = (gameState || '') === GameState.TOWN_EXPLORATION || (gameState || '') === GameState.DUNGEON;
     const hours = Math.floor((worldTime || 480) / 60);
     const isNight = hours < 6 || hours >= 22;
+    const currentTile = !isLocal ? WorldGenerator.getTile(playerPos.x, playerPos.y, safeDimension) : null;
+    const currentDungeonState = currentTile?.poiId ? dungeonRuntimeById[currentTile.poiId] : null;
+    const poiStateTag = currentDungeonState?.stateTag || currentTile?.poiStateTag;
 
     useEffect(() => {
         wesnothAtlas.load().catch(err => {
@@ -276,6 +280,13 @@ const OverworldMap = ({ playerPos, onMove, dimension = Dimension.NORMAL }: Overw
                     onMove(q, r);
                 }}
             />
+            {!isLocal && currentTile?.poiType && (
+                <div className="absolute top-3 left-3 z-20 pointer-events-none rounded-2xl border border-white/10 bg-slate-950/80 px-3 py-2 text-xs text-white/85">
+                    <div className="font-black uppercase tracking-wide">{currentTile.poiType}</div>
+                    {poiStateTag && <div className="text-[11px] text-amber-300">Estado: {poiStateTag}</div>}
+                    {currentTile.poiTier && <div className="text-[11px] text-white/70">Tier: {currentTile.poiTier}</div>}
+                </div>
+            )}
         </div>
     );
 };

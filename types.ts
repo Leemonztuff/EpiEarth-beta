@@ -115,6 +115,64 @@ export type InputMode = 'mobile' | 'desktop';
 
 export type EncounterReturnPolicy = 'RETURN_TO_OVERWORLD' | 'RETURN_TO_TRAP_HUNT';
 export type EncounterLossPolicy = 'DROP_LOOT' | 'LIGHT_PENALTY' | 'NONE';
+export type PoiStateTag = 'Dormant' | 'Active' | 'Contested' | 'Collapsing';
+
+export type DungeonRoomObjectiveType =
+    | 'clear'
+    | 'survive_n_rounds'
+    | 'disarm_trap'
+    | 'investigate'
+    | 'elite_contact';
+
+export interface DungeonRoomDefinition {
+    id: string;
+    objective: DungeonRoomObjectiveType;
+    label: string;
+    isSecret?: boolean;
+    elite?: boolean;
+}
+
+export interface DungeonTimelineEvent {
+    id: string;
+    day: number;
+    label: string;
+    threatDelta: number;
+    lootPenalty: number;
+    factionControl?: string;
+    twist?: string;
+}
+
+export interface DungeonBlueprint {
+    id: string;
+    name: string;
+    hook: string;
+    twist: string;
+    rooms: DungeonRoomDefinition[];
+    timelineEvents: DungeonTimelineEvent[];
+}
+
+export interface DungeonRuntimeState {
+    dungeonId: string;
+    blueprintId: string;
+    threatLevel: number;
+    factionControl: string;
+    timelineDay: number;
+    resolvedRooms: string[];
+    discoveredSecrets: string[];
+    remainingLootTier: number;
+    activeTwists: string[];
+    nextTimelineEventIndex: number;
+    roomCursor: number;
+    stateTag: PoiStateTag;
+}
+
+export interface ZoneContext {
+    kind: 'biome' | 'dungeon';
+    poiId?: string;
+    tier?: number;
+    twistSeed?: string;
+    blueprintId?: string;
+}
 
 export interface EncounterContext {
     sourceMode: GameState;
@@ -152,6 +210,11 @@ export interface TacticalUiState {
     selectedTrapRange: number | null;
     tacticalPaused: boolean;
     placementMode: boolean;
+    objectiveLabel: string | null;
+    riskLabel: string | null;
+    timelineLabel: string | null;
+    twistLabel: string | null;
+    poiStateTag: PoiStateTag | null;
 }
 
 export interface Trap {
@@ -302,6 +365,10 @@ export interface HexCell {
     overlayTerrain?: TerrainType | null;
     isExplored: boolean; isVisible: boolean; weather: WeatherType;
     poiType?: string; hasPortal?: boolean; hasEncounter?: boolean;
+    poiId?: string;
+    poiTier?: number;
+    poiStateTag?: PoiStateTag;
+    biomeTag?: string;
     npcs?: NPCEntity[]; regionName?: string;
     movementType?: MovementType;
     // new fields for rendering features and overworld enemies
@@ -380,6 +447,8 @@ export interface GameStateData {
     currentSettlementName: string | null;
     activeNarrativeEvent: any | null;
     activeIncursion: any | null;
+    activeDungeonId: string | null;
+    dungeonRuntimeById: Record<string, DungeonRuntimeState>;
     encounterContext: EncounterContext | null;
     tacticalUiState: TacticalUiState;
     standingOnPort: boolean;

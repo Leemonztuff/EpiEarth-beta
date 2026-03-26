@@ -1,11 +1,13 @@
 
 import { StateCreator } from 'zustand';
-import { GameState, Dimension, Difficulty, HexCell, PositionComponent, MovementType, Quest, Incursion, OverworldEnemy } from '../../types';
+import { DungeonRuntimeState, GameState, Dimension, Difficulty, HexCell, PositionComponent, MovementType, Quest, Incursion, OverworldEnemy } from '../../types';
 import { WorldGenerator } from '../../services/WorldGenerator';
 import { findPath } from '../../services/pathfinding';
 import { sfx } from '../../services/SoundSystem';
 import { useGameStore } from '../gameStore';
 import { generateId } from '../utils';
+import { advanceDungeonTimeline, createDungeonRuntime } from '../../services/dungeonRuntime';
+import { getDungeonBlueprint } from '../../data/dungeonBlueprints';
 
 export interface OverworldSlice {
   gameState: GameState;
@@ -37,6 +39,8 @@ export interface OverworldSlice {
   eternumShards: number;
   gracePeriodEndTime: number;
   activeNarrativeEvent: any | null;
+  activeDungeonId: string | null;
+  dungeonRuntimeById: Record<string, DungeonRuntimeState>;
   userSession: any | null;
   isAmbushed: boolean;
   
@@ -139,6 +143,8 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
   eternumShards: 0,
   gracePeriodEndTime: 0,
   activeNarrativeEvent: null,
+  activeDungeonId: null,
+  dungeonRuntimeById: {},
   userSession: null,
   isAmbushed: false,
   enemies: [],
@@ -200,9 +206,14 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
     if (!tile) return false;
 
     // EVENTO DE COMBATE (CALAVERAS) - Entrar a Zona de Caza 3D
-    if (!isLocal && tile.hasEncounter) {
+    if (!isLocal && tile.hasEncounter && tile.poiType !== 'DUNGEON' && tile.poiType !== 'RUINS') {
         const { initZone } = useGameStore.getState();
-        initZone('forest', { x: q, y: r });
+        initZone(tile.biomeTag || 'forest', { x: q, y: r }, {
+            kind: 'biome',
+            poiId: tile.poiId,
+            tier: tile.poiTier,
+            twistSeed: `${dimension}:${q},${r}`,
+        });
         set({ isPlayerMoving: false });
         return true; 
     }
@@ -349,12 +360,38 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
   enterDungeon: () => {
     const { playerPos, dimension } = get();
     const tile = WorldGenerator.getTile(playerPos.x, playerPos.y, dimension);
-    const dungeonMap = WorldGenerator.generateDungeon(10);
-    set({ 
-        gameState: GameState.DUNGEON, townMapData: dungeonMap,
-        lastOverworldPos: { ...playerPos }, playerPos: { x: 0, y: 0 },
-        currentSettlementName: tile.regionName || "Cripta Ancestral", standingOnDungeon: false
+    const dungeonId = tile.poiId || `${dimension}:DUNGEON:${playerPos.x},${playerPos.y}`;
+    const state = get();
+    const existingRuntime = state.dungeonRuntimeById[dungeonId];
+    const runtimeBase = existingRuntime || createDungeonRuntime(dungeonId, 'dorgotar-crypt');
+    const { next: runtimeNext, eventsApplied } = advanceDungeonTimeline(runtimeBase, existingRuntime ? 1 : 0);
+    const blueprint = getDungeonBlueprint(runtimeNext.blueprintId);
+
+    set({
+        activeDungeonId: dungeonId,
+        dungeonRuntimeById: {
+            ...state.dungeonRuntimeById,
+            [dungeonId]: runtimeNext,
+        },
+        lastOverworldPos: { ...playerPos },
+        currentSettlementName: tile.regionName || blueprint.name,
+        standingOnDungeon: false,
     });
+
+    const { initZone } = useGameStore.getState();
+    initZone(tile.biomeTag || 'forest', { x: playerPos.x, y: playerPos.y }, {
+        kind: 'dungeon',
+        poiId: dungeonId,
+        tier: tile.poiTier || 1,
+        twistSeed: `${dimension}:${playerPos.x},${playerPos.y}`,
+        blueprintId: runtimeNext.blueprintId,
+    });
+
+    if (!existingRuntime) {
+      get().addLog(`Hook: ${blueprint.hook}`, 'narrative');
+      get().addLog(`Twist: ${blueprint.twist}`, 'narrative');
+    }
+    eventsApplied.forEach(eventText => get().addLog(`Timeline: ${eventText}`, 'info'));
   },
 
   exitSettlement: () => {

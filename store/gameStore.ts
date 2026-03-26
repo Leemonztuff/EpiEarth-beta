@@ -52,6 +52,8 @@ export const useGameStore = create<GameStore>((set, get, api) => {
         currentSettlementName: null,
         activeNarrativeEvent: null,
         activeIncursion: null,
+        activeDungeonId: null,
+        dungeonRuntimeById: {},
         encounterContext: null,
         tacticalUiState: {
             zoneName: 'Bosque de Caceria',
@@ -66,6 +68,11 @@ export const useGameStore = create<GameStore>((set, get, api) => {
             selectedTrapRange: null,
             tacticalPaused: false,
             placementMode: false,
+            objectiveLabel: null,
+            riskLabel: null,
+            timelineLabel: null,
+            twistLabel: null,
+            poiStateTag: null,
         },
         standingOnPort: false,
         inspectedEntityId: null,
@@ -90,7 +97,10 @@ export const useGameStore = create<GameStore>((set, get, api) => {
             isResolvingTurn: false,
             tacticalPaused: false,
             tacticalMessage: null,
-            returnOverworldPos: null
+            returnOverworldPos: null,
+            zoneContext: { kind: 'biome' },
+            dungeonRoomId: null,
+            dungeonObjectiveType: null,
         },
         versusState: {
             isActive: false,

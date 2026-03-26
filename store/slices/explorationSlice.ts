@@ -1,6 +1,7 @@
 import { StateCreator } from 'zustand';
 import {
     BattleAction,
+    DungeonRuntimeState,
     EnemyAiState,
     EncounterContext,
     EncounterLossPolicy,
@@ -13,7 +14,8 @@ import {
     TacticalAction,
     TacticalUiState,
     Trap,
-    TrapType
+    TrapType,
+    ZoneContext
 } from '../../types';
 import { TRAP_DATA, PLAYER_TRAP_LIMIT } from '../../data/trapsData';
 import { generateId, randomElement, randomInt } from '../utils';
@@ -29,6 +31,8 @@ import {
     isWalkable,
     manhattanDistance,
 } from '../../services/trapHuntMap';
+import { getDungeonBlueprint } from '../../data/dungeonBlueprints';
+import { createDungeonRuntime, markDungeonRoomResolved } from '../../services/dungeonRuntime';
 
 export interface ZoneEnemy {
     id: string;
@@ -72,6 +76,9 @@ interface ExplorationState {
     tacticalPaused: boolean;
     tacticalMessage: string | null;
     returnOverworldPos: PositionComponent | null;
+    zoneContext: ZoneContext;
+    dungeonRoomId: string | null;
+    dungeonObjectiveType: string | null;
 }
 
 interface VersusState {
@@ -90,7 +97,7 @@ export interface ExplorationSlice {
     explorationState: ExplorationState;
     versusState: VersusState;
 
-    initZone: (biome?: string, origin?: PositionComponent | null) => void;
+    initZone: (biome?: string, origin?: PositionComponent | null, zoneContext?: ZoneContext) => void;
     setInputMode: (mode: InputMode) => void;
     dispatchTacticalAction: (action: TacticalAction) => void;
     resolveEncounterOutcome: (outcome: EncounterOutcome) => void;
@@ -239,8 +246,22 @@ function getInputHints(inputMode: InputMode): string[] {
 function buildTacticalUiState(
     explorationState: ExplorationState,
     inputMode: InputMode = 'desktop',
-    blockReason: string | null = null
+    blockReason: string | null = null,
+    dungeonRuntime: DungeonRuntimeState | null = null
 ): TacticalUiState {
+    const objectiveLabel = explorationState.dungeonObjectiveType
+        ? `Objetivo: ${explorationState.dungeonObjectiveType}`
+        : null;
+    const riskLabel = dungeonRuntime
+        ? `Riesgo ${Math.min(10, dungeonRuntime.threatLevel)}/10`
+        : null;
+    const timelineLabel = dungeonRuntime
+        ? `Dia ${dungeonRuntime.timelineDay} · Loot T${dungeonRuntime.remainingLootTier}`
+        : null;
+    const twistLabel = dungeonRuntime?.activeTwists?.length
+        ? dungeonRuntime.activeTwists[dungeonRuntime.activeTwists.length - 1]
+        : null;
+
     return {
         zoneName: explorationState.zoneName,
         message: explorationState.tacticalMessage,
@@ -254,6 +275,11 @@ function buildTacticalUiState(
         selectedTrapRange: explorationState.selectedTrapType ? explorationState.placementRange : null,
         tacticalPaused: explorationState.tacticalPaused,
         placementMode: explorationState.placementMode,
+        objectiveLabel,
+        riskLabel,
+        timelineLabel,
+        twistLabel,
+        poiStateTag: dungeonRuntime?.stateTag ?? null,
     };
 }
 
@@ -304,13 +330,21 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
         tacticalPaused: false,
         tacticalMessage: null,
         returnOverworldPos: null,
+        zoneContext: { kind: 'biome' },
+        dungeonRoomId: null,
+        dungeonObjectiveType: null,
     },
     versusState: createInitialVersusState(),
 
     setInputMode: (mode) =>
         set(state => ({
             inputMode: mode,
-            tacticalUiState: buildTacticalUiState(state.explorationState, mode, state.tacticalUiState?.blockReason ?? null),
+            tacticalUiState: buildTacticalUiState(
+                state.explorationState,
+                mode,
+                state.tacticalUiState?.blockReason ?? null,
+                state.activeDungeonId ? state.dungeonRuntimeById[state.activeDungeonId] ?? null : null
+            ),
         })),
 
     dispatchTacticalAction: (action) => {
@@ -356,11 +390,36 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
         }
     },
 
-    initZone: (biome = 'forest', origin = null) => {
+    initZone: (biome = 'forest', origin = null, zoneContext = { kind: 'biome' }) => {
         const seed = `${biome}:${origin?.x ?? 0},${origin?.y ?? 0}:${Date.now()}`;
         const map = generateTacticalMap(seed);
         const playerStart = { ...DEFAULT_PLAYER_START };
-        const enemies = createZoneEnemies(map, playerStart);
+        const state = get();
+        const isDungeon = zoneContext.kind === 'dungeon';
+        const dungeonId = zoneContext.poiId || null;
+        const existingRuntime = dungeonId ? state.dungeonRuntimeById[dungeonId] : null;
+        const dungeonRuntime = isDungeon && dungeonId
+            ? (existingRuntime ?? createDungeonRuntime(dungeonId, zoneContext.blueprintId || 'dorgotar-crypt'))
+            : null;
+        const blueprint = dungeonRuntime ? getDungeonBlueprint(dungeonRuntime.blueprintId) : null;
+        const room = (blueprint && dungeonRuntime)
+            ? blueprint.rooms[Math.min(dungeonRuntime.roomCursor, blueprint.rooms.length - 1)]
+            : null;
+        const enemies = createZoneEnemies(map, playerStart).map((enemy, index) => {
+            if (!isDungeon) return enemy;
+            const tier = zoneContext.tier || 1;
+            const threatBoost = dungeonRuntime?.threatLevel ?? 0;
+            const eliteBoost = room?.elite ? 24 : 0;
+            const hpBonus = tier * 6 + threatBoost * 4 + eliteBoost;
+            const movement = room?.objective === 'survive_n_rounds' ? 2 : enemy.movement;
+            return {
+                ...enemy,
+                hp: enemy.hp + hpBonus,
+                maxHp: enemy.maxHp + hpBonus,
+                movement,
+                name: room?.elite && index === 0 ? `${enemy.name} Elite` : enemy.name,
+            };
+        });
         const nextExplorationState: ExplorationState = {
             map,
             mapSize: TACTICAL_MAP_SIZE,
@@ -372,7 +431,7 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             zoneEnemies: enemies,
             currentEnemyId: null,
             zoneCompleted: false,
-            zoneName: getZoneName(biome),
+            zoneName: isDungeon ? (blueprint?.name || 'Dungeon') : getZoneName(biome),
             wasZoneCompletedBeforeLevelUp: false,
             selectedTrapType: null,
             placementMode: false,
@@ -381,13 +440,25 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             turnStep: 0,
             isResolvingTurn: false,
             tacticalPaused: false,
-            tacticalMessage: 'Pausa tactica: coloca trampas y mueve al enemigo a tu terreno.',
+            tacticalMessage: isDungeon
+                ? `${blueprint?.hook || 'Adentrate con cuidado.'} Objetivo actual: ${room?.label || 'asegurar la sala'}.`
+                : 'Pausa tactica: coloca trampas y mueve al enemigo a tu terreno.',
             returnOverworldPos: origin,
+            zoneContext,
+            dungeonRoomId: room?.id || null,
+            dungeonObjectiveType: room?.objective || null,
         };
 
         set({
             explorationState: nextExplorationState,
-            tacticalUiState: buildTacticalUiState(nextExplorationState, get().inputMode),
+            tacticalUiState: buildTacticalUiState(nextExplorationState, get().inputMode, null, dungeonRuntime),
+            activeDungeonId: dungeonId,
+            dungeonRuntimeById: dungeonRuntime && dungeonId
+                ? {
+                    ...state.dungeonRuntimeById,
+                    [dungeonId]: dungeonRuntime,
+                }
+                : state.dungeonRuntimeById,
             encounterContext: createEncounterContext(
                 get().gameState,
                 origin,
@@ -766,7 +837,19 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
         });
 
         const aliveEnemies = enemies.filter(enemy => !enemy.isDefeated);
-        const zoneCompleted = aliveEnemies.length === 0;
+        const nextTurnStep = explorationState.turnStep + 1;
+        let zoneCompleted = aliveEnemies.length === 0;
+        if (explorationState.zoneContext.kind === 'dungeon') {
+            if (explorationState.dungeonObjectiveType === 'survive_n_rounds' && nextTurnStep >= 4) {
+                zoneCompleted = true;
+            }
+            if (explorationState.dungeonObjectiveType === 'investigate' && nextTurnStep >= 2) {
+                zoneCompleted = true;
+            }
+            if (explorationState.dungeonObjectiveType === 'disarm_trap' && explorationState.traps.length === 0 && nextTurnStep >= 2) {
+                zoneCompleted = true;
+            }
+        }
         const reactionSummary = aliveEnemies.length > 0
             ? `Reaccion enemiga: ${aliveEnemies.length} hostiles activos.`
             : 'Sin hostiles en la zona.';
@@ -776,16 +859,31 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             zoneEnemies: enemies,
             playerMapPos,
             currentEnemyId,
-            turnStep: explorationState.turnStep + 1,
+            turnStep: nextTurnStep,
             zoneCompleted,
             traps: decayTrapDurations(get().explorationState.traps),
             tacticalMessage: zoneCompleted
                 ? 'La zona quedo limpia. Puedes volver al mapa hex.'
                 : triggeredMessage ?? reactionSummary,
         };
+        let nextDungeonRuntime =
+            nextExplorationState.zoneContext.kind === 'dungeon' && get().activeDungeonId
+                ? get().dungeonRuntimeById[get().activeDungeonId]
+                : null;
+
+        if (zoneCompleted && nextDungeonRuntime && nextExplorationState.dungeonRoomId) {
+            nextDungeonRuntime = markDungeonRoomResolved(nextDungeonRuntime, nextExplorationState.dungeonRoomId);
+            set({
+                dungeonRuntimeById: {
+                    ...get().dungeonRuntimeById,
+                    [nextDungeonRuntime.dungeonId]: nextDungeonRuntime,
+                },
+            });
+        }
+
         set({
             explorationState: nextExplorationState,
-            tacticalUiState: buildTacticalUiState(nextExplorationState, get().inputMode),
+            tacticalUiState: buildTacticalUiState(nextExplorationState, get().inputMode, null, nextDungeonRuntime),
         });
 
         if (currentEnemyId) {

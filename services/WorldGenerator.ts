@@ -64,6 +64,18 @@ export class WorldGenerator {
         else if (poiRoll > 0.92) poiType = 'DUNGEON';
         else if (poiRoll > 0.90) poiType = 'TEMPLE';
 
+        const poiId = poiType ? `${dimension}:${poiType}:${q},${r}` : undefined;
+        const poiTier = poiType === 'DUNGEON'
+            ? Math.max(1, Math.min(5, 1 + Math.floor((Math.abs(q) + Math.abs(r)) / 12)))
+            : undefined;
+        const biomeTag = overlayTerrain === TerrainType.FOREST
+            ? 'forest'
+            : baseTerrain === TerrainType.DESERT
+                ? 'desert'
+                : baseTerrain === TerrainType.SWAMP
+                    ? 'swamp'
+                    : 'plains';
+
         // Overlay terrain owns large natural/structural visuals.
         // Feature is reserved for small details that sit on top.
         let feature: 'tree' | 'city' | 'village' | 'ruins' | 'enemy' | undefined;
@@ -97,6 +109,10 @@ export class WorldGenerator {
             isExplored: false, isVisible: false,
             weather: WeatherType.NONE,
             poiType, hasPortal, hasEncounter,
+            poiId,
+            poiTier,
+            poiStateTag: poiType === 'DUNGEON' ? 'Dormant' : undefined,
+            biomeTag,
             regionName: `${finalTerrain} Region ${Math.abs(q+r)}`,
             movementType: MovementType.WALK,
             feature,
