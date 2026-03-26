@@ -48,6 +48,7 @@ export const useGameStore = create<GameStore>((set, get, api) => {
         supplies: 20,
         fatigue: 0,
         worldTime: 480,
+        worldDay: 0,
         currentRegionName: null,
         currentSettlementName: null,
         activeNarrativeEvent: null,
@@ -101,6 +102,8 @@ export const useGameStore = create<GameStore>((set, get, api) => {
             zoneContext: { kind: 'biome' },
             dungeonRoomId: null,
             dungeonObjectiveType: null,
+            roomObjectiveResolved: false,
+            roomObjectiveTile: null,
         },
         versusState: {
             isActive: false,

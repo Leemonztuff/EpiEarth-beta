@@ -154,6 +154,7 @@ export interface DungeonBlueprint {
 export interface DungeonRuntimeState {
     dungeonId: string;
     blueprintId: string;
+    lastSyncedWorldDay: number;
     threatLevel: number;
     factionControl: string;
     timelineDay: number;
@@ -443,6 +444,7 @@ export interface GameStateData {
     supplies: number;
     fatigue: number;
     worldTime: number;
+    worldDay: number;
     currentRegionName: string | null;
     currentSettlementName: string | null;
     activeNarrativeEvent: any | null;

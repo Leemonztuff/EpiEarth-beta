@@ -8,11 +8,12 @@ function resolveStateTag(threatLevel: number, timelineDay: number): PoiStateTag 
     return 'Dormant';
 }
 
-export function createDungeonRuntime(dungeonId: string, blueprintId: string): DungeonRuntimeState {
+export function createDungeonRuntime(dungeonId: string, blueprintId: string, initialWorldDay = 0): DungeonRuntimeState {
     const blueprint = getDungeonBlueprint(blueprintId);
     return {
         dungeonId,
         blueprintId: blueprint.id,
+        lastSyncedWorldDay: initialWorldDay,
         threatLevel: 2,
         factionControl: 'Goblins',
         timelineDay: 0,
@@ -62,14 +63,17 @@ export function advanceDungeonTimeline(state: DungeonRuntimeState, daysAdvanced:
 }
 
 export function markDungeonRoomResolved(state: DungeonRuntimeState, roomId: string, discoveredSecret?: string): DungeonRuntimeState {
-    const resolvedRooms = state.resolvedRooms.includes(roomId)
+    const wasResolved = state.resolvedRooms.includes(roomId);
+    const resolvedRooms = wasResolved
         ? state.resolvedRooms
         : [...state.resolvedRooms, roomId];
     const discoveredSecrets = discoveredSecret && !state.discoveredSecrets.includes(discoveredSecret)
         ? [...state.discoveredSecrets, discoveredSecret]
         : state.discoveredSecrets;
 
-    const roomCursor = Math.min(state.roomCursor + 1, resolvedRooms.length + 1);
+    const roomCursor = wasResolved
+        ? state.roomCursor
+        : Math.min(state.roomCursor + 1, resolvedRooms.length);
     return {
         ...state,
         resolvedRooms,
@@ -77,4 +81,3 @@ export function markDungeonRoomResolved(state: DungeonRuntimeState, roomId: stri
         roomCursor,
     };
 }
-

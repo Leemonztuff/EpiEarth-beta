@@ -26,6 +26,7 @@ export interface OverworldSlice {
   changeFatigue: (delta: number) => void;
   supplies: number; 
   worldTime: number; 
+  worldDay: number;
   quests: Record<string, Quest>;
   currentRegionName: string | null;
   currentSettlementName: string | null;
@@ -105,6 +106,9 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
           if (!tile?.hasEncounter) {
               return [];
           }
+          if (tile.poiType === 'DUNGEON' || tile.poiType === 'RUINS') {
+              return [];
+          }
 
           return [{
               id: getEncounterEnemyId(state.dimension, q, r),
@@ -130,6 +134,7 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
   fatigue: 0,
   supplies: 20, 
   worldTime: 480,
+  worldDay: 0,
   quests: {},
   currentRegionName: null,
   currentSettlementName: null,
@@ -268,6 +273,7 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
     let currentFatigue = state.fatigue;
     let currentSupplies = state.supplies;
     let currentTime = state.worldTime;
+    let currentWorldDay = state.worldDay;
 
     for (const step of path) {
         const currentState = get();
@@ -278,7 +284,10 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
         else tile = WorldGenerator.getTile(step.q, step.r, currentState.dimension);
 
         const oldHours = Math.floor(currentTime / 60);
-        currentTime = (currentTime + 15) % 1440;
+        const nextTimeRaw = currentTime + 15;
+        const dayDelta = Math.floor(nextTimeRaw / 1440);
+        currentTime = nextTimeRaw % 1440;
+        currentWorldDay += dayDelta;
         const newHours = Math.floor(currentTime / 60);
 
         if (!isLocal && oldHours !== newHours && newHours % 4 === 0) {
@@ -310,6 +319,7 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
             fatigue: currentFatigue,
             supplies: currentSupplies,
             worldTime: currentTime,
+            worldDay: currentWorldDay,
             currentRegionName: isLocal ? state.currentRegionName : tile.regionName
         });
 
@@ -330,12 +340,16 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
 
   hireCarriage: (targetQ, targetR) => {
     const state = get();
+    const nextTimeRaw = state.worldTime + 120;
+    const dayDelta = Math.floor(nextTimeRaw / 1440);
+    const nextWorldTime = nextTimeRaw % 1440;
     const nextExplored = new Set(state.exploredTiles[state.dimension] ?? []);
     nextExplored.add(`${targetQ},${targetR}`);
 
     set({
       playerPos: { x: targetQ, y: targetR },
-      worldTime: (state.worldTime + 120) % 1440,
+      worldTime: nextWorldTime,
+      worldDay: state.worldDay + dayDelta,
       fatigue: Math.max(0, state.fatigue - 5),
       exploredTiles: { ...state.exploredTiles, [state.dimension]: nextExplored },
       currentRegionName: WorldGenerator.getTile(targetQ, targetR, state.dimension).regionName,
@@ -363,8 +377,13 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
     const dungeonId = tile.poiId || `${dimension}:DUNGEON:${playerPos.x},${playerPos.y}`;
     const state = get();
     const existingRuntime = state.dungeonRuntimeById[dungeonId];
-    const runtimeBase = existingRuntime || createDungeonRuntime(dungeonId, 'dorgotar-crypt');
-    const { next: runtimeNext, eventsApplied } = advanceDungeonTimeline(runtimeBase, existingRuntime ? 1 : 0);
+    const runtimeBase = existingRuntime || createDungeonRuntime(dungeonId, 'dorgotar-crypt', state.worldDay);
+    const deltaDays = Math.max(0, state.worldDay - runtimeBase.lastSyncedWorldDay);
+    const { next: runtimeAdvanced, eventsApplied } = advanceDungeonTimeline(runtimeBase, deltaDays);
+    const runtimeNext = {
+      ...runtimeAdvanced,
+      lastSyncedWorldDay: state.worldDay,
+    };
     const blueprint = getDungeonBlueprint(runtimeNext.blueprintId);
 
     set({
@@ -420,9 +439,14 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
         stats: { ...p.stats, hp: Math.min(p.stats.maxHp, p.stats.hp + Math.floor(p.stats.maxHp * 0.6)) }
     }));
     
+    const nextTimeRaw = worldTime + 480;
+    const dayDelta = Math.floor(nextTimeRaw / 1440);
+    const nextWorldTime = nextTimeRaw % 1440;
+
     set({ 
         fatigue: 0, 
-        worldTime: (worldTime + 480) % 1440,
+        worldTime: nextWorldTime,
+        worldDay: get().worldDay + dayDelta,
         isSleeping: false,
         party: healedParty
     });
