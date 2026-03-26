@@ -383,6 +383,8 @@ export const Exploration3DScene: React.FC = () => {
                                     <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-white/10 text-white font-bold">ENEM {tacticalUiState.enemyCount}</span>
                                     <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-white/10 text-white font-bold">TURNO {tacticalUiState.turnStep}</span>
                                     <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-white/10 text-white font-bold">TRAPS {tacticalUiState.trapCount}/{tacticalUiState.maxTraps}</span>
+                                    <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-amber-300/30 text-amber-200 font-bold">COMBO x{(tacticalUiState.comboMultiplier ?? 1).toFixed(2)}</span>
+                                    <span className="px-2 py-[3px] rounded-md bg-slate-900/90 border border-emerald-300/30 text-emerald-200 font-bold">TRAP$ {tacticalUiState.trapCurrency ?? 0}</span>
                                     <span className={`px-2 py-[3px] rounded-md border font-bold ${explorationState.tacticalPaused ? 'bg-amber-400 text-black border-amber-300' : 'bg-slate-900/90 border-white/10 text-white'}`}>{explorationState.tacticalPaused ? 'SET TRAP' : 'RUN'}</span>
                                 </div>
                             </div>

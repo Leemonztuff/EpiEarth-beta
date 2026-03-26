@@ -59,6 +59,12 @@ export interface ZoneEnemy {
     patrolSeed: number;
     decoyTurns: number;
     isElite?: boolean;
+    resistances: {
+        floor: number;
+        wall: number;
+        ceiling: number;
+    };
+    intelligenceLevel: number;
 }
 
 interface ExplorationState {
@@ -104,6 +110,10 @@ interface ExplorationState {
     snapState: SnapState;
     stepPhase: TacticalStepPhase;
     contactCooldown: number;
+    comboChain: number;
+    comboMultiplier: number;
+    comboExpiresAtStep: number;
+    trapCurrency: number;
 }
 
 interface VersusState {
@@ -155,6 +165,7 @@ const COMMON_CONTACT_DAMAGE = 4;
 const COMMON_CONTACT_KNOCKBACK = 1;
 const COMMON_CONTACT_COOLDOWN_STEPS = 1;
 const SNAP_DEADZONE = 0.2;
+const CHAIN_WINDOW_STEPS = 3;
 
 function getZoneName(biome: string): string {
     const zoneNames: Record<string, string> = {
@@ -244,6 +255,20 @@ function computeKnockbackTarget(
     return candidate;
 }
 
+function getSurfaceResistance(enemy: ZoneEnemy, surface: Trap['placementSurface']): number {
+    if (surface === 'wall') return enemy.resistances.wall;
+    if (surface === 'ceiling') return enemy.resistances.ceiling;
+    return enemy.resistances.floor;
+}
+
+function shouldExtendCombo(enemy: ZoneEnemy): boolean {
+    return enemy.aiState === EnemyAiState.STUNNED || enemy.aiState === EnemyAiState.DECOYED || enemy.poisonTurns > 0;
+}
+
+function computeComboMultiplier(chainLength: number): number {
+    return Math.max(1, 1 + (chainLength - 1) * 0.35);
+}
+
 function createZoneEnemies(map: TacticalMapCell[][], playerStart: TacticalPosition): ZoneEnemy[] {
     const enemyCount = 4 + randomInt(0, 2);
     const spawns = findFreeSpawnPositions(map, playerStart, enemyCount);
@@ -269,6 +294,12 @@ function createZoneEnemies(map: TacticalMapCell[][], playerStart: TacticalPositi
             investigateStepsLeft: 0,
             patrolSeed: randomInt(1, 999_999),
             decoyTurns: 0,
+            resistances: {
+                floor: Math.min(0.75, Math.max(0.05, randomInt(10, 45) / 100)),
+                wall: Math.min(0.75, Math.max(0.05, randomInt(5, 35) / 100)),
+                ceiling: Math.min(0.75, Math.max(0.05, randomInt(5, 40) / 100)),
+            },
+            intelligenceLevel: randomInt(1, 10),
         };
     });
 }
@@ -374,6 +405,9 @@ function buildTacticalUiState(
         currentRoomId: explorationState.currentRoomId,
         stepBudget: explorationState.stepBudget,
         stepPhase: explorationState.stepPhase,
+        comboChain: explorationState.comboChain,
+        comboMultiplier: explorationState.comboMultiplier,
+        trapCurrency: explorationState.trapCurrency,
     };
 }
 
@@ -455,6 +489,10 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
         snapState: 'SNAPPED',
         stepPhase: 'PLAYER_STEP',
         contactCooldown: 0,
+        comboChain: 0,
+        comboMultiplier: 1,
+        comboExpiresAtStep: 0,
+        trapCurrency: 0,
     },
     versusState: createInitialVersusState(),
 
@@ -766,6 +804,10 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             snapState: 'SNAPPED',
             stepPhase: 'PLAYER_STEP',
             contactCooldown: 0,
+            comboChain: 0,
+            comboMultiplier: 1,
+            comboExpiresAtStep: 0,
+            trapCurrency: state.tacticalUiState?.trapCurrency ?? 0,
         };
 
         set({
@@ -896,6 +938,11 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             damage: trapData.damage,
             duration: trapData.duration,
             description: trapData.description,
+            placementSurface: trapData.placementSurface ?? 'floor',
+            triggerMode: trapData.triggerMode ?? 'auto',
+            stateEffect: trapData.stateEffect ?? 'none',
+            forceVector: trapData.forceVector ?? { x: 0, z: 0 },
+            cooldownRemaining: 0,
         };
 
         const nextExplorationState: ExplorationState = {
@@ -940,13 +987,27 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
 
         const trapData = TRAP_DATA[trap.type];
         let message = trapData.triggerMessage;
+        const withinWindow = explorationState.turnStep <= explorationState.comboExpiresAtStep;
+        let nextChain = withinWindow ? explorationState.comboChain : 0;
+        let nextMultiplier = withinWindow ? explorationState.comboMultiplier : 1;
+        let earnedCurrency = 0;
 
         const enemies = explorationState.zoneEnemies.map(enemy => {
             if (!enemyId || enemy.id !== enemyId) {
                 return enemy;
             }
 
-            let nextEnemy = { ...enemy, hp: Math.max(0, enemy.hp - trapData.damage) };
+            const resistance = getSurfaceResistance(enemy, trap.placementSurface);
+            const baseDamage = Math.max(1, Math.round(trapData.damage * (1 - resistance)));
+            if (shouldExtendCombo(enemy)) {
+                nextChain += 1;
+            } else {
+                nextChain = Math.max(1, nextChain + 1);
+            }
+            nextMultiplier = computeComboMultiplier(nextChain);
+            const finalDamage = Math.max(1, Math.round(baseDamage * nextMultiplier));
+            earnedCurrency += Math.max(1, Math.round(finalDamage / 4));
+            let nextEnemy = { ...enemy, hp: Math.max(0, enemy.hp - finalDamage) };
 
             if (trap.type === TrapType.STUN || trap.type === TrapType.ICE) {
                 nextEnemy.stunnedTurns = 1;
@@ -988,14 +1049,19 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             traps: explorationState.traps
                 .map(item => item.id === trapId ? { ...item, isArmed: false, isTriggered: true, duration: 0 } : item)
                 .filter(item => item.isArmed),
-            tacticalMessage: message,
+            tacticalMessage: `${message} Combo x${nextMultiplier.toFixed(2)}.`,
+            comboChain: nextChain,
+            comboMultiplier: nextMultiplier,
+            comboExpiresAtStep: explorationState.turnStep + CHAIN_WINDOW_STEPS,
+            trapCurrency: explorationState.trapCurrency + earnedCurrency,
         };
         set({
+            gold: get().gold + earnedCurrency,
             explorationState: nextExplorationState,
             tacticalUiState: buildTacticalUiState(nextExplorationState, get().inputMode),
         });
 
-        return { damage: trapData.damage, message };
+        return { damage: Math.max(0, Math.round(trapData.damage * nextMultiplier)), message };
     },
 
     movePlayer: (newX, newZ) => {
@@ -1040,6 +1106,9 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             let triggeredMessage: string | null = null;
             let contactEnemyId: string | null = null;
             let party = get().party;
+            let earnedCurrency = 0;
+            let comboChain = current.turnStep <= current.comboExpiresAtStep ? current.comboChain : 0;
+            let comboMultiplier = current.turnStep <= current.comboExpiresAtStep ? current.comboMultiplier : 1;
 
             phase = 'ENEMY_REACT';
             const blockedPositions = new Set<string>();
@@ -1066,13 +1135,14 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
 
                 const distanceToPlayer = manhattanDistance({ x: nextEnemy.x, z: nextEnemy.z }, playerMapPos);
                 const canSeePlayer = distanceToPlayer <= nextEnemy.alertRange;
+                const tacticalAwareness = ((nextEnemy.patrolSeed + current.turnStep) % 10) + 1;
                 let target: TacticalPosition | null = null;
 
                 if (activeDecoy && manhattanDistance({ x: nextEnemy.x, z: nextEnemy.z }, { x: activeDecoy.position.x, z: activeDecoy.position.z }) <= nextEnemy.alertRange) {
                     nextEnemy.aiState = EnemyAiState.DECOYED;
                     nextEnemy.decoyTurns = Math.max(nextEnemy.decoyTurns, 1);
                     target = { x: activeDecoy.position.x, z: activeDecoy.position.z };
-                } else if (canSeePlayer) {
+                } else if (canSeePlayer && tacticalAwareness <= nextEnemy.intelligenceLevel) {
                     nextEnemy.aiState = EnemyAiState.CHASE;
                     nextEnemy.lastKnownPlayerPos = { ...playerMapPos };
                     nextEnemy.investigateStepsLeft = 2;
@@ -1107,24 +1177,32 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
                     if (trapIndex >= 0) {
                         const trap = traps[trapIndex];
                         const trapData = TRAP_DATA[trap.type];
-                        nextEnemy.hp = Math.max(0, nextEnemy.hp - trapData.damage);
-                        triggeredMessage = trapData.triggerMessage;
+                        if ((trap.triggerMode ?? trapData.triggerMode ?? 'auto') === 'auto') {
+                            const resistance = getSurfaceResistance(nextEnemy, trap.placementSurface ?? trapData.placementSurface ?? 'floor');
+                            const baseDamage = Math.max(1, Math.round(trapData.damage * (1 - resistance)));
+                            comboChain = shouldExtendCombo(nextEnemy) ? comboChain + 1 : Math.max(1, comboChain + 1);
+                            comboMultiplier = computeComboMultiplier(comboChain);
+                            const finalDamage = Math.max(1, Math.round(baseDamage * comboMultiplier));
+                            earnedCurrency += Math.max(1, Math.round(finalDamage / 4));
+                            nextEnemy.hp = Math.max(0, nextEnemy.hp - finalDamage);
+                            triggeredMessage = `${trapData.triggerMessage} Combo x${comboMultiplier.toFixed(2)}.`;
 
-                        if (trap.type === TrapType.STUN || trap.type === TrapType.ICE) {
-                            nextEnemy.stunnedTurns = 1;
-                            nextEnemy.aiState = EnemyAiState.STUNNED;
+                            if (trap.type === TrapType.STUN || trap.type === TrapType.ICE) {
+                                nextEnemy.stunnedTurns = 1;
+                                nextEnemy.aiState = EnemyAiState.STUNNED;
+                            }
+                            if (trap.type === TrapType.POISON) {
+                                nextEnemy.poisonTurns = 2;
+                            }
+                            if (trap.type === TrapType.DECOY) {
+                                nextEnemy.decoyTurns = Math.max(nextEnemy.decoyTurns, 2);
+                                nextEnemy.aiState = EnemyAiState.DECOYED;
+                            }
+                            if (nextEnemy.hp <= 0) {
+                                nextEnemy = { ...nextEnemy, hp: 0, isDefeated: true, x: -99, z: -99 };
+                            }
+                            traps[trapIndex] = { ...trap, isArmed: false, isTriggered: true, duration: 0, cooldownRemaining: trapData.cooldown };
                         }
-                        if (trap.type === TrapType.POISON) {
-                            nextEnemy.poisonTurns = 2;
-                        }
-                        if (trap.type === TrapType.DECOY) {
-                            nextEnemy.decoyTurns = Math.max(nextEnemy.decoyTurns, 2);
-                            nextEnemy.aiState = EnemyAiState.DECOYED;
-                        }
-                        if (nextEnemy.hp <= 0) {
-                            nextEnemy = { ...nextEnemy, hp: 0, isDefeated: true, x: -99, z: -99 };
-                        }
-                        traps[trapIndex] = { ...trap, isArmed: false, isTriggered: true, duration: 0 };
                     }
 
                     if (nextEnemy.isDefeated) break;
@@ -1217,6 +1295,10 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
                 roomObjectiveResolved,
                 stepBudget: 1,
                 contactCooldown: Math.max(0, current.contactCooldown - 1) || (tacticalMessage ? COMMON_CONTACT_COOLDOWN_STEPS : 0),
+                comboChain,
+                comboMultiplier,
+                comboExpiresAtStep: comboChain > 0 ? nextTurnStep + CHAIN_WINDOW_STEPS : 0,
+                trapCurrency: current.trapCurrency + earnedCurrency,
                 lineOfSightMask: computeLineOfSightMask(current.map, playerMapPos, current.roomGraphRef, current.currentRoomId, current.doorStates),
                 tacticalMessage: zoneCompleted
                     ? 'La zona quedo limpia. Puedes volver al mapa hex.'
@@ -1245,6 +1327,7 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
 
             set({
                 party,
+                gold: get().gold + earnedCurrency,
                 explorationState: nextExplorationState,
                 tacticalUiState: buildTacticalUiState(nextExplorationState, get().inputMode, null, nextDungeonRuntime),
             });
@@ -1652,6 +1735,10 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             snapState: 'SNAPPED',
             stepPhase: 'END_STEP',
             contactCooldown: Math.max(0, explorationState.contactCooldown - 1),
+            comboChain: explorationState.comboChain,
+            comboMultiplier: explorationState.comboMultiplier,
+            comboExpiresAtStep: explorationState.comboExpiresAtStep,
+            trapCurrency: explorationState.trapCurrency,
         };
 
         set({
@@ -1688,6 +1775,10 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             snapState: 'SNAPPED',
             stepPhase: 'PLAYER_STEP',
             contactCooldown: 0,
+            comboChain: 0,
+            comboMultiplier: 1,
+            comboExpiresAtStep: 0,
+            trapCurrency: explorationState.trapCurrency,
         };
         set({
             gameState: GameState.OVERWORLD,

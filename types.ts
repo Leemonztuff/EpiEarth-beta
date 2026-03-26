@@ -126,6 +126,9 @@ export type TacticalStepPhase =
     | 'TRAP_RESOLVE'
     | 'CONTACT_CHECK'
     | 'END_STEP';
+export type TrapPlacementSurface = 'floor' | 'wall' | 'ceiling';
+export type TrapTriggerMode = 'manual' | 'auto';
+export type TrapStateEffect = 'stun' | 'launch' | 'knockback' | 'poison' | 'none';
 
 export type DungeonRoomObjectiveType =
     | 'clear'
@@ -271,6 +274,9 @@ export interface TacticalUiState {
     currentRoomId?: string | null;
     stepBudget?: number;
     stepPhase?: TacticalStepPhase;
+    comboChain?: number;
+    comboMultiplier?: number;
+    trapCurrency?: number;
 }
 
 export interface Trap {
@@ -283,6 +289,11 @@ export interface Trap {
     damage?: number;
     duration?: number;
     description: string;
+    placementSurface?: TrapPlacementSurface;
+    triggerMode?: TrapTriggerMode;
+    forceVector?: { x: number; z: number };
+    stateEffect?: TrapStateEffect;
+    cooldownRemaining?: number;
 }
 
 export interface VersusBattleState {
