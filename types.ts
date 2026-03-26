@@ -130,6 +130,8 @@ export type TrapPlacementSurface = 'floor' | 'wall' | 'ceiling';
 export type TrapTriggerMode = 'manual' | 'auto';
 export type TrapStateEffect = 'stun' | 'launch' | 'knockback' | 'poison' | 'none';
 export type TrapOrientation = 'N' | 'E' | 'S' | 'W';
+export type DungeonRoomKind = 'entry' | 'offense' | 'setup' | 'technical';
+export type EnvironmentTrapType = 'fire_pit' | 'crusher' | 'pendulum' | 'explosive_barrel' | 'electric_chair' | 'spike_wall';
 
 export type DungeonRoomObjectiveType =
     | 'clear'
@@ -144,6 +146,8 @@ export interface DungeonRoomDefinition {
     label: string;
     isSecret?: boolean;
     elite?: boolean;
+    kind?: DungeonRoomKind;
+    environmentTraps?: EnvironmentTrapType[];
 }
 
 export interface DungeonRoomNode {

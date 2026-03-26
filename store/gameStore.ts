@@ -148,6 +148,8 @@ export const useGameStore = create<GameStore>((set, get, api) => {
             trapOrientation: 'N',
             trapCooldowns: {},
             trapMastery: trapMasteryDefaults,
+            environmentTraps: [],
+            roomEntrances: [],
         },
         versusState: {
             isActive: false,

@@ -120,13 +120,14 @@ const TacticalBoard: React.FC<{
     playerRenderPos: { x: number; z: number };
     enemies: any[];
     traps: any[];
+    environmentTraps: { id: string; x: number; z: number; type: string }[];
     highlightedTiles: { x: number; z: number }[];
     trapAimTarget: { x: number; z: number } | null;
     selectedTrapRange: number | null;
     tacticalOverlay: boolean;
     onTilePress: (x: number, z: number) => void;
     playerSpriteUrl?: string;
-}> = ({ map, playerPos, playerRenderPos, enemies, traps, highlightedTiles, trapAimTarget, selectedTrapRange, tacticalOverlay, onTilePress, playerSpriteUrl }) => {
+}> = ({ map, playerPos, playerRenderPos, enemies, traps, environmentTraps, highlightedTiles, trapAimTarget, selectedTrapRange, tacticalOverlay, onTilePress, playerSpriteUrl }) => {
     const textureEntries = useLoader(THREE.TextureLoader, Object.values(TILE_TEXTURE_URLS));
     const textures = useMemo<LoadedTextureMap>(() => {
         const next: LoadedTextureMap = {};
@@ -164,7 +165,7 @@ const TacticalBoard: React.FC<{
                         <group key={`cell-${x}-${cell.z}`}>
                             <mesh position={[pos[0], cell.height / 2 - 0.05, pos[2]]} onClick={() => onTilePress(x, cell.z)} onPointerDown={() => onTilePress(x, cell.z)} receiveShadow>
                                 <boxGeometry args={[TILE_SIZE, 0.12, TILE_SIZE]} />
-                                <meshStandardMaterial map={texture} />
+                                <meshStandardMaterial map={texture} color={cell.zone === 'CORRIDOR' ? '#9ca3af' : '#ffffff'} />
                             </mesh>
                             {cell.type === 'BRUSH' && (
                                 <mesh position={[pos[0], 0.3, pos[2]]}>
@@ -205,6 +206,12 @@ const TacticalBoard: React.FC<{
             )}
             {traps.map(trap => (
                 <TrapMarker key={trap.id} position={[getWorldPosition(trap.x, trap.z)[0], 0.02, getWorldPosition(trap.x, trap.z)[2]]} trapType={trap.type} isArmed={trap.isArmed} />
+            ))}
+            {environmentTraps.map(env => (
+                <mesh key={env.id} position={[getWorldPosition(env.x, env.z)[0], 0.05, getWorldPosition(env.x, env.z)[2]]} rotation={[-Math.PI / 2, 0, 0]}>
+                    <ringGeometry args={[0.26, 0.4, 18]} />
+                    <meshBasicMaterial color="#fb7185" transparent opacity={0.5} />
+                </mesh>
             ))}
             {selectedTrapRange ? (
                 <mesh position={getWorldPosition(playerPos.x, playerPos.z)} rotation={[-Math.PI / 2, 0, 0]}>
@@ -377,6 +384,12 @@ export const Exploration3DScene: React.FC = () => {
                         z: trap.position.z,
                         type: trap.type,
                         isArmed: trap.isArmed,
+                    }))}
+                    environmentTraps={explorationState.environmentTraps.map(env => ({
+                        id: env.id,
+                        x: env.position.x,
+                        z: env.position.z,
+                        type: env.type,
                     }))}
                     highlightedTiles={explorationState.highlightedTiles}
                     trapAimTarget={explorationState.trapAimTarget}

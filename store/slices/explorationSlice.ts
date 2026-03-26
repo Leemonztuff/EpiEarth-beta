@@ -34,10 +34,12 @@ import {
     clampPlacementToRange,
     findClosestStepTowards,
     findFreeSpawnPositions,
+    generateDungeonRoomMap,
     generateTacticalMap,
     getNeighbors,
     isWalkable,
     manhattanDistance,
+    TacticalEnvironmentTrap,
 } from '../../services/trapHuntMap';
 import { getDungeonBlueprint } from '../../data/dungeonBlueprints';
 import { createDungeonRuntime, markDungeonRoomResolved, openDungeonDoor } from '../../services/dungeonRuntime';
@@ -120,6 +122,8 @@ interface ExplorationState {
     trapOrientation: TrapOrientation;
     trapCooldowns: Partial<Record<TrapType, number>>;
     trapMastery: Record<TrapType, { unlocked: boolean; level: number; uses: number; kills: number }>;
+    environmentTraps: TacticalEnvironmentTrap[];
+    roomEntrances: TacticalPosition[];
 }
 
 interface VersusState {
@@ -296,9 +300,14 @@ function computeComboMultiplier(chainLength: number): number {
     return Math.max(1, 1 + (chainLength - 1) * 0.35);
 }
 
-function createZoneEnemies(map: TacticalMapCell[][], playerStart: TacticalPosition): ZoneEnemy[] {
+function createZoneEnemies(map: TacticalMapCell[][], playerStart: TacticalPosition, entrances: TacticalPosition[] = []): ZoneEnemy[] {
     const enemyCount = 4 + randomInt(0, 2);
-    const spawns = findFreeSpawnPositions(map, playerStart, enemyCount);
+    const entranceSpawns = entrances
+        .filter(pos => isWalkable(map, pos.x, pos.z))
+        .filter(pos => manhattanDistance(pos, playerStart) >= 4)
+        .slice(0, enemyCount);
+    const fallback = findFreeSpawnPositions(map, playerStart, enemyCount);
+    const spawns = [...entranceSpawns, ...fallback].slice(0, enemyCount);
 
     return spawns.map((spawn, index) => {
         const template = randomElement(ENEMY_TEMPLATES)!;
@@ -533,6 +542,8 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
         trapOrientation: DEFAULT_TRAP_ORIENTATION,
         trapCooldowns: {},
         trapMastery: initialTrapMastery(),
+        environmentTraps: [],
+        roomEntrances: [],
     },
     versusState: createInitialVersusState(),
 
@@ -947,8 +958,10 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
 
     initZone: (biome = 'forest', origin = null, zoneContext = { kind: 'biome' }) => {
         const seed = `${biome}:${origin?.x ?? 0},${origin?.y ?? 0}:${Date.now()}`;
-        const map = generateTacticalMap(seed);
-        const playerStart = { ...DEFAULT_PLAYER_START };
+        let map = generateTacticalMap(seed);
+        let playerStart = { ...DEFAULT_PLAYER_START };
+        let roomEntrances: TacticalPosition[] = [];
+        let environmentTraps: TacticalEnvironmentTrap[] = [];
         const state = get();
         const isDungeon = zoneContext.kind === 'dungeon';
         const dungeonId = zoneContext.poiId || null;
@@ -971,7 +984,20 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
         const roomObjectiveTile = isDungeon && (room?.objective === 'disarm_trap' || room?.objective === 'investigate')
             ? pickRoomObjectiveTile(map, playerStart)
             : null;
-        const enemies = createZoneEnemies(map, playerStart).map((enemy, index) => {
+        if (isDungeon) {
+            const roomMap = generateDungeonRoomMap(
+                `${seed}:${room?.id || 'room'}`,
+                room?.kind || 'setup'
+            );
+            map = roomMap.map;
+            playerStart = { ...roomMap.entrances[0] };
+            roomEntrances = roomMap.entrances;
+            environmentTraps = roomMap.environmentTraps;
+        }
+        const roomObjectiveTileFinal = isDungeon && (room?.objective === 'disarm_trap' || room?.objective === 'investigate')
+            ? pickRoomObjectiveTile(map, playerStart)
+            : null;
+        const enemies = createZoneEnemies(map, playerStart, roomEntrances).map((enemy, index) => {
             if (!isDungeon) return enemy;
             const tier = zoneContext.tier || 1;
             const threatBoost = dungeonRuntime?.threatLevel ?? 0;
@@ -1015,7 +1041,7 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             dungeonRoomId: room?.id || null,
             dungeonObjectiveType: room?.objective || null,
             roomObjectiveResolved: false,
-            roomObjectiveTile,
+            roomObjectiveTile: roomObjectiveTileFinal,
             mode3DState: 'FREE_MOVE',
             cameraMode: 'OVER_SHOULDER',
             currentRoomId: room?.id || null,
@@ -1046,6 +1072,8 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             trapOrientation: state.explorationState?.trapOrientation ?? DEFAULT_TRAP_ORIENTATION,
             trapCooldowns: state.explorationState?.trapCooldowns ?? {},
             trapMastery: state.explorationState?.trapMastery ?? initialTrapMastery(),
+            environmentTraps,
+            roomEntrances,
         };
 
         set({
@@ -1170,6 +1198,17 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             set({
                 explorationState: nextExplorationState,
                 tacticalUiState: buildTacticalUiState(nextExplorationState, get().inputMode, 'Celda invalida para trampa.'),
+            });
+            return false;
+        }
+        if (explorationState.map[x]?.[z]?.zone !== 'ROOM') {
+            const blockedState: ExplorationState = {
+                ...explorationState,
+                tacticalMessage: 'Solo puedes colocar trampas en habitaciones.',
+            };
+            set({
+                explorationState: blockedState,
+                tacticalUiState: buildTacticalUiState(blockedState, get().inputMode, 'Pasillos sin trampas.'),
             });
             return false;
         }
@@ -1491,6 +1530,29 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
                                 nextEnemy = { ...nextEnemy, hp: 0, isDefeated: true, x: -99, z: -99 };
                             }
                             traps[trapIndex] = { ...trap, isArmed: false, isTriggered: true, duration: 0, cooldownRemaining: trapData.cooldown };
+                        }
+                    }
+
+                    const envTrap = current.environmentTraps.find(env => env.position.x === nextEnemy.x && env.position.z === nextEnemy.z);
+                    if (envTrap) {
+                        comboChain = shouldExtendCombo(nextEnemy) ? comboChain + 1 : Math.max(1, comboChain + 1);
+                        comboMultiplier = computeComboMultiplier(comboChain);
+                        const finalDamage = Math.max(1, Math.round(envTrap.damage * comboMultiplier));
+                        earnedCurrency += Math.max(1, Math.round(finalDamage / 4));
+                        nextEnemy.hp = Math.max(0, nextEnemy.hp - finalDamage);
+                        triggeredMessage = `Entorno ${envTrap.type} activo! Combo x${comboMultiplier.toFixed(2)}.`;
+                        if (envTrap.stateEffect === 'stun') {
+                            nextEnemy.stunnedTurns = 1;
+                            nextEnemy.aiState = EnemyAiState.STUNNED;
+                        } else if (envTrap.stateEffect === 'knockback' || envTrap.stateEffect === 'launch') {
+                            const pushed = { x: nextEnemy.x + envTrap.forceVector.x, z: nextEnemy.z + envTrap.forceVector.z };
+                            if (isWalkable(current.map, pushed.x, pushed.z)) {
+                                nextEnemy.x = pushed.x;
+                                nextEnemy.z = pushed.z;
+                            }
+                        }
+                        if (nextEnemy.hp <= 0) {
+                            nextEnemy = { ...nextEnemy, hp: 0, isDefeated: true, x: -99, z: -99 };
                         }
                     }
 
@@ -1964,12 +2026,13 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
         const roomDefinition = getDungeonBlueprint(runtimeWithOpenDoor.blueprintId).rooms.find(room => room.id === targetRoom);
 
         const seed = `${runtimeWithOpenDoor.dungeonId}:${targetRoom}:${Date.now()}`;
-        const map = generateTacticalMap(seed);
-        const playerStart = { ...DEFAULT_PLAYER_START };
+        const roomMap = generateDungeonRoomMap(seed, roomDefinition?.kind || 'setup');
+        const map = roomMap.map;
+        const playerStart = { ...(roomMap.entrances[0] ?? DEFAULT_PLAYER_START) };
         const roomObjectiveTile = (roomDefinition?.objective === 'disarm_trap' || roomDefinition?.objective === 'investigate')
             ? pickRoomObjectiveTile(map, playerStart)
             : null;
-        const zoneEnemies = createZoneEnemies(map, playerStart).map((enemy, index) => {
+        const zoneEnemies = createZoneEnemies(map, playerStart, roomMap.entrances).map((enemy, index) => {
             if (!roomDefinition) return enemy;
             const elite = !!roomDefinition.elite && index === 0;
             return {
@@ -2034,6 +2097,8 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             trapOrientation: explorationState.trapOrientation,
             trapCooldowns: explorationState.trapCooldowns,
             trapMastery: explorationState.trapMastery,
+            environmentTraps: roomMap.environmentTraps,
+            roomEntrances: roomMap.entrances,
         };
 
         set({
