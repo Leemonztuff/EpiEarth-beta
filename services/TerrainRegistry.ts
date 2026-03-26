@@ -77,3 +77,17 @@ export function getTerrainVisualSelection(terrain: TerrainType, feature?: string
 export function getTerrainVisualDefinition(terrain: TerrainType): TerrainVisualDefinition | null {
     return TERRAIN_VISUAL_REGISTRY[terrain] || null;
 }
+
+export function compareTerrainPriority(current: TerrainType, neighbor: TerrainType): number {
+    const currentDef = getTerrainVisualDefinition(current);
+    const neighborDef = getTerrainVisualDefinition(neighbor);
+
+    const currentZ = currentDef?.zIndex ?? 0;
+    const neighborZ = neighborDef?.zIndex ?? 0;
+
+    if (neighborZ !== currentZ) {
+        return neighborZ - currentZ;
+    }
+
+    return neighbor.localeCompare(current);
+}

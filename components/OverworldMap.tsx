@@ -84,11 +84,34 @@ const OverworldMap = ({ playerPos, onMove, dimension = Dimension.NORMAL }: Overw
         });
 
         const tileLookup = new Map(tiles.map(tile => [`${tile.q},${tile.r}`, tile] as const));
+        const container = containerRef.current;
+        const viewportWidth = container?.clientWidth ? Math.max(1200, container.clientWidth + HEX_SIZE * 8) : 1600;
+        const viewportHeight = container?.clientHeight ? Math.max(900, container.clientHeight + HEX_SIZE * 8) : 1200;
+
         hexTileRenderer.preloadTilesForViewport(
             playerPos.x,
             playerPos.y,
-            1600,
-            1200,
+            viewportWidth,
+            viewportHeight,
+            HEX_SIZE,
+            (q, r) => {
+                const tile = tileLookup.get(`${q},${r}`);
+                if (!tile) return null;
+                return {
+                    terrain: tile.terrain,
+                    baseTerrain: tile.baseTerrain,
+                    overlayTerrain: tile.overlayTerrain,
+                    feature: tile.feature,
+                };
+            }
+        );
+
+        // Focalized prewarm around the player to reduce first-frame popping in nearby transitions.
+        hexTileRenderer.preloadTilesForViewport(
+            playerPos.x,
+            playerPos.y,
+            HEX_SIZE * 8,
+            HEX_SIZE * 8,
             HEX_SIZE,
             (q, r) => {
                 const tile = tileLookup.get(`${q},${r}`);

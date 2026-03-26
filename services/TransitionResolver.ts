@@ -1,7 +1,7 @@
 import { TerrainType } from '../types';
 import { HEX_DIRECTIONS, TerrainCategory } from '../constants';
 import { wesnothAtlas } from './WesnothAtlas';
-import { getTerrainVisualDefinition, getTerrainVisualSelection } from './TerrainRegistry';
+import { compareTerrainPriority, getTerrainVisualDefinition, getTerrainVisualSelection } from './TerrainRegistry';
 
 export interface ResolvedTerrainSprite {
     spriteName: string;
@@ -124,6 +124,8 @@ export function resolveTerrainSprites(params: {
 }): ResolvedTerrainSprite[] {
     const { q, r, terrain, baseTerrain, overlayTerrain, feature, getTerrain } = params;
     const effectiveBaseTerrain = baseTerrain ?? terrain;
+    const overlayDef = overlayTerrain ? getTerrainVisualDefinition(overlayTerrain) : null;
+    const maxTransitionLayer = overlayDef ? Math.max(1, overlayDef.zIndex - 1) : 6;
     const resolvedFeature = isFeatureCoveredByOverlay(feature, overlayTerrain) ? undefined : feature;
     const { category, baseCandidates, featureCandidates } = getTerrainVisualSelection(effectiveBaseTerrain, resolvedFeature);
     const sprites: ResolvedTerrainSprite[] = [];
@@ -145,10 +147,13 @@ export function resolveTerrainSprites(params: {
         const neighborCategory: TerrainCategory = getTerrainVisualSelection(neighborTerrain).category;
         if (!currentDef || !neighborDef || neighborCategory === category) continue;
 
-        const shouldDrawTransition =
-            neighborDef.zIndex > currentDef.zIndex ||
-            (neighborDef.zIndex === currentDef.zIndex && neighborTerrain > effectiveBaseTerrain);
+        const shouldDrawTransition = compareTerrainPriority(effectiveBaseTerrain, neighborTerrain) > 0;
         if (!shouldDrawTransition) continue;
+
+        const transitionLayer = Math.max(
+            1,
+            Math.min(maxTransitionLayer, Math.min(currentDef.zIndex, neighborDef.zIndex) + 1)
+        );
 
         const dirName = getDirectionName(i);
         const candidates = getTransitionCandidates(
@@ -161,7 +166,7 @@ export function resolveTerrainSprites(params: {
 
         candidates.forEach(candidate => {
             if (wesnothAtlas.hasSprite(candidate)) {
-                sprites.push({ spriteName: candidate, layer: 1 });
+                sprites.push({ spriteName: candidate, layer: transitionLayer });
             }
         });
     }
@@ -170,7 +175,6 @@ export function resolveTerrainSprites(params: {
         const { baseCandidates: overlayCandidates } = getTerrainVisualSelection(overlayTerrain);
         const overlaySpriteName = pickDeterministicSprite(overlayCandidates, q, r, 41);
         if (overlaySpriteName) {
-            const overlayDef = getTerrainVisualDefinition(overlayTerrain);
             sprites.push({ spriteName: overlaySpriteName, layer: overlayDef?.zIndex ?? 5 });
         }
     }

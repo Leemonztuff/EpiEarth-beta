@@ -54,4 +54,19 @@ describe('HexTileRenderer', () => {
         expect(overlay).toBeTruthy();
         expect(overlay!.layer).toBeGreaterThan(base!.layer);
     });
+
+    it('should keep transition layers below overlay layers when both exist', () => {
+        hexTileRenderer.clear();
+        hexTileRenderer.setTerrain(0, 0, TerrainType.FOREST, TerrainType.GRASS, TerrainType.FOREST);
+        hexTileRenderer.setTerrain(1, 0, TerrainType.WATER);
+        const sprites = hexTileRenderer.getTileSprites(0, 0);
+
+        const overlayLayer = Math.max(...sprites.map(s => s.layer));
+        const transitionLayers = sprites
+            .filter(s => s.layer > 0 && s.layer < overlayLayer)
+            .map(s => s.layer);
+
+        expect(overlayLayer).toBeGreaterThan(0);
+        expect(transitionLayers.every(layer => layer < overlayLayer)).toBe(true);
+    });
 });
