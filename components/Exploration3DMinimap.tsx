@@ -11,6 +11,8 @@ interface MinimapProps {
     doorStates?: Record<string, DoorState>;
     discoveredRooms?: string[];
     currentRoomId?: string | null;
+    embedded?: boolean;
+    kageroStyle?: boolean;
 }
 
 function buildRoomPositions(roomIds: string[], size: number) {
@@ -36,8 +38,10 @@ export const Exploration3DMinimap: React.FC<MinimapProps> = ({
     doorStates,
     discoveredRooms = [],
     currentRoomId = null,
+    embedded = false,
+    kageroStyle = false,
 }) => {
-    const minimapSize = 148;
+    const minimapSize = embedded ? 224 : 148;
     const cellSize = minimapSize / mapSize;
 
     const playerPixelX = playerPos.x * cellSize;
@@ -52,10 +56,19 @@ export const Exploration3DMinimap: React.FC<MinimapProps> = ({
 
     const isDungeonGraph = !!roomGraph && !!roomPositions;
 
+    const wrapperClass = embedded
+        ? 'w-full bg-[#0a0f18]/90 border border-amber-200/35 rounded-lg p-2 shadow-[0_8px_18px_rgba(0,0,0,0.35)]'
+        : 'absolute bottom-4 left-4 bg-[#09101a]/88 border border-cyan-200/35 rounded-lg p-2 shadow-[0_8px_18px_rgba(0,0,0,0.35)]';
+
     return (
-        <div className="absolute bottom-4 left-4 bg-black/70 border border-white/30 rounded-lg p-2">
-            <div className="text-xs font-bold text-white/80 mb-1">{isDungeonGraph ? 'Dungeon' : 'Mapa'}</div>
-            <div className="relative bg-slate-900 border border-white/20 rounded" style={{ width: minimapSize, height: minimapSize }}>
+        <div className={wrapperClass}>
+            <div className={`text-[10px] font-black uppercase tracking-[0.2em] mb-1 ${kageroStyle ? 'text-amber-200/90' : 'text-cyan-200/90'}`}>
+                {isDungeonGraph ? 'Map System' : 'Radar'}
+            </div>
+            <div
+                className={`relative rounded ${kageroStyle ? 'bg-[#1a2030] border border-amber-200/45' : 'bg-slate-900 border border-white/20'}`}
+                style={{ width: minimapSize, height: minimapSize }}
+            >
                 {isDungeonGraph && roomGraph && roomPositions ? (
                     <svg className="absolute inset-0 w-full h-full" viewBox={`0 0 ${minimapSize} ${minimapSize}`}>
                         {Object.values(roomGraph.doors).map(door => {
@@ -63,7 +76,7 @@ export const Exploration3DMinimap: React.FC<MinimapProps> = ({
                             const to = roomPositions[door.toRoomId];
                             if (!from || !to) return null;
                             const state = doorStates?.[door.id] ?? door.state;
-                            const color = state === 'open' ? '#22c55e' : state === 'locked' ? '#ef4444' : '#f59e0b';
+                            const color = state === 'open' ? '#4ade80' : state === 'locked' ? '#ef4444' : '#fbbf24';
                             return (
                                 <line
                                     key={door.id}
@@ -82,22 +95,37 @@ export const Exploration3DMinimap: React.FC<MinimapProps> = ({
                             const pos = roomPositions[room.id];
                             if (!pos) return null;
                             const discovered = discoveredRooms.includes(room.id) || room.id === currentRoomId;
+                            const fill = room.id === currentRoomId
+                                ? '#fbbf24'
+                                : discovered
+                                ? (room.elite ? '#b91c1c' : '#1d4ed8')
+                                : '#0f172a';
+                            const stroke = room.id === currentRoomId ? '#fde68a' : '#94a3b8';
                             return (
                                 <g key={room.id}>
-                                    <circle
-                                        cx={pos.x}
-                                        cy={pos.y}
-                                        r={room.id === currentRoomId ? 8 : 6}
-                                        fill={
-                                            room.id === currentRoomId
-                                                ? '#06b6d4'
-                                                : discovered
-                                                    ? (room.elite ? '#ef4444' : '#94a3b8')
-                                                    : '#1e293b'
-                                        }
-                                        stroke={room.id === currentRoomId ? '#ffffff' : '#64748b'}
-                                        strokeWidth="1.5"
+                                    <rect
+                                        x={pos.x - 8}
+                                        y={pos.y - 6}
+                                        width="16"
+                                        height="12"
+                                        rx="2"
+                                        fill={fill}
+                                        stroke={stroke}
+                                        strokeWidth="1.2"
                                     />
+                                    {room.id === currentRoomId && (
+                                        <rect
+                                            x={pos.x - 10}
+                                            y={pos.y - 8}
+                                            width="20"
+                                            height="16"
+                                            rx="2"
+                                            fill="none"
+                                            stroke="#fef3c7"
+                                            strokeWidth="1"
+                                            opacity="0.7"
+                                        />
+                                    )}
                                 </g>
                             );
                         })}
@@ -156,11 +184,11 @@ export const Exploration3DMinimap: React.FC<MinimapProps> = ({
                 )}
             </div>
 
-            <div className="text-[10px] text-white/60 mt-2 space-y-1">
+            <div className="text-[10px] text-white/70 mt-2 space-y-1">
                 {isDungeonGraph ? (
                     <>
-                        <div className="flex items-center gap-1"><div className="w-2 h-2 bg-cyan-400 rounded-full" /> Sala actual</div>
-                        <div className="flex items-center gap-1"><div className="w-2 h-2 bg-red-500 rounded-full" /> Elite</div>
+                        <div className="flex items-center gap-1"><div className="w-3 h-2 bg-amber-400 rounded-sm" /> Sala actual</div>
+                        <div className="flex items-center gap-1"><div className="w-3 h-2 bg-red-700 rounded-sm" /> Elite</div>
                         <div className="flex items-center gap-1"><div className="w-3 h-[2px] bg-amber-500" /> Puerta cerrada</div>
                     </>
                 ) : (
@@ -174,4 +202,3 @@ export const Exploration3DMinimap: React.FC<MinimapProps> = ({
         </div>
     );
 };
-

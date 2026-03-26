@@ -158,11 +158,12 @@ const TacticalBoard: React.FC<{
     highlightedTiles: { x: number; z: number }[];
     trapAimTarget: { x: number; z: number } | null;
     selectedTrapRange: number | null;
+    selectedTrapType: TrapType | null;
     showTargetingOverlays: boolean;
     showPlacementGrid: boolean;
     onTilePress: (x: number, z: number) => void;
     playerSpriteUrl?: string;
-}> = ({ map, playerPos, playerRenderPos, enemies, traps, environmentTraps, highlightedTiles, trapAimTarget, selectedTrapRange, showTargetingOverlays, showPlacementGrid, onTilePress, playerSpriteUrl }) => {
+}> = ({ map, playerPos, playerRenderPos, enemies, traps, environmentTraps, highlightedTiles, trapAimTarget, selectedTrapRange, selectedTrapType, showTargetingOverlays, showPlacementGrid, onTilePress, playerSpriteUrl }) => {
     const textureEntries = useLoader(THREE.TextureLoader, Object.values(TILE_TEXTURE_URLS));
     const textures = useMemo<LoadedTextureMap>(() => {
         const next: LoadedTextureMap = {};
@@ -175,6 +176,14 @@ const TacticalBoard: React.FC<{
         return next;
     }, [textureEntries]);
     const highlightSet = useMemo(() => new Set(highlightedTiles.map(tile => `${tile.x},${tile.z}`)), [highlightedTiles]);
+    const selectedSurface = selectedTrapType ? (TRAP_DATA[selectedTrapType].placementSurface ?? 'floor') : null;
+
+    const isTileValidForSurface = useCallback((cell: any): boolean => {
+        if (!selectedSurface) return false;
+        if (cell.zone !== 'ROOM') return false;
+        if (selectedSurface === 'wall') return cell.type === 'WALL' || cell.type === 'STONE';
+        return !!cell.walkable;
+    }, [selectedSurface]);
 
     return (
         <group>
@@ -183,6 +192,17 @@ const TacticalBoard: React.FC<{
                     const pos = getWorldPosition(x, cell.z);
                     const texture = textures[cell.type] || textures.FLOOR;
                     const isHighlight = highlightSet.has(`${x},${cell.z}`);
+                    const isSurfaceValid = isTileValidForSurface(cell);
+                    const overlayColor = !selectedSurface
+                        ? '#16a34a'
+                        : isSurfaceValid
+                        ? '#22c55e'
+                        : '#ef4444';
+                    const overlayOpacity = !selectedSurface
+                        ? 0.06
+                        : isSurfaceValid
+                        ? 0.26
+                        : 0.22;
 
                     if (cell.type === 'WALL' || cell.type === 'STONE') {
                         return (
@@ -192,6 +212,12 @@ const TacticalBoard: React.FC<{
                                     <meshStandardMaterial map={texture} />
                                 </mesh>
                                 <TrapPlacementHighlight position={pos} active={isHighlight} />
+                                {showPlacementGrid && isHighlight && (
+                                    <mesh position={[pos[0], Math.max(0.1, cell.height + 0.02), pos[2]]} rotation={[-Math.PI / 2, 0, 0]}>
+                                        <planeGeometry args={[0.84, 0.84]} />
+                                        <meshBasicMaterial color={overlayColor} transparent opacity={overlayOpacity} />
+                                    </mesh>
+                                )}
                             </group>
                         );
                     }
@@ -218,7 +244,7 @@ const TacticalBoard: React.FC<{
                             {showPlacementGrid && (
                                 <mesh position={[pos[0], 0.01, pos[2]]} rotation={[-Math.PI / 2, 0, 0]}>
                                     <planeGeometry args={[0.96, 0.96]} />
-                                    <meshBasicMaterial color="#16a34a" transparent opacity={0.06} />
+                                    <meshBasicMaterial color={isHighlight ? overlayColor : '#16a34a'} transparent opacity={isHighlight ? overlayOpacity : 0.06} />
                                 </mesh>
                             )}
                         </group>
@@ -546,6 +572,7 @@ export const Exploration3DScene: React.FC = () => {
                     highlightedTiles={explorationState.highlightedTiles}
                     trapAimTarget={explorationState.trapAimTarget}
                     selectedTrapRange={selectedTrap ? (tacticalUiState.selectedTrapRange ?? TRAP_DATA[selectedTrap].range) : null}
+                    selectedTrapType={selectedTrap}
                     showTargetingOverlays={showTargetingOverlays}
                     showPlacementGrid={showPlacementGrid}
                     onTilePress={handleTilePress}
@@ -556,7 +583,7 @@ export const Exploration3DScene: React.FC = () => {
             <div className="absolute inset-0 pointer-events-none flex flex-col">
                 {!trapSetMode && (
                 <div className={`pointer-events-auto ${isMobile ? 'px-2 pt-2' : 'p-2 sm:p-3'}`}>
-                    <div className={`mx-auto rounded-xl border border-cyan-300/25 bg-gradient-to-b from-slate-950/78 to-slate-900/56 shadow-[0_6px_20px_rgba(0,0,0,0.42)] backdrop-blur-md ${isMobile ? 'max-w-[96vw]' : 'max-w-[920px]'}`}>
+                    <div className={`mx-auto rounded-xl border border-cyan-300/25 bg-gradient-to-b from-[#0b1321]/92 to-[#090f1a]/88 shadow-[0_10px_28px_rgba(0,0,0,0.48)] backdrop-blur-md ${isMobile ? 'max-w-[96vw]' : 'max-w-[920px]'}`}>
                         <div className={`flex items-start justify-between gap-2 ${isMobile ? 'p-2' : 'p-2 sm:p-2.5'}`}>
                             <div className="min-w-0">
                                 <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-300/90 font-bold">
@@ -612,7 +639,7 @@ export const Exploration3DScene: React.FC = () => {
 
                 {trapSetMode && (
                     <div className={`pointer-events-auto ${isMobile ? 'px-2 pt-2' : 'p-2 sm:p-3'}`}>
-                        <div className={`mx-auto rounded-xl border border-cyan-300/25 bg-slate-950/82 shadow-[0_6px_20px_rgba(0,0,0,0.42)] backdrop-blur-md ${isMobile ? 'max-w-[96vw]' : 'max-w-[980px]'}`}>
+                        <div className={`mx-auto rounded-xl border border-amber-300/35 bg-gradient-to-b from-[#101722]/95 to-[#0c1320]/92 shadow-[0_10px_28px_rgba(0,0,0,0.56)] backdrop-blur-md ${isMobile ? 'max-w-[96vw]' : 'max-w-[980px]'}`}>
                             <div className="p-2 sm:p-3 flex items-start justify-between gap-2">
                                 <div className="min-w-0">
                                     <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-300/90 font-bold">Trap Set</div>
@@ -653,14 +680,41 @@ export const Exploration3DScene: React.FC = () => {
                                     </div>
                                 )}
                                 {trapSetPanel === 'MAP' && (
-                                    <div className="text-[11px] text-cyan-100/85">
-                                        <div className="mb-1 font-black text-white">Room Network</div>
-                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 max-h-[160px] overflow-y-auto">
-                                            {(explorationState.roomGraphRef ? Object.values(explorationState.roomGraphRef.rooms) : []).map(room => (
-                                                <div key={room.id} className={`rounded-md px-2 py-1 border ${room.id === explorationState.currentRoomId ? 'border-amber-300 bg-amber-400/25 text-amber-100' : 'border-white/10 bg-slate-900/70 text-white'}`}>
-                                                    {room.label}
-                                                </div>
-                                            ))}
+                                    <div className="text-[11px] text-cyan-100/85 grid md:grid-cols-[248px,1fr] gap-2 items-start">
+                                        <Exploration3DMinimap
+                                            embedded
+                                            kageroStyle
+                                            mapSize={explorationState.mapSize || TACTICAL_MAP_SIZE}
+                                            playerPos={explorationState.playerMapPos}
+                                            enemies={explorationState.zoneEnemies.map(enemy => ({
+                                                id: enemy.id,
+                                                x: enemy.x,
+                                                z: enemy.z,
+                                                type: enemy.name,
+                                                isDefeated: enemy.isDefeated,
+                                            }))}
+                                            traps={explorationState.traps.map(trap => ({
+                                                id: trap.id,
+                                                x: trap.position.x,
+                                                z: trap.position.z,
+                                                type: trap.type,
+                                                isArmed: trap.isArmed,
+                                            }))}
+                                            targetPos={selectedTrap ? explorationState.trapAimTarget : undefined}
+                                            roomGraph={explorationState.roomGraphRef}
+                                            doorStates={explorationState.doorStates}
+                                            discoveredRooms={activeRuntime?.discoveredRooms || []}
+                                            currentRoomId={explorationState.currentRoomId}
+                                        />
+                                        <div>
+                                            <div className="mb-1 font-black text-white">Room Network</div>
+                                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-[160px] overflow-y-auto">
+                                                {(explorationState.roomGraphRef ? Object.values(explorationState.roomGraphRef.rooms) : []).map(room => (
+                                                    <div key={room.id} className={`rounded-md px-2 py-1 border ${room.id === explorationState.currentRoomId ? 'border-amber-300 bg-amber-400/25 text-amber-100' : 'border-white/10 bg-slate-900/70 text-white'}`}>
+                                                        {room.label}
+                                                    </div>
+                                                ))}
+                                            </div>
                                         </div>
                                     </div>
                                 )}
@@ -672,7 +726,7 @@ export const Exploration3DScene: React.FC = () => {
                 <div className="flex-1" />
 
                 <div className={`pointer-events-auto grid gap-2 md:grid-cols-[1fr,auto] items-end ${isMobile ? 'px-2 pb-[calc(env(safe-area-inset-bottom)+8px)]' : 'p-2 sm:p-3'}`}>
-                    <div className={`order-2 md:order-1 mx-auto w-full rounded-xl border border-cyan-300/25 bg-gradient-to-b from-slate-950/78 to-slate-900/62 backdrop-blur-md ${isMobile ? 'max-w-[96vw] p-1.5' : 'max-w-[880px] p-2'}`}>
+                    <div className={`order-2 md:order-1 mx-auto w-full rounded-xl border border-cyan-300/25 bg-gradient-to-b from-[#0b1321]/90 to-[#0b1019]/84 backdrop-blur-md ${isMobile ? 'max-w-[96vw] p-1.5' : 'max-w-[880px] p-2'}`}>
                         {!trapSetMode ? (
                             <>
                                 <div className="grid grid-cols-3 gap-2">
@@ -722,34 +776,6 @@ export const Exploration3DScene: React.FC = () => {
                             </>
                         ) : (
                             <>
-                                {trapSetPanel !== 'TRAP_SET' ? (
-                                    <div className="text-[11px] text-cyan-100/85">
-                                        {trapSetPanel === 'ENEMY_DATA' ? (
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[220px] overflow-y-auto">
-                                                {explorationState.zoneEnemies.filter(enemy => !enemy.isDefeated).map(enemy => (
-                                                    <div key={enemy.id} className="rounded-lg border border-white/10 bg-slate-900/80 p-2 text-[11px] text-white">
-                                                        <div className="font-black">{enemy.name}</div>
-                                                        <div>HP {enemy.hp}/{enemy.maxHp} | AI {enemy.aiState}</div>
-                                                        <div>IQ {enemy.intelligenceLevel} | Alert {enemy.alertRange}</div>
-                                                        <div className="text-cyan-200/90">Res F/W/C: {Math.round(enemy.resistances.floor * 100)} / {Math.round(enemy.resistances.wall * 100)} / {Math.round(enemy.resistances.ceiling * 100)}</div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        ) : (
-                                            <>
-                                                <div className="mb-1 font-black text-white">Room Network</div>
-                                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 max-h-[170px] overflow-y-auto">
-                                                    {(explorationState.roomGraphRef ? Object.values(explorationState.roomGraphRef.rooms) : []).map(room => (
-                                                        <div key={room.id} className={`rounded-md px-2 py-1 border ${room.id === explorationState.currentRoomId ? 'border-amber-300 bg-amber-400/25 text-amber-100' : 'border-white/10 bg-slate-900/70 text-white'}`}>
-                                                            {room.label}
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </>
-                                        )}
-                                    </div>
-                                ) : (
-                                    <>
                                 {isMobile && (
                                     <div className="mb-2 flex justify-end">
                                         <button
@@ -841,7 +867,13 @@ export const Exploration3DScene: React.FC = () => {
                                         ? 'Trap Set: tap en tile para colocar | confirma al segundo tap'
                                         : 'Trap Set: click para apuntar/confirmar | Q/E rota rapido'}
                                 </div>
-                                    </>
+                                <div className="mt-1 text-[10px] text-cyan-200/75">
+                                    Superficie valida: verde | invalida: rojo (piso/pared/techo segun trampa).
+                                </div>
+                                {trapSetPanel !== 'TRAP_SET' && (
+                                    <div className="mt-2 rounded-lg border border-amber-300/35 bg-amber-950/30 px-2 py-1 text-[10px] text-amber-100">
+                                        Panel activo arriba: {trapSetPanel.replace('_', ' ')}.
+                                    </div>
                                 )}
                                     </>
                                 )}
@@ -865,7 +897,7 @@ export const Exploration3DScene: React.FC = () => {
                 </div>
             </div>
 
-            {(explorationState.showMinimap || (trapSetMode && trapSetPanel === 'MAP')) && (
+            {explorationState.showMinimap && !trapSetMode && (
                 <Exploration3DMinimap
                     mapSize={explorationState.mapSize || TACTICAL_MAP_SIZE}
                     playerPos={explorationState.playerMapPos}

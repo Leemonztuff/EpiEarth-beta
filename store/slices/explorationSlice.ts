@@ -213,10 +213,6 @@ function buildTrapHighlights(origin: TacticalPosition, range: number, map: Tacti
     const highlights: TacticalPosition[] = [];
     for (let x = 0; x < map.length; x++) {
         for (let z = 0; z < map[x].length; z++) {
-            if (!isWalkable(map, x, z)) {
-                continue;
-            }
-
             if (manhattanDistance(origin, { x, z }) <= range) {
                 highlights.push({ x, z });
             }
@@ -224,6 +220,24 @@ function buildTrapHighlights(origin: TacticalPosition, range: number, map: Tacti
     }
 
     return highlights;
+}
+
+function isPlacementValidForSurface(
+    map: TacticalMapCell[][],
+    x: number,
+    z: number,
+    surface: TrapPlacementSurface
+): boolean {
+    const cell = map[x]?.[z];
+    if (!cell) return false;
+    const isRoom = cell.zone === 'ROOM';
+    if (!isRoom) return false;
+
+    if (surface === 'floor' || surface === 'ceiling') {
+        return !!cell.walkable;
+    }
+
+    return cell.type === 'WALL' || cell.type === 'STONE';
 }
 
 function clampIntent(dx: number, dz: number): TacticalPosition {
@@ -1190,17 +1204,8 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             return false;
         }
 
-        if (!isWalkable(explorationState.map, x, z)) {
-            const nextExplorationState: ExplorationState = {
-                ...explorationState,
-                tacticalMessage: 'Celda invalida: solo puedes colocar en terreno caminable.',
-            };
-            set({
-                explorationState: nextExplorationState,
-                tacticalUiState: buildTacticalUiState(nextExplorationState, get().inputMode, 'Celda invalida para trampa.'),
-            });
-            return false;
-        }
+        const trapData = TRAP_DATA[type];
+        const placementSurface = trapData.placementSurface ?? 'floor';
         if (explorationState.map[x]?.[z]?.zone !== 'ROOM') {
             const blockedState: ExplorationState = {
                 ...explorationState,
@@ -1209,6 +1214,22 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             set({
                 explorationState: blockedState,
                 tacticalUiState: buildTacticalUiState(blockedState, get().inputMode, 'Pasillos sin trampas.'),
+            });
+            return false;
+        }
+        if (!isPlacementValidForSurface(explorationState.map, x, z, placementSurface)) {
+            const blockedState: ExplorationState = {
+                ...explorationState,
+                tacticalMessage:
+                    placementSurface === 'wall'
+                        ? 'Trampa de pared: coloca sobre muro o pilar de sala.'
+                        : placementSurface === 'ceiling'
+                            ? 'Trampa de techo: requiere celda caminable de sala.'
+                            : 'Trampa de piso: requiere celda caminable de sala.',
+            };
+            set({
+                explorationState: blockedState,
+                tacticalUiState: buildTacticalUiState(blockedState, get().inputMode, 'Celda invalida para superficie seleccionada.'),
             });
             return false;
         }
@@ -1239,7 +1260,6 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             return false;
         }
 
-        const trapData = TRAP_DATA[type];
         const trapLevel = mastery.level;
         const orientationVector = orientationToVector(explorationState.trapOrientation);
         const trap: Trap = {
@@ -1250,7 +1270,7 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             isTriggered: false,
             duration: trapData.duration,
             description: trapData.description,
-            placementSurface: trapData.placementSurface ?? 'floor',
+            placementSurface,
             triggerMode: trapData.triggerMode ?? 'auto',
             stateEffect: trapData.stateEffect ?? 'none',
             forceVector: trapData.forceVector ?? { x: 0, z: 0 },
