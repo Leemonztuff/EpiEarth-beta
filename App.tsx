@@ -21,7 +21,7 @@ const PartyManager = lazy(() => import('./components/PartyManager').then(m => ({
 const DialogueOverlay = lazy(() => import('./components/DialogueOverlay').then(m => ({ default: m.DialogueOverlay })));
 const InspectionPanel = lazy(() => import('./components/InspectionPanel').then(m => ({ default: m.InspectionPanel })));
 const AdminDashboard = lazy(() => import('./components/admin/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
-const Exploration3DScene = lazy(() => import('./components/Exploration3DScene').then(m => ({ default: m.Exploration3DScene })));
+const Exploration3DScene = lazy(() => import('./components/Exploration3DScene'));
 const VersusBattleScene = lazy(() => import('./components/VersusBattleScene').then(m => ({ default: m.VersusBattleScene })));
 
 const LoadingFallback = () => (
@@ -161,7 +161,7 @@ const App = () => {
             {gameState === GameState.BATTLE_VERSUS && versusState.isActive && (
               <VersusBattleScene
                 playerName={party[versusState.playerIndex]?.name || 'Heroe'}
-                enemyName={explorationState.zoneEnemies.find(e => e.id === explorationState.currentEnemyId)?.name || 'Enemigo'}
+                enemyName={versusState.enemyName || 'Enemigo'}
                 playerHp={versusState.playerCurrentHp}
                 playerMaxHp={versusState.playerMaxHp}
                 enemyHp={versusState.enemyCurrentHp}
@@ -169,7 +169,7 @@ const App = () => {
                 turn={versusState.turn}
                 battleLog={versusState.battleLog}
                 playerSpriteUrl={party[versusState.playerIndex]?.visual?.spriteUrl}
-                enemySpriteUrl={explorationState.zoneEnemies.find(e => e.id === explorationState.currentEnemyId)?.sprite}
+                enemySpriteUrl={versusState.enemySprite}
                 onAction={(action, skillId) => executeBattleAction(action, skillId)}
                 onFlee={() => fleeFromBattle()}
                 onVictory={() => endVersusBattle(true)}

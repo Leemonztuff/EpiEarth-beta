@@ -120,18 +120,28 @@ export type Mode3DState = 'FREE_MOVE' | 'TACTICAL_PAUSE' | 'TRAP_AIM' | 'ENEMY_R
 export type CameraMode = 'OVER_SHOULDER' | 'TACTICAL_ZOOM' | 'CINEMATIC';
 export type DoorState = 'closed' | 'open' | 'locked';
 export type SnapState = 'SNAPPED' | 'SMOOTHING';
-export type TacticalStepPhase =
-    | 'PLAYER_STEP'
-    | 'ENEMY_REACT'
-    | 'TRAP_RESOLVE'
-    | 'CONTACT_CHECK'
-    | 'END_STEP';
+
+export enum KageroMissionState {
+    MISSION_LOAD = 'MISSION_LOAD',
+    THIRD_PERSON_EXPLORATION = 'THIRD_PERSON_EXPLORATION',
+    TACTICAL_MODE = 'TACTICAL_MODE',
+    ENEMY_APPROACH = 'ENEMY_APPROACH',
+    TRAP_TRIGGER = 'TRAP_TRIGGER',
+    COMBO_RESOLUTION = 'COMBO_RESOLUTION',
+    VICTORY_CHECK = 'VICTORY_CHECK',
+    MISSION_COMPLETE = 'MISSION_COMPLETE',
+    MISSION_FAILED = 'MISSION_FAILED',
+    RETURN_TO_HEX = 'RETURN_TO_HEX',
+}
+
+export type KageroPlayerMode = 'third_person' | 'tactical';
 export type TrapPlacementSurface = 'floor' | 'wall' | 'ceiling';
 export type TrapTriggerMode = 'manual' | 'auto';
 export type TrapStateEffect = 'stun' | 'launch' | 'knockback' | 'poison' | 'none';
 export type TrapOrientation = 'N' | 'E' | 'S' | 'W';
 export type DungeonRoomKind = 'entry' | 'offense' | 'setup' | 'technical';
 export type EnvironmentTrapType = 'fire_pit' | 'crusher' | 'pendulum' | 'explosive_barrel' | 'electric_chair' | 'spike_wall';
+export type TacticalStepPhase = 'PLAYER_STEP' | 'ENEMY_REACT' | 'TRAP_RESOLVE' | 'CONTACT_CHECK' | 'END_STEP';
 
 export type DungeonRoomObjectiveType =
     | 'clear'
@@ -495,6 +505,94 @@ export interface SpellEffectData { id: string; type: 'PROJECTILE' | 'BURST'; sta
 export interface DamagePopup { id: string; position: [number, number, number]; amount: string | number; color: string; isCrit: boolean; timestamp: number; }
 
 export interface LootDrop { id: string; position: PositionComponent; rarity: ItemRarity; items: Item[]; }
+
+export interface KageroPosition3D {
+    x: number;
+    y: number;
+    z: number;
+}
+
+export interface KageroTrapSlot {
+    id: string;
+    surface: TrapPlacementSurface;
+    position: { x: number; y: number; z: number };
+    gridX: number;
+    gridZ: number;
+    occupied: boolean;
+    occupiedBy: string | null;
+}
+
+export interface PlacedTrap {
+    id: string;
+    trapType: TrapType;
+    surface: TrapPlacementSurface;
+    position: KageroPosition3D;
+    gridX: number;
+    gridZ: number;
+    trigger: TrapTriggerMode;
+    effects: TrapStateEffect[];
+    damage: number;
+    cooldown: number;
+    currentCooldown: number;
+    triggered: boolean;
+    triggeredAtStep: number;
+    chainTargets: string[];
+}
+
+export interface KageroEnemyState {
+    id: string;
+    name: string;
+    hp: number;
+    maxHp: number;
+    position: KageroPosition3D;
+    gridX: number;
+    gridZ: number;
+    aiState: EnemyAiState;
+    patrolPath: { x: number; z: number }[];
+    patrolIndex: number;
+    targetX: number;
+    targetZ: number;
+    detectionRadius: number;
+    moveSpeed: number;
+    stunnedTurns: number;
+    poisonTurns: number;
+    knockedBack: boolean;
+    knockbackDir: { x: number; z: number } | null;
+    triggeredTrapIds: string[];
+    isAlive: boolean;
+}
+
+export interface KageroRoom {
+    id: string;
+    name: string;
+    gridBounds: { minX: number; maxX: number; minZ: number; maxZ: number };
+    entrances: { x: number; z: number }[];
+    trapSlots: KageroTrapSlot[];
+    enemies: KageroEnemyState[];
+    cleared: boolean;
+}
+
+export interface KageroMission {
+    missionId: string;
+    map3DId: string;
+    zoneName: string;
+    biomeTag: string;
+    playerMode: KageroPlayerMode;
+    currentRoomId: string;
+    rooms: KageroRoom[];
+    allTrapSlots: KageroTrapSlot[];
+    placedTraps: PlacedTrap[];
+    totalEnemies: number;
+    enemiesAlive: number;
+    enemiesDefeated: number;
+    currentStep: number;
+    comboCount: number;
+    maxCombo: number;
+    missionProgress: number;
+    missionComplete: boolean;
+    missionFailed: boolean;
+    narrativeObjective: string | null;
+}
 
 export interface GameStateData {
     gameState: GameState;

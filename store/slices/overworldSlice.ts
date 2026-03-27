@@ -6,8 +6,6 @@ import { findPath } from '../../services/pathfinding';
 import { sfx } from '../../services/SoundSystem';
 import { useGameStore } from '../gameStore';
 import { generateId } from '../utils';
-import { advanceDungeonTimeline, createDungeonRuntime } from '../../services/dungeonRuntime';
-import { getDungeonBlueprint } from '../../data/dungeonBlueprints';
 
 export interface OverworldSlice {
   gameState: GameState;
@@ -72,11 +70,11 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
 
   // enemy templates reused from exploration slice
   const OVERWORLD_ENEMY_TEMPLATES = [
-      { name: 'Goblin', sprite: '/sprites/characters/goblin_01.png' },
-      { name: 'Slime', sprite: '/sprites/characters/slime_01.png' },
-      { name: 'Skeleton', sprite: '/sprites/characters/skeleton_01.png' },
-      { name: 'Orco', sprite: '/sprites/characters/orc_01.png' },
-      { name: 'Wolf', sprite: '/sprites/characters/werewolf_01.png' }
+      { name: 'Goblin', sprite: '/sprites/characters/goblin_01.png', hp: 30 },
+      { name: 'Slime', sprite: '/sprites/characters/slime_01.png', hp: 22 },
+      { name: 'Skeleton', sprite: '/sprites/characters/skeleton_01.png', hp: 38 },
+      { name: 'Orco', sprite: '/sprites/characters/orc_01.png', hp: 50 },
+      { name: 'Wolf', sprite: '/sprites/characters/werewolf_01.png', hp: 28 }
   ];
 
   const getEncounterEnemyId = (dimension: Dimension, q: number, r: number) => `encounter:${dimension}:${q},${r}`;
@@ -210,7 +208,7 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
 
     if (!tile) return false;
 
-    // EVENTO DE COMBATE (CALAVERAS) - Entrar a Zona de Caza 3D
+    // EVENTO DE COMBATE (CALAVERAS) - Entrar a modo 3D Kagero
     if (!isLocal && tile.hasEncounter && tile.poiType !== 'DUNGEON' && tile.poiType !== 'RUINS') {
         const { initZone } = useGameStore.getState();
         initZone(tile.biomeTag || 'forest', { x: q, y: r }, {
@@ -374,50 +372,30 @@ export const createOverworldSlice: StateCreator<any, [], [], OverworldSlice> = (
   enterDungeon: () => {
     const { playerPos, dimension } = get();
     const tile = WorldGenerator.getTile(playerPos.x, playerPos.y, dimension);
-    const dungeonId = tile.poiId || `${dimension}:DUNGEON:${playerPos.x},${playerPos.y}`;
-    const state = get();
-    const existingRuntime = state.dungeonRuntimeById[dungeonId];
-    const runtimeBase = existingRuntime || createDungeonRuntime(
-      dungeonId,
-      'dorgotar-crypt',
-      state.worldDay,
-      `${dimension}:${playerPos.x},${playerPos.y}:${state.worldDay}`
-    );
-    const deltaDays = Math.max(0, state.worldDay - runtimeBase.lastSyncedWorldDay);
-    const { next: runtimeAdvanced, eventsApplied } = advanceDungeonTimeline(runtimeBase, deltaDays);
-    const runtimeNext = {
-      ...runtimeAdvanced,
-      lastSyncedWorldDay: state.worldDay,
-    };
-    const blueprint = getDungeonBlueprint(runtimeNext.blueprintId);
-
+    const dungeonId = `${dimension}:DUNGEON:${playerPos.x},${playerPos.y}`;
+    const tier = tile.poiTier || 1;
+    
+    // Generate dungeon boss based on tier
+    const bossTemplates = [
+        { name: 'Guardián del Calabozo', sprite: '/sprites/characters/skeleton_01.png', hp: 80 },
+        { name: 'Demonio Menor', sprite: '/sprites/characters/orc_01.png', hp: 100 },
+        { name: 'Rey No-Muerto', sprite: '/sprites/characters/skeleton_01.png', hp: 150 },
+    ];
+    const bossIndex = Math.min(tier - 1, bossTemplates.length - 1);
+    const boss = bossTemplates[Math.max(0, bossIndex)];
+    const scaledHp = Math.floor(boss.hp * (1 + (tier - 1) * 0.5));
+    
     set({
-        activeDungeonId: dungeonId,
-        dungeonRuntimeById: {
-            ...state.dungeonRuntimeById,
-            [dungeonId]: runtimeNext,
-        },
         lastOverworldPos: { ...playerPos },
-        currentSettlementName: tile.regionName || blueprint.name,
+        currentSettlementName: tile.regionName || 'Calabozo',
         standingOnDungeon: false,
+        activeDungeonId: dungeonId,
     });
-
-    const { initZone } = useGameStore.getState();
-    initZone(tile.biomeTag || 'forest', { x: playerPos.x, y: playerPos.y }, {
-        kind: 'dungeon',
-        poiId: dungeonId,
-        tier: tile.poiTier || 1,
-        twistSeed: `${dimension}:${playerPos.x},${playerPos.y}`,
-        blueprintId: runtimeNext.blueprintId,
-        layoutVariantSeed: `${dimension}:${playerPos.x},${playerPos.y}:${state.worldDay}`,
-        entryRoomId: runtimeNext.roomGraph?.entryRoomId,
-    });
-
-    if (!existingRuntime) {
-      get().addLog(`Hook: ${blueprint.hook}`, 'narrative');
-      get().addLog(`Twist: ${blueprint.twist}`, 'narrative');
-    }
-    eventsApplied.forEach(eventText => get().addLog(`Timeline: ${eventText}`, 'info'));
+    
+    get().addLog(`Entras al ${tile.regionName || 'calabozo'}.`, 'narrative');
+    
+    const { startDirectEncounter } = useGameStore.getState();
+    startDirectEncounter(`dungeon:${dungeonId}`, boss.name, boss.sprite, scaledHp, scaledHp);
   },
 
   exitSettlement: () => {

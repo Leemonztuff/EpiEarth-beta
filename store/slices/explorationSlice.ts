@@ -133,6 +133,8 @@ interface VersusState {
     playerMaxHp: number;
     enemyCurrentHp: number;
     enemyMaxHp: number;
+    enemyName: string;
+    enemySprite: string;
     turn: 'PLAYER' | 'ENEMY';
     battleLog: string[];
     isPlayerTurn: boolean;
@@ -143,6 +145,7 @@ export interface ExplorationSlice {
     versusState: VersusState;
 
     initZone: (biome?: string, origin?: PositionComponent | null, zoneContext?: ZoneContext) => void;
+    startDirectEncounter: (enemyId: string, enemyName: string, enemySprite: string, enemyHp: number, enemyMaxHp: number) => void;
     setInputMode: (mode: InputMode) => void;
     dispatchTacticalAction: (action: TacticalAction) => void;
     resolveEncounterOutcome: (outcome: EncounterOutcome) => void;
@@ -409,6 +412,8 @@ function createInitialVersusState(): VersusState {
         playerMaxHp: 0,
         enemyCurrentHp: 0,
         enemyMaxHp: 0,
+        enemyName: '',
+        enemySprite: '',
         turn: 'PLAYER',
         battleLog: [],
         isPlayerTurn: true,
@@ -1713,6 +1718,47 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
         resolveStepCycle({ x: newX, z: newZ });
     },
 
+    startDirectEncounter: (enemyId, enemyName, enemySprite, enemyHp, enemyMaxHp) => {
+        const { party, explorationState } = get();
+        const playerIndex = party.findIndex(member => member.stats.hp > 0);
+        if (playerIndex === -1) return;
+
+        const player = party[playerIndex];
+        set({
+            explorationState: {
+                ...explorationState,
+                currentEnemyId: enemyId,
+                tacticalMessage: `Contacto con ${enemyName}.`,
+                mode3DState: 'CONTACT_RESOLVE',
+                zoneCompleted: false,
+            },
+            encounterContext: {
+                sourceGameState: GameState.OVERWORLD,
+                returnOverworldPos: null,
+                enemyId,
+                returnPolicy: 'RETURN_TO_OVERWORLD',
+                lossPolicy: 'DROP_LOOT',
+            },
+            versusState: {
+                isActive: true,
+                playerIndex,
+                playerCurrentHp: player.stats.hp,
+                playerMaxHp: player.stats.maxHp,
+                enemyCurrentHp: enemyHp,
+                enemyMaxHp: enemyMaxHp,
+                enemyName: enemyName,
+                enemySprite: enemySprite,
+                turn: 'PLAYER',
+                battleLog: [
+                    `${enemyName} intercepta tu avance.`,
+                    '¡Enfrentamiento!',
+                ],
+                isPlayerTurn: true,
+            },
+            gameState: GameState.BATTLE_VERSUS,
+        });
+    },
+
     startEncounter: (enemyId) => {
         const { explorationState, party } = get();
         const enemy = explorationState.zoneEnemies.find(item => item.id === enemyId);
@@ -1747,6 +1793,8 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
                 playerMaxHp: player.stats.maxHp,
                 enemyCurrentHp: enemy.hp,
                 enemyMaxHp: enemy.maxHp,
+                enemyName: enemy.name,
+                enemySprite: enemy.sprite,
                 turn: 'PLAYER',
                 battleLog: [
                     `${enemy.name} intercepta tu avance.`,
@@ -1904,11 +1952,16 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
                 tacticalUiState: buildTacticalUiState(nextExplorationState, get().inputMode, null, nextDungeonRuntime),
                 encounterContext: encounterContext ? { ...encounterContext, enemyId: null } : null,
                 versusState: resetVersusState,
-                gameState: GameState.EXPLORATION_3D,
+                gameState: returnPolicy === 'RETURN_TO_OVERWORLD' ? GameState.OVERWORLD : GameState.EXPLORATION_3D,
             });
 
             if (defeatedEnemy) {
                 get().addPartyXp(Math.max(20, Math.floor(defeatedEnemy.maxHp / 2)));
+            }
+            
+            if (returnPolicy === 'RETURN_TO_OVERWORLD') {
+                get().clearCurrentEncounter();
+                get().syncOverworldEnemies();
             }
 
             return;
@@ -1978,13 +2031,14 @@ export const createExplorationSlice: StateCreator<any, [], [], ExplorationSlice>
             mode3DState: 'FREE_MOVE',
             tacticalMessage: 'Huyes y retomas la caceria con el enemigo aun activo.',
         };
+        const shouldReturnToOverworld = returnPolicy === 'RETURN_TO_OVERWORLD';
         set({
             fatigue: Math.min(100, state.fatigue + 2),
             explorationState: nextExplorationState,
             tacticalUiState: buildTacticalUiState(nextExplorationState, get().inputMode),
             encounterContext: encounterContext ? { ...encounterContext, enemyId: null } : null,
             versusState: resetVersusState,
-            gameState: GameState.EXPLORATION_3D,
+            gameState: shouldReturnToOverworld ? GameState.OVERWORLD : GameState.EXPLORATION_3D,
         });
     },
 

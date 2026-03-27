@@ -158,6 +158,8 @@ export const useGameStore = create<GameStore>((set, get, api) => {
             playerMaxHp: 0,
             enemyCurrentHp: 0,
             enemyMaxHp: 0,
+            enemyName: '',
+            enemySprite: '',
             turn: 'PLAYER',
             battleLog: [],
             isPlayerTurn: true
