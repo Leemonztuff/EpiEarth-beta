@@ -230,12 +230,16 @@ function generateEnemiesForRoom(roomId: string, roomType: string, roomTemplate: 
         const type = enemyPool[Math.floor(random() * enemyPool.length)];
         const enemyTemplate = ENEMY_TEMPLATES[type];
         
+        const centerX = roomOffsetX + roomTemplate.width / 2;
+        const centerZ = roomOffsetZ + roomTemplate.depth / 2;
         const patrolPath = [
-            { x: roomOffsetX + 3 + Math.floor(random() * (roomTemplate.width - 6)), z: roomOffsetZ + 3 + Math.floor(random() * (roomTemplate.depth - 6)) },
-            { x: roomOffsetX + 3 + Math.floor(random() * (roomTemplate.width - 6)), z: roomOffsetZ + 3 + Math.floor(random() * (roomTemplate.depth - 6)) },
-            { x: roomOffsetX + 3 + Math.floor(random() * (roomTemplate.width - 6)), z: roomOffsetZ + 3 + Math.floor(random() * (roomTemplate.depth - 6)) },
+            { x: centerX + (random() - 0.5) * (roomTemplate.width - 4), z: centerZ + (random() - 0.5) * (roomTemplate.depth - 4) },
+            { x: centerX + (random() - 0.5) * (roomTemplate.width - 4), z: centerZ + (random() - 0.5) * (roomTemplate.depth - 4) },
+            { x: centerX + (random() - 0.5) * (roomTemplate.width - 4), z: centerZ + (random() - 0.5) * (roomTemplate.depth - 4) },
+            { x: centerX + (random() - 0.5) * (roomTemplate.width - 4), z: centerZ + (random() - 0.5) * (roomTemplate.depth - 4) },
         ];
         
+        const startPos = patrolPath[0];
         const hp = Math.floor(enemyTemplate.baseHp * (1 + (tier - 1) * 0.5));
         
         enemies.push({
@@ -244,9 +248,9 @@ function generateEnemiesForRoom(roomId: string, roomType: string, roomTemplate: 
             type,
             hp,
             maxHp: hp,
-            position: { x: patrolPath[0].x * CELL_SIZE, y: 0.5, z: patrolPath[0].z * CELL_SIZE },
+            position: { x: startPos.x * CELL_SIZE, y: 0.5, z: startPos.z * CELL_SIZE },
             roomId,
-            aiState: 'patrol',
+            aiState: 'idle',
             patrolPath,
             patrolIndex: 0,
             targetPosition: null,

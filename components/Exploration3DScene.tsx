@@ -208,11 +208,15 @@ function EnemyMesh({ enemy }: { enemy: KageroEnemyState }) {
     if (!enemy.isAlive) return null;
 
     const hpPercent = enemy.hp / enemy.maxHp;
-    const stateColor = enemy.aiState === 'patrol' ? '#ef4444' :
+    const stateColor = enemy.aiState === 'idle' ? '#9ca3af' :
+                      enemy.aiState === 'patrol' ? '#ef4444' :
+                      enemy.aiState === 'alert' ? '#f59e0b' :
                       enemy.aiState === 'investigate' ? '#eab308' :
                       enemy.aiState === 'chase' ? '#f97316' :
+                      enemy.aiState === 'trapped' ? '#dc2626' :
                       enemy.aiState === 'stunned' ? '#6b7280' :
-                      enemy.aiState === 'confused' ? '#a855f7' : '#ef4444';
+                      enemy.aiState === 'confused' ? '#a855f7' :
+                      enemy.aiState === 'frozen' ? '#06b6d4' : '#ef4444';
 
     return (
         <group ref={groupRef} position={[enemy.position.x, enemy.position.y, enemy.position.z]}>
@@ -791,32 +795,44 @@ export default function Exploration3DScene() {
                 
                 updatedEnemies = updatedEnemies.map(enemy => {
                     if (!enemy.isAlive) return enemy;
+                    
+                    let newAiState = enemy.aiState;
+                    let newPos = { ...enemy.position };
+                    let newPatrolIndex = enemy.patrolIndex;
+                    let newTargetPos = enemy.targetPosition;
+                    let triggerResult: { damage: number; effects: string[]; newCombo: number } | null = null;
+                    
+                    const distToPlayer = Math.sqrt(
+                        Math.pow(enemy.position.x - playerPos.x, 2) + 
+                        Math.pow(enemy.position.z - playerPos.z, 2)
+                    );
+
                     if (enemy.stunnedTurns > 0) {
                         return { ...enemy, stunnedTurns: enemy.stunnedTurns - 1, aiState: 'stunned' as KageroEnemyAIState };
                     }
                     if (enemy.confusedTurns > 0) {
-                        return { ...enemy, confusedTurns: enemy.confusedTurns - 1, aiState: 'confused' as KageroEnemyAIState };
+                        const randMove = Math.random() > 0.5 ? 1 : -1;
+                        newPos = {
+                            x: enemy.position.x + randMove * 0.5,
+                            y: enemy.position.y,
+                            z: enemy.position.z + (Math.random() - 0.5) * 0.5,
+                        };
+                        return { ...enemy, confusedTurns: enemy.confusedTurns - 1, aiState: 'confused' as KageroEnemyAIState, position: newPos };
                     }
                     if (enemy.poisonTurns > 0) {
                         const poisonDmg = Math.floor(enemy.maxHp * 0.05);
+                        if (enemy.hp - poisonDmg <= 0) {
+                            addLog(`${enemy.name} muere por veneno! +${enemy.goldReward} oro`, 'combat');
+                            return { ...enemy, hp: 0, isAlive: false };
+                        }
                         return { ...enemy, hp: Math.max(0, enemy.hp - poisonDmg), poisonTurns: enemy.poisonTurns - 1 };
                     }
                     if (enemy.frozenTurns > 0) {
                         return { ...enemy, frozenTurns: enemy.frozenTurns - 1, aiState: 'frozen' as KageroEnemyAIState };
                     }
 
-                    const distToPlayer = Math.sqrt(
-                        Math.pow(enemy.position.x - playerPos.x, 2) + 
-                        Math.pow(enemy.position.z - playerPos.z, 2)
-                    ) / CELL_SIZE;
-
-                    let newAiState = enemy.aiState;
-                    let newPos = { ...enemy.position };
-                    let newTargetPos = enemy.targetPosition;
-                    let triggerResult: { damage: number; effects: string[]; newCombo: number } | null = null;
-
                     for (const trap of updatedTraps) {
-                        if (trap.currentCooldown > 0) continue;
+                        if (trap.currentCooldown > 0 || trap.triggered) continue;
                         if (trap.slotId && !trap.slotId.includes(enemy.roomId)) continue;
                         
                         const distToTrap = Math.sqrt(
@@ -838,22 +854,18 @@ export default function Exploration3DScene() {
                         localComboCount = triggerResult.newCombo;
                         setMaxCombo(m => Math.max(m, triggerResult!.newCombo));
                         
-                        const trapEffects: string[] = [];
-                        if (triggerResult.damage > 0) {
-                            newPos.y = 0.5;
-                        }
+                        newAiState = 'trapped';
                         
                         if (triggerResult.effects.includes('Congelado')) {
                             newAiState = 'frozen';
                         } else if (triggerResult.effects.includes('Aturdido')) {
                             newAiState = 'stunned';
-                        } else if (triggerResult.effects.includes('Envenenado')) {
-                            trapEffects.push('Veneno');
                         }
                         
                         const finalHp = Math.max(0, enemy.hp - triggerResult.damage);
                         
-                        addLog(`${enemy.name} activa ${trapEffects.join(', ') || 'trampa'}! -${triggerResult.damage} HP`, 'combat');
+                        const trapName = TRAP_DATA[triggerResult.effects[0]]?.name || 'trampa';
+                        addLog(`${enemy.name} cae en ${trapName}! -${triggerResult.damage} HP`, 'combat');
                         
                         if (finalHp <= 0) {
                             addLog(`${enemy.name} derrotado! +${enemy.goldReward} oro`, 'combat');
@@ -863,7 +875,6 @@ export default function Exploration3DScene() {
                         return {
                             ...enemy,
                             hp: finalHp,
-                            position: newPos,
                             aiState: newAiState,
                             targetPosition: newTargetPos,
                             stunnedTurns: triggerResult.effects.includes('Aturdido') ? 2 : enemy.stunnedTurns,
@@ -872,58 +883,124 @@ export default function Exploration3DScene() {
                         };
                     }
 
-                    if (distToPlayer < enemy.detectionRadius) {
-                        if (enemy.aiState !== 'chase' && enemy.aiState !== 'investigate') {
-                            newAiState = 'investigate';
-                            addLog(`¡${enemy.name} nota algo sospechoso!`, 'combat');
-                            if (missionState !== KageroMissionState.KAGERO_PLAYER_LURE) {
-                                setMissionState(KageroMissionState.KAGERO_PLAYER_LURE);
+                    const inDetectionRange = distToPlayer < enemy.detectionRadius * CELL_SIZE;
+                    const inChaseRange = distToPlayer < enemy.detectionRadius * CELL_SIZE * 0.6;
+
+                    switch (enemy.aiState) {
+                        case 'idle':
+                            if (inDetectionRange) {
+                                newAiState = 'alert';
+                                addLog(`¡${enemy.name} te ve!`, 'combat');
+                            } else if (enemy.patrolPath.length > 0) {
+                                newAiState = 'patrol';
                             }
-                        } else if (enemy.aiState === 'investigate') {
-                            newAiState = 'chase';
-                        }
-                        const dx = playerPos.x - enemy.position.x;
-                        const dz = playerPos.z - enemy.position.z;
-                        const len = Math.sqrt(dx * dx + dz * dz) || 1;
-                        const speed = enemy.aiState === 'investigate' ? 0.2 : 0.5;
-                        newPos = {
-                            x: enemy.position.x + (dx / len) * enemy.moveSpeed * speed,
-                            y: enemy.position.y,
-                            z: enemy.position.z + (dz / len) * enemy.moveSpeed * speed,
-                        };
-                    } else if (enemy.aiState === 'chase' || enemy.aiState === 'investigate') {
-                        newAiState = 'patrol';
-                        if (missionState === KageroMissionState.KAGERO_PLAYER_LURE) {
-                            setMissionState(KageroMissionState.EXPLORATION);
-                        }
+                            break;
+
+                        case 'patrol':
+                            if (inChaseRange) {
+                                newAiState = 'alert';
+                                addLog(`¡${enemy.name} te ha visto!`, 'combat');
+                            } else if (enemy.patrolPath.length > 0) {
+                                const target = enemy.patrolPath[enemy.patrolIndex];
+                                const targetX = target.x * CELL_SIZE;
+                                const targetZ = target.z * CELL_SIZE;
+                                const distToTarget = Math.sqrt(
+                                    Math.pow(enemy.position.x - targetX, 2) + 
+                                    Math.pow(enemy.position.z - targetZ, 2)
+                                );
+                                
+                                if (distToTarget < CELL_SIZE * 0.5) {
+                                    newPatrolIndex = (enemy.patrolIndex + 1) % enemy.patrolPath.length;
+                                } else {
+                                    const dx = targetX - enemy.position.x;
+                                    const dz = targetZ - enemy.position.z;
+                                    const len = Math.sqrt(dx * dx + dz * dz) || 1;
+                                    newPos = {
+                                        x: enemy.position.x + (dx / len) * enemy.moveSpeed * 0.3,
+                                        y: enemy.position.y,
+                                        z: enemy.position.z + (dz / len) * enemy.moveSpeed * 0.3,
+                                    };
+                                }
+                                newTargetPos = enemy.patrolPath[newPatrolIndex];
+                            }
+                            break;
+
+                        case 'alert':
+                            newAiState = 'investigate';
+                            newTargetPos = { x: playerPos.x / CELL_SIZE, z: playerPos.z / CELL_SIZE };
+                            break;
+
+                        case 'investigate':
+                            if (inChaseRange) {
+                                newAiState = 'chase';
+                                if (missionState !== KageroMissionState.KAGERO_PLAYER_LURE) {
+                                    setMissionState(KageroMissionState.KAGERO_PLAYER_LURE);
+                                }
+                            } else if (enemy.targetPosition) {
+                                const targetX = enemy.targetPosition.x * CELL_SIZE;
+                                const targetZ = enemy.targetPosition.z * CELL_SIZE;
+                                const distToTarget = Math.sqrt(
+                                    Math.pow(enemy.position.x - targetX, 2) + 
+                                    Math.pow(enemy.position.z - targetZ, 2)
+                                );
+                                
+                                if (distToTarget < CELL_SIZE) {
+                                    newAiState = 'patrol';
+                                    newTargetPos = null;
+                                    if (missionState === KageroMissionState.KAGERO_PLAYER_LURE) {
+                                        setMissionState(KageroMissionState.EXPLORATION);
+                                    }
+                                } else {
+                                    const dx = targetX - enemy.position.x;
+                                    const dz = targetZ - enemy.position.z;
+                                    const len = Math.sqrt(dx * dx + dz * dz) || 1;
+                                    newPos = {
+                                        x: enemy.position.x + (dx / len) * enemy.moveSpeed * 0.4,
+                                        y: enemy.position.y,
+                                        z: enemy.position.z + (dz / len) * enemy.moveSpeed * 0.4,
+                                    };
+                                }
+                            }
+                            break;
+
+                        case 'chase':
+                            if (!inDetectionRange) {
+                                newAiState = 'investigate';
+                                newTargetPos = { x: playerPos.x / CELL_SIZE, z: playerPos.z / CELL_SIZE };
+                                if (missionState === KageroMissionState.KAGERO_PLAYER_LURE) {
+                                    setMissionState(KageroMissionState.EXPLORATION);
+                                }
+                            } else {
+                                const dx = playerPos.x - enemy.position.x;
+                                const dz = playerPos.z - enemy.position.z;
+                                const len = Math.sqrt(dx * dx + dz * dz) || 1;
+                                newPos = {
+                                    x: enemy.position.x + (dx / len) * enemy.moveSpeed * 0.6,
+                                    y: enemy.position.y,
+                                    z: enemy.position.z + (dz / len) * enemy.moveSpeed * 0.6,
+                                };
+                            }
+                            break;
+
+                        case 'trapped':
+                        case 'dead':
+                            break;
+
+                        default:
+                            if (enemy.patrolPath.length > 0) {
+                                newAiState = 'patrol';
+                            } else {
+                                newAiState = 'idle';
+                            }
                     }
 
-                    if ((enemy.aiState === 'patrol' || enemy.aiState === 'investigate') && enemy.patrolPath.length > 0) {
-                        const target = enemy.patrolPath[enemy.patrolIndex];
-                        const targetX = target.x * CELL_SIZE;
-                        const targetZ = target.z * CELL_SIZE;
-                        const distToTarget = Math.sqrt(
-                            Math.pow(enemy.position.x - targetX, 2) + 
-                            Math.pow(enemy.position.z - targetZ, 2)
-                        );
-                        
-                        if (distToTarget < CELL_SIZE) {
-                            const nextIndex = (enemy.patrolIndex + 1) % enemy.patrolPath.length;
-                            newTargetPos = enemy.patrolPath[nextIndex];
-                        } else {
-                            newTargetPos = target;
-                            const tdx = targetX - enemy.position.x;
-                            const tdz = targetZ - enemy.position.z;
-                            const tlen = Math.sqrt(tdx * tdx + tdz * tdz) || 1;
-                            newPos = {
-                                x: enemy.position.x + (tdx / tlen) * enemy.moveSpeed * 0.3,
-                                y: enemy.position.y,
-                                z: enemy.position.z + (tdz / tlen) * enemy.moveSpeed * 0.3,
-                            };
-                        }
-                    }
-
-                    return { ...enemy, position: newPos, aiState: newAiState, targetPosition: newTargetPos };
+                    return { 
+                        ...enemy, 
+                        position: newPos, 
+                        aiState: newAiState, 
+                        patrolIndex: newPatrolIndex,
+                        targetPosition: newTargetPos 
+                    };
                 });
 
                 updatedTraps = updatedTraps.map(trap => ({
@@ -1183,13 +1260,15 @@ export default function Exploration3DScene() {
                     {mission?.enemies.filter(e => e.isAlive).map(e => (
                         <div key={e.id} className="flex items-center gap-2">
                             <div className={`w-2 h-2 rounded-full ${
+                                e.aiState === 'idle' ? 'bg-gray-500' :
                                 e.aiState === 'patrol' ? 'bg-red-500' :
-                                e.aiState === 'investigate' ? 'bg-yellow-500' :
+                                e.aiState === 'alert' ? 'bg-amber-500 animate-pulse' :
+                                e.aiState === 'investigate' ? 'bg-yellow-500 animate-pulse' :
                                 e.aiState === 'chase' ? 'bg-orange-500 animate-pulse' :
+                                e.aiState === 'trapped' ? 'bg-red-700 animate-pulse' :
                                 e.aiState === 'stunned' ? 'bg-purple-500' :
                                 e.aiState === 'confused' ? 'bg-pink-500' :
-                                e.aiState === 'frozen' ? 'bg-cyan-500' :
-                                e.aiState === 'trapped' ? 'bg-red-700' : 'bg-gray-500'
+                                e.aiState === 'frozen' ? 'bg-cyan-500' : 'bg-gray-500'
                             }`} />
                             <span className="text-slate-300 text-xs">{e.name}</span>
                         </div>

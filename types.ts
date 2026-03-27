@@ -649,6 +649,7 @@ export interface KageroEnemyState {
 export type KageroEnemyAIState = 
     | 'idle'
     | 'patrol'
+    | 'alert'
     | 'investigate'
     | 'chase'
     | 'trapped'
