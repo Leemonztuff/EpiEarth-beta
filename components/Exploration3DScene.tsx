@@ -419,6 +419,7 @@ export default function Exploration3DScene() {
     const explorationState = useGameStore(s => s.explorationState);
     const setGameState = useGameStore(s => s.setGameState);
     const addLog = useGameStore(s => s.addLog);
+    const addGold = useGameStore(s => s.addGold);
     const clearCurrentEncounter = useGameStore(s => s.clearCurrentEncounter);
     const syncOverworldEnemies = useGameStore(s => s.syncOverworldEnemies);
 
@@ -708,17 +709,29 @@ export default function Exploration3DScene() {
                     }
 
                     if (distToPlayer < enemy.detectionRadius) {
-                        newAiState = 'chase';
+                        if (enemy.aiState !== 'chase' && enemy.aiState !== 'investigate') {
+                            newAiState = 'investigate';
+                            addLog(`¡${enemy.name} nota algo sospechoso!`, 'combat');
+                            if (missionState !== KageroMissionState.KAGERO_PLAYER_LURE) {
+                                setMissionState(KageroMissionState.KAGERO_PLAYER_LURE);
+                            }
+                        } else if (enemy.aiState === 'investigate') {
+                            newAiState = 'chase';
+                        }
                         const dx = playerPos.x - enemy.position.x;
                         const dz = playerPos.z - enemy.position.z;
                         const len = Math.sqrt(dx * dx + dz * dz) || 1;
+                        const speed = enemy.aiState === 'investigate' ? 0.2 : 0.5;
                         newPos = {
-                            x: enemy.position.x + (dx / len) * enemy.moveSpeed * 0.5,
+                            x: enemy.position.x + (dx / len) * enemy.moveSpeed * speed,
                             y: enemy.position.y,
-                            z: enemy.position.z + (dz / len) * enemy.moveSpeed * 0.5,
+                            z: enemy.position.z + (dz / len) * enemy.moveSpeed * speed,
                         };
-                    } else if (enemy.aiState === 'chase') {
+                    } else if (enemy.aiState === 'chase' || enemy.aiState === 'investigate') {
                         newAiState = 'patrol';
+                        if (missionState === KageroMissionState.KAGERO_PLAYER_LURE) {
+                            setMissionState(KageroMissionState.EXPLORATION);
+                        }
                     }
 
                     if ((enemy.aiState === 'patrol' || enemy.aiState === 'investigate') && enemy.patrolPath.length > 0) {
@@ -782,17 +795,22 @@ export default function Exploration3DScene() {
     }, [missionState, mission, addLog, triggerTrap, currentStep]);
 
     useEffect(() => {
-        if (missionState === KageroMissionState.RETURN_TO_HEX) {
+        const isReturnState = missionState === KageroMissionState.RETURN_TO_HEX || 
+                             missionState === KageroMissionState.KAGERO_RETURN_TO_HEX;
+        if (isReturnState) {
             const allDead = mission?.enemies.every(e => !e.isAlive);
             if (allDead) {
                 clearCurrentEncounter();
                 const goldEarned = mission?.enemies.reduce((sum, e) => sum + (e.isAlive ? 0 : e.goldReward), 0) || 0;
+                if (goldEarned > 0) {
+                    addGold(goldEarned);
+                }
                 addLog(`Oro ganado: ${goldEarned}`, 'combat');
             }
             syncOverworldEnemies();
             setGameState(GameState.OVERWORLD);
         }
-    }, [missionState, mission, clearCurrentEncounter, syncOverworldEnemies, setGameState, addLog]);
+    }, [missionState, mission, clearCurrentEncounter, syncOverworldEnemies, setGameState, addLog, addGold]);
 
     const handleSlotClick = useCallback((slot: TrapSlot) => {
         if (missionState !== KageroMissionState.TACTICAL_SETUP) return;
@@ -962,8 +980,12 @@ export default function Exploration3DScene() {
                         <div key={e.id} className="flex items-center gap-2">
                             <div className={`w-2 h-2 rounded-full ${
                                 e.aiState === 'patrol' ? 'bg-red-500' :
+                                e.aiState === 'investigate' ? 'bg-yellow-500' :
                                 e.aiState === 'chase' ? 'bg-orange-500 animate-pulse' :
-                                e.aiState === 'stunned' ? 'bg-gray-500' : 'bg-yellow-500'
+                                e.aiState === 'stunned' ? 'bg-purple-500' :
+                                e.aiState === 'confused' ? 'bg-pink-500' :
+                                e.aiState === 'frozen' ? 'bg-cyan-500' :
+                                e.aiState === 'trapped' ? 'bg-red-700' : 'bg-gray-500'
                             }`} />
                             <span className="text-slate-300 text-xs">{e.name}</span>
                         </div>
@@ -971,7 +993,7 @@ export default function Exploration3DScene() {
                 </div>
             </div>
 
-            {missionState === KageroMissionState.MISSION_COMPLETE && (
+            {(missionState === KageroMissionState.MISSION_COMPLETE || missionState === KageroMissionState.KAGERO_MISSION_COMPLETE) && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/70 z-60">
                     <div className="bg-slate-900 rounded-xl p-8 text-center border-2 border-amber-500 shadow-2xl">
                         <div className="text-7xl mb-4">🏆</div>

@@ -358,6 +358,7 @@ export function generateKageroMission(
         dungeonType,
         seed,
         rooms,
+        doors,
         currentRoomId: entryRoom.id,
         enemies: allEnemies,
         placedTraps: [],
