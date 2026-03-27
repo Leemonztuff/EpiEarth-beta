@@ -54,55 +54,57 @@ function PlayerController({
     }, []);
 
     useFrame(() => {
-        if (!canMove || !meshRef.current) return;
+        if (!meshRef.current) return;
 
         let dx = 0, dz = 0;
-        if (keysPressed.current.has('w') || keysPressed.current.has('arrowup')) dz -= moveSpeed;
-        if (keysPressed.current.has('s') || keysPressed.current.has('arrowdown')) dz += moveSpeed;
-        if (keysPressed.current.has('a') || keysPressed.current.has('arrowleft')) dx -= moveSpeed;
-        if (keysPressed.current.has('d') || keysPressed.current.has('arrowright')) dx += moveSpeed;
+        if (canMove) {
+            if (keysPressed.current.has('w') || keysPressed.current.has('arrowup')) dz -= moveSpeed;
+            if (keysPressed.current.has('s') || keysPressed.current.has('arrowdown')) dz += moveSpeed;
+            if (keysPressed.current.has('a') || keysPressed.current.has('arrowleft')) dx -= moveSpeed;
+            if (keysPressed.current.has('d') || keysPressed.current.has('arrowright')) dx += moveSpeed;
 
-        if (dx !== 0 || dz !== 0) {
-            const len = Math.sqrt(dx * dx + dz * dz);
-            dx = (dx / len) * moveSpeed;
-            dz = (dz / len) * moveSpeed;
+            if (dx !== 0 || dz !== 0) {
+                const len = Math.sqrt(dx * dx + dz * dz);
+                dx = (dx / len) * moveSpeed;
+                dz = (dz / len) * moveSpeed;
 
-            const newX = playerRef.current.position.x + dx;
-            const newZ = playerRef.current.position.z + dz;
-            
-            if (mission) {
-                const currentRoom = mission.rooms.find(r => r.id === mission.currentRoomId);
-                if (currentRoom) {
-                    const bounds = currentRoom.bounds;
-                    const margin = 2;
-                    if (newX >= bounds.minX * CELL_SIZE + margin && 
-                        newX <= bounds.maxX * CELL_SIZE - margin &&
-                        newZ >= bounds.minZ * CELL_SIZE + margin && 
-                        newZ <= bounds.maxZ * CELL_SIZE - margin) {
-                        playerRef.current.position.x = newX;
-                        playerRef.current.position.z = newZ;
+                const newX = playerRef.current.position.x + dx;
+                const newZ = playerRef.current.position.z + dz;
+                
+                if (mission) {
+                    const currentRoom = mission.rooms.find(r => r.id === mission.currentRoomId);
+                    if (currentRoom) {
+                        const bounds = currentRoom.bounds;
+                        const margin = 2;
+                        if (newX >= bounds.minX * CELL_SIZE + margin && 
+                            newX <= bounds.maxX * CELL_SIZE - margin &&
+                            newZ >= bounds.minZ * CELL_SIZE + margin && 
+                            newZ <= bounds.maxZ * CELL_SIZE - margin) {
+                            playerRef.current.position.x = newX;
+                            playerRef.current.position.z = newZ;
+                        }
                     }
+                } else {
+                    playerRef.current.position.x = newX;
+                    playerRef.current.position.z = newZ;
                 }
-            } else {
-                playerRef.current.position.x = newX;
-                playerRef.current.position.z = newZ;
+                
+                playerRef.current.rotation = Math.atan2(dx, dz);
             }
-            
-            playerRef.current.rotation = Math.atan2(dx, dz);
         }
 
         smoothRotation.current += (playerRef.current.rotation - smoothRotation.current) * 0.12;
         meshRef.current.rotation.y = smoothRotation.current;
         meshRef.current.position.copy(playerRef.current.position);
 
-        const offsetDist = 5;
-        const camHeight = 7;
+        const offsetDist = 8;
+        const camHeight = 12;
         camera.position.set(
             playerRef.current.position.x - Math.sin(smoothRotation.current) * offsetDist,
             camHeight,
             playerRef.current.position.z + Math.cos(smoothRotation.current) * offsetDist
         );
-        camera.lookAt(playerRef.current.position.x, playerRef.current.position.y, playerRef.current.position.z);
+        camera.lookAt(playerRef.current.position.x, playerRef.current.position.y + 1, playerRef.current.position.z);
     });
 
     return (
@@ -130,29 +132,29 @@ function RoomGeometry({ room }: { room: KageroRoom }) {
         <group>
             <mesh position={[centerX, -0.1, centerZ]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
                 <planeGeometry args={[width, depth]} />
-                <meshStandardMaterial color="#1a1a2e" roughness={1} />
+                <meshStandardMaterial color="#3d3d5c" roughness={1} />
             </mesh>
 
             <mesh position={[centerX - width/2, room.wallHeight/2, centerZ]} castShadow receiveShadow>
                 <boxGeometry args={[0.3, room.wallHeight, depth]} />
-                <meshStandardMaterial color="#2d2d44" roughness={0.9} />
+                <meshStandardMaterial color="#4a4a6a" roughness={0.9} />
             </mesh>
             <mesh position={[centerX + width/2, room.wallHeight/2, centerZ]} castShadow receiveShadow>
                 <boxGeometry args={[0.3, room.wallHeight, depth]} />
-                <meshStandardMaterial color="#2d2d44" roughness={0.9} />
+                <meshStandardMaterial color="#4a4a6a" roughness={0.9} />
             </mesh>
             <mesh position={[centerX, room.wallHeight/2, centerZ - depth/2]} castShadow receiveShadow>
                 <boxGeometry args={[width, room.wallHeight, 0.3]} />
-                <meshStandardMaterial color="#2d2d44" roughness={0.9} />
+                <meshStandardMaterial color="#4a4a6a" roughness={0.9} />
             </mesh>
             <mesh position={[centerX, room.wallHeight/2, centerZ + depth/2]} castShadow receiveShadow>
                 <boxGeometry args={[width, room.wallHeight, 0.3]} />
-                <meshStandardMaterial color="#2d2d44" roughness={0.9} />
+                <meshStandardMaterial color="#4a4a6a" roughness={0.9} />
             </mesh>
 
             <mesh position={[centerX, room.wallHeight + 0.1, centerZ]} rotation={[-Math.PI / 2, 0, 0]}>
                 <planeGeometry args={[width, depth]} />
-                <meshStandardMaterial color="#1a1a2e" roughness={1} />
+                <meshStandardMaterial color="#3d3d5c" roughness={1} />
             </mesh>
         </group>
     );
@@ -238,9 +240,10 @@ function EnemyMesh({ enemy }: { enemy: KageroEnemyState }) {
 function Lighting() {
     return (
         <>
-            <ambientLight intensity={0.2} color="#fef3c7" />
-            <directionalLight position={[8, 12, 8]} intensity={0.5} castShadow shadow-mapSize={[2048, 2048]} />
-            <pointLight position={[0, 5, 0]} intensity={0.3} color="#fef9c3" />
+            <ambientLight intensity={0.5} color="#ffffff" />
+            <directionalLight position={[0, 20, 0]} intensity={0.8} castShadow shadow-mapSize={[2048, 2048]} />
+            <pointLight position={[0, 10, 0]} intensity={1} color="#fef9c3" />
+            <hemisphereLight args={['#87ceeb', '#3d3d5c', 0.3]} />
         </>
     );
 }
