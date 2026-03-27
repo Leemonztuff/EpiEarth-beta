@@ -15,7 +15,7 @@ import {
     PlacedKageroTrap
 } from '../types';
 import { generateKageroMission, getMissionForTile } from '../services/KageroDungeonGenerator';
-import { TRAP_DATA } from '../data/trapsData';
+import { TRAP_DATA, TrapData } from '../data/trapsData';
 import * as THREE from 'three';
 
 const CELL_SIZE = 2;
@@ -39,12 +39,20 @@ function PlayerController({
     const meshRef = useRef<THREE.Group>(null);
     const { camera } = useThree();
     const keysPressed = useRef<Set<string>>(new Set());
-    const moveSpeed = 0.12;
+    const moveSpeed = 0.15;
+    const runSpeed = 0.25;
     const smoothRotation = useRef(0);
+    const isRunning = useRef(false);
 
     useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => keysPressed.current.add(e.key.toLowerCase());
-        const handleKeyUp = (e: KeyboardEvent) => keysPressed.current.delete(e.key.toLowerCase());
+        const handleKeyDown = (e: KeyboardEvent) => {
+            keysPressed.current.add(e.key.toLowerCase());
+            if (e.key === 'Shift') isRunning.current = true;
+        };
+        const handleKeyUp = (e: KeyboardEvent) => {
+            keysPressed.current.delete(e.key.toLowerCase());
+            if (e.key === 'Shift') isRunning.current = false;
+        };
         window.addEventListener('keydown', handleKeyDown);
         window.addEventListener('keyup', handleKeyUp);
         return () => {
@@ -58,42 +66,55 @@ function PlayerController({
 
         let dx = 0, dz = 0;
         if (canMove) {
-            if (keysPressed.current.has('w') || keysPressed.current.has('arrowup')) dz -= moveSpeed;
-            if (keysPressed.current.has('s') || keysPressed.current.has('arrowdown')) dz += moveSpeed;
-            if (keysPressed.current.has('a') || keysPressed.current.has('arrowleft')) dx -= moveSpeed;
-            if (keysPressed.current.has('d') || keysPressed.current.has('arrowright')) dx += moveSpeed;
+            const currentSpeed = isRunning.current ? runSpeed : moveSpeed;
+            
+            if (keysPressed.current.has('w') || keysPressed.current.has('arrowup')) dz -= 1;
+            if (keysPressed.current.has('s') || keysPressed.current.has('arrowdown')) dz += 1;
+            if (keysPressed.current.has('a') || keysPressed.current.has('arrowleft')) dx -= 1;
+            if (keysPressed.current.has('d') || keysPressed.current.has('arrowright')) dx += 1;
 
             if (dx !== 0 || dz !== 0) {
-                const len = Math.sqrt(dx * dx + dz * dz);
-                dx = (dx / len) * moveSpeed;
-                dz = (dz / len) * moveSpeed;
-
-                const newX = playerRef.current.position.x + dx;
-                const newZ = playerRef.current.position.z + dz;
+                const cameraAngle = Math.atan2(
+                    camera.position.x - playerRef.current.position.x,
+                    camera.position.z - playerRef.current.position.z
+                );
                 
+                const inputAngle = Math.atan2(dx, dz);
+                const moveAngle = cameraAngle + inputAngle;
+                
+                const len = Math.sqrt(dx * dx + dz * dz);
+                const normalizedDx = dx / len;
+                const normalizedDz = dz / len;
+                
+                const worldDx = Math.sin(moveAngle) * currentSpeed;
+                const worldDz = Math.cos(moveAngle) * currentSpeed;
+
+                const newX = playerRef.current.position.x + worldDx;
+                const newZ = playerRef.current.position.z + worldDz;
+                
+                let canMove = true;
                 if (mission) {
                     const currentRoom = mission.rooms.find(r => r.id === mission.currentRoomId);
                     if (currentRoom) {
                         const bounds = currentRoom.bounds;
-                        const margin = 2;
-                        if (newX >= bounds.minX * CELL_SIZE + margin && 
-                            newX <= bounds.maxX * CELL_SIZE - margin &&
-                            newZ >= bounds.minZ * CELL_SIZE + margin && 
-                            newZ <= bounds.maxZ * CELL_SIZE - margin) {
-                            playerRef.current.position.x = newX;
-                            playerRef.current.position.z = newZ;
-                        }
+                        const margin = 1.5;
+                        canMove = newX >= bounds.minX * CELL_SIZE + margin && 
+                                  newX <= bounds.maxX * CELL_SIZE - margin &&
+                                  newZ >= bounds.minZ * CELL_SIZE + margin && 
+                                  newZ <= bounds.maxZ * CELL_SIZE - margin;
                     }
-                } else {
+                }
+                
+                if (canMove) {
                     playerRef.current.position.x = newX;
                     playerRef.current.position.z = newZ;
                 }
                 
-                playerRef.current.rotation = Math.atan2(dx, dz);
+                playerRef.current.rotation = moveAngle;
             }
         }
 
-        smoothRotation.current += (playerRef.current.rotation - smoothRotation.current) * 0.12;
+        smoothRotation.current += (playerRef.current.rotation - smoothRotation.current) * 0.15;
         meshRef.current.rotation.y = smoothRotation.current;
         meshRef.current.position.copy(playerRef.current.position);
 
@@ -164,28 +185,118 @@ function TrapSlotMesh({
     slot, 
     onClick, 
     selected, 
-    hasTrap 
+    hasTrap,
+    trapType,
+    showRange,
+    playerPos 
 }: { 
     slot: TrapSlot, 
     onClick: () => void, 
     selected: boolean,
-    hasTrap: boolean 
+    hasTrap: boolean,
+    trapType?: TrapType,
+    showRange?: boolean,
+    playerPos?: THREE.Vector3
 }) {
-    const color = hasTrap ? '#8b5cf6' : selected ? '#22c55e' : '#4ade8044';
-    const opacity = hasTrap ? 0.9 : selected ? 0.6 : 0.3;
+    const surfaceColor = slot.surface === TrapSurface.FLOOR ? '#22c55e' : 
+                        slot.surface === TrapSurface.WALL ? '#f59e0b' : '#3b82f6';
+    const color = hasTrap ? '#8b5cf6' : selected ? surfaceColor : '#4ade8044';
+    const opacity = hasTrap ? 0.9 : selected ? 0.8 : 0.4;
+
+    const showEffectRange = showRange && selected && trapType && TRAP_DATA[trapType]?.range;
+    const range = showEffectRange ? TRAP_DATA[trapType].range : 0;
 
     return (
+        <group>
+            <mesh
+                position={[slot.position.x, slot.position.y, slot.position.z]}
+                onClick={onClick}
+            >
+                <boxGeometry args={[1.2, 0.1, 1.2]} />
+                <meshStandardMaterial 
+                    color={color} 
+                    transparent 
+                    opacity={opacity}
+                    emissive={hasTrap ? '#8b5cf6' : selected ? surfaceColor : '#000000'}
+                    emissiveIntensity={hasTrap ? 0.3 : selected ? 0.4 : 0}
+                />
+            </mesh>
+            {showEffectRange && range > 0 && (
+                <mesh
+                    position={[slot.position.x, slot.position.y + 0.05, slot.position.z]}
+                    rotation={[-Math.PI / 2, 0, 0]}
+                >
+                    <ringGeometry args={[range * CELL_SIZE - 0.5, range * CELL_SIZE, 16]} />
+                    <meshBasicMaterial 
+                        color={TRAP_DATA[trapType].trapColor} 
+                        transparent 
+                        opacity={0.3}
+                        side={THREE.DoubleSide}
+                    />
+                </mesh>
+            )}
+        </group>
+    );
+}
+
+function GridOverlay({ room, show }: { room: KageroRoom | undefined, show: boolean }) {
+    if (!show || !room) return null;
+    
+    const bounds = room.bounds;
+    const width = bounds.maxX - bounds.minX;
+    const depth = bounds.maxZ - bounds.minZ;
+    const centerX = (bounds.minX + bounds.maxX) / 2 * CELL_SIZE;
+    const centerZ = (bounds.minZ + bounds.maxZ) / 2 * CELL_SIZE;
+    
+    return (
+        <group>
+            {Array.from({ length: width }).map((_, x) =>
+                Array.from({ length: depth }).map((_, z) => {
+                    const worldX = (bounds.minX + x + 0.5) * CELL_SIZE;
+                    const worldZ = (bounds.minZ + z + 0.5) * CELL_SIZE;
+                    return (
+                        <mesh
+                            key={`grid_${x}_${z}`}
+                            position={[worldX, 0.02, worldZ]}
+                            rotation={[-Math.PI / 2, 0, 0]}
+                        >
+                            <planeGeometry args={[CELL_SIZE * 0.95, CELL_SIZE * 0.95]} />
+                            <meshBasicMaterial 
+                                color="#ffffff"
+                                transparent 
+                                opacity={0.08}
+                                side={THREE.DoubleSide}
+                            />
+                        </mesh>
+                    );
+                })
+            )}
+        </group>
+    );
+}
+
+function TrapRangeIndicator({ 
+    trap, 
+    trapData 
+}: { 
+    trap: PlacedKageroTrap | null,
+    trapData: TrapData | null 
+}) {
+    if (!trap || !trapData || trapData.range <= 0) return null;
+    
+    const range = trapData.range * CELL_SIZE;
+    
+    return (
         <mesh
-            position={[slot.position.x, slot.position.y, slot.position.z]}
-            onClick={onClick}
+            position={[trap.position.x, trap.position.y + 0.1, trap.position.z]}
+            rotation={[-Math.PI / 2, 0, 0]}
         >
-            <boxGeometry args={[1.2, 0.1, 1.2]} />
-            <meshStandardMaterial 
-                color={color} 
+            <circleGeometry args={[range, 32]} />
+            <meshBasicMaterial 
+                color={trapData.trapColor}
                 transparent 
-                opacity={opacity}
-                emissive={hasTrap ? '#8b5cf6' : selected ? '#22c55e' : '#000000'}
-                emissiveIntensity={hasTrap ? 0.3 : selected ? 0.2 : 0}
+                opacity={0.2}
+                side={THREE.DoubleSide}
             />
         </mesh>
     );
@@ -313,6 +424,7 @@ function SceneContent({
     mission, 
     missionState, 
     selectedSlot, 
+    selectedTrapType,
     onSlotClick, 
     onDoorEnter,
     playerRef,
@@ -323,6 +435,7 @@ function SceneContent({
     const canMove = !timeFrozen && (missionState === KageroMissionState.EXPLORATION || 
                    missionState === KageroMissionState.KAGERO_PLAYER_LURE);
     const showTrapSlots = missionState === KageroMissionState.TACTICAL_SETUP || timeFrozen;
+    const showGrid = missionState === KageroMissionState.TACTICAL_SETUP || timeFrozen;
 
     const currentRoom = mission?.rooms.find(r => r.id === mission.currentRoomId);
     const currentRoomDoors = mission?.doors.filter(d => d.fromRoomId === currentRoom?.id) || [];
@@ -350,15 +463,21 @@ function SceneContent({
                 mission={mission}
             />
             
+            <GridOverlay room={currentRoom} show={showGrid} />
+            
             {showTrapSlots && currentRoom?.trapSlots.map(slot => {
                 const hasTrap = mission?.placedTraps.some(t => t.slotId === slot.id);
+                const isSelected = selectedSlot?.id === slot.id;
                 return (
                     <TrapSlotMesh
                         key={slot.id}
                         slot={slot}
                         onClick={() => onSlotClick(slot)}
-                        selected={selectedSlot?.id === slot.id}
+                        selected={isSelected}
                         hasTrap={!!hasTrap}
+                        trapType={selectedTrapType}
+                        showRange={isSelected}
+                        playerPos={playerRef.current.position}
                     />
                 );
             })}
@@ -1135,6 +1254,7 @@ export default function Exploration3DScene() {
                     mission={mission}
                     missionState={missionState}
                     selectedSlot={selectedSlot}
+                    selectedTrapType={selectedTrapType}
                     onSlotClick={handleSlotClick}
                     onDoorEnter={handleDoorEnter}
                     playerRef={playerRef}
