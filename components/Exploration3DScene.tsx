@@ -130,6 +130,15 @@ function PlayerController({
 
     return (
         <group ref={meshRef}>
+            <spotLight 
+                position={[0, 4, 0]} 
+                angle={0.8} 
+                penumbra={0.5} 
+                intensity={1.5} 
+                color="#ffefd5"
+                castShadow
+                target-position={[0, 0, 0]}
+            />
             <mesh castShadow position={[0, 0.7, 0]}>
                 <cylinderGeometry args={[0.3, 0.35, 1.4, 8]} />
                 <meshStandardMaterial color="#fbbf24" metalness={0.3} roughness={0.7} />
@@ -153,29 +162,29 @@ function RoomGeometry({ room }: { room: KageroRoom }) {
         <group>
             <mesh position={[centerX, -0.1, centerZ]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
                 <planeGeometry args={[width, depth]} />
-                <meshStandardMaterial color="#3d3d5c" roughness={1} />
+                <meshStandardMaterial color="#5a5a7a" roughness={0.9} />
             </mesh>
 
             <mesh position={[centerX - width/2, room.wallHeight/2, centerZ]} castShadow receiveShadow>
                 <boxGeometry args={[0.3, room.wallHeight, depth]} />
-                <meshStandardMaterial color="#4a4a6a" roughness={0.9} />
+                <meshStandardMaterial color="#6a6a8a" roughness={0.8} />
             </mesh>
             <mesh position={[centerX + width/2, room.wallHeight/2, centerZ]} castShadow receiveShadow>
                 <boxGeometry args={[0.3, room.wallHeight, depth]} />
-                <meshStandardMaterial color="#4a4a6a" roughness={0.9} />
+                <meshStandardMaterial color="#6a6a8a" roughness={0.8} />
             </mesh>
             <mesh position={[centerX, room.wallHeight/2, centerZ - depth/2]} castShadow receiveShadow>
                 <boxGeometry args={[width, room.wallHeight, 0.3]} />
-                <meshStandardMaterial color="#4a4a6a" roughness={0.9} />
+                <meshStandardMaterial color="#6a6a8a" roughness={0.8} />
             </mesh>
             <mesh position={[centerX, room.wallHeight/2, centerZ + depth/2]} castShadow receiveShadow>
                 <boxGeometry args={[width, room.wallHeight, 0.3]} />
-                <meshStandardMaterial color="#4a4a6a" roughness={0.9} />
+                <meshStandardMaterial color="#6a6a8a" roughness={0.8} />
             </mesh>
 
             <mesh position={[centerX, room.wallHeight + 0.1, centerZ]} rotation={[-Math.PI / 2, 0, 0]}>
                 <planeGeometry args={[width, depth]} />
-                <meshStandardMaterial color="#3d3d5c" roughness={1} />
+                <meshStandardMaterial color="#5a5a7a" roughness={0.9} />
             </mesh>
         </group>
     );
@@ -355,10 +364,22 @@ function EnemyMesh({ enemy }: { enemy: KageroEnemyState }) {
 function Lighting() {
     return (
         <>
-            <ambientLight intensity={0.5} color="#ffffff" />
-            <directionalLight position={[0, 20, 0]} intensity={0.8} castShadow shadow-mapSize={[2048, 2048]} />
-            <pointLight position={[0, 10, 0]} intensity={1} color="#fef9c3" />
-            <hemisphereLight args={['#87ceeb', '#3d3d5c', 0.3]} />
+            <ambientLight intensity={0.8} color="#e8e8ff" />
+            <directionalLight 
+                position={[10, 25, 10]} 
+                intensity={1.5} 
+                color="#fff5e6"
+                castShadow 
+                shadow-mapSize={[2048, 2048]}
+                shadow-camera-far={60}
+                shadow-camera-left={-30}
+                shadow-camera-right={30}
+                shadow-camera-top={30}
+                shadow-camera-bottom={-30}
+            />
+            <pointLight position={[10, 8, 10]} intensity={1.5} color="#ffefd5" distance={30} />
+            <hemisphereLight args={['#b4d7ff', '#5a5a7a', 0.6]} />
+            <fog attach="fog" args={['#1a1a2e', 15, 50]} />
         </>
     );
 }
@@ -1249,7 +1270,7 @@ export default function Exploration3DScene() {
 
     return (
         <div className="fixed inset-0 bg-slate-950 z-50">
-            <Canvas shadows camera={{ position: [0, 8, 10], fov: 55 }}>
+            <Canvas shadows camera={{ position: [10, 15, 20], fov: 60 }}>
                 <SceneContent
                     mission={mission}
                     missionState={missionState}
