@@ -216,8 +216,14 @@ function generateEnemiesForRoom(roomId: string, roomType: string, roomTemplate: 
         enemyPool.push(KageroEnemyType.GUARD, KageroEnemyType.GUARD);
     } else if (roomType === 'combat') {
         enemyPool.push(KageroEnemyType.GUARD, KageroEnemyType.GUARD, KageroEnemyType.ROGUE, KageroEnemyType.BRUTE);
+    } else if (roomType === 'treasure') {
+        enemyPool.push(KageroEnemyType.ROGUE, KageroEnemyType.ELITE);
     } else if (roomType === 'boss') {
         enemyPool.push(KageroEnemyType.BOSS);
+    }
+    
+    if (enemyPool.length === 0) {
+        enemyPool.push(KageroEnemyType.GUARD);
     }
     
     for (let i = 0; i < enemyCount; i++) {
