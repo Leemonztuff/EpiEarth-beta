@@ -30,10 +30,12 @@ interface PlayerState {
 function PlayerController({ 
     playerRef, 
     canMove,
+    isTactical,
     mission 
 }: { 
     playerRef: React.MutableRefObject<PlayerState>, 
     canMove: boolean,
+    isTactical?: boolean,
     mission: KageroMission | null
 }) {
     const meshRef = useRef<THREE.Group>(null);
@@ -118,34 +120,38 @@ function PlayerController({
         meshRef.current.rotation.y = smoothRotation.current;
         meshRef.current.position.copy(playerRef.current.position);
 
-        const offsetDist = 8;
-        const camHeight = 12;
+        const offsetDist = isTactical ? 14 : 5;
+        const camHeight = isTactical ? 18 : 3.5;
         camera.position.set(
             playerRef.current.position.x - Math.sin(smoothRotation.current) * offsetDist,
             camHeight,
             playerRef.current.position.z + Math.cos(smoothRotation.current) * offsetDist
         );
-        camera.lookAt(playerRef.current.position.x, playerRef.current.position.y + 1, playerRef.current.position.z);
+        camera.lookAt(
+            playerRef.current.position.x, 
+            playerRef.current.position.y + (isTactical ? -2 : 1), 
+            playerRef.current.position.z
+        );
     });
 
     return (
         <group ref={meshRef}>
-            <spotLight 
-                position={[0, 4, 0]} 
-                angle={0.8} 
-                penumbra={0.5} 
-                intensity={1.5} 
-                color="#ffefd5"
+            {/* Flashlight/Aura emitting from player */}
+            <pointLight 
+                position={[0, 3, 0]} 
+                intensity={2.0} 
+                distance={20} 
+                color="#fff3d6"
                 castShadow
-                target-position={[0, 0, 0]}
             />
-            <mesh castShadow position={[0, 0.7, 0]}>
-                <cylinderGeometry args={[0.3, 0.35, 1.4, 8]} />
-                <meshStandardMaterial color="#fbbf24" metalness={0.3} roughness={0.7} />
+            {/* Taller human-like placeholder shape */}
+            <mesh castShadow position={[0, 0.9, 0]}>
+                <cylinderGeometry args={[0.25, 0.3, 1.8, 8]} />
+                <meshStandardMaterial color="#1e3a8a" metalness={0.2} roughness={0.8} />
             </mesh>
-            <mesh position={[0, 1.5, 0]}>
-                <sphereGeometry args={[0.25, 12, 12]} />
-                <meshStandardMaterial color="#fef3c7" />
+            <mesh position={[0, 1.95, 0]}>
+                <sphereGeometry args={[0.2, 12, 12]} />
+                <meshStandardMaterial color="#fca5a5" />
             </mesh>
         </group>
     );
@@ -160,31 +166,40 @@ function RoomGeometry({ room }: { room: KageroRoom }) {
 
     return (
         <group>
+            {/* Ground / Floor - Dark wood/stone */}
             <mesh position={[centerX, -0.1, centerZ]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
                 <planeGeometry args={[width, depth]} />
-                <meshStandardMaterial color="#5a5a7a" roughness={0.9} />
+                <meshStandardMaterial color="#2d241e" roughness={0.95} />
+            </mesh>
+            
+            {/* Red Carpet - Slightly raised above floor */}
+            <mesh position={[centerX, -0.05, centerZ]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+                <planeGeometry args={[width * 0.4, depth]} />
+                <meshStandardMaterial color="#6b1111" roughness={0.8} />
             </mesh>
 
+            {/* Walls - Dark greenish stone */}
             <mesh position={[centerX - width/2, room.wallHeight/2, centerZ]} castShadow receiveShadow>
                 <boxGeometry args={[0.3, room.wallHeight, depth]} />
-                <meshStandardMaterial color="#6a6a8a" roughness={0.8} />
+                <meshStandardMaterial color="#3a4b3c" roughness={0.9} />
             </mesh>
             <mesh position={[centerX + width/2, room.wallHeight/2, centerZ]} castShadow receiveShadow>
                 <boxGeometry args={[0.3, room.wallHeight, depth]} />
-                <meshStandardMaterial color="#6a6a8a" roughness={0.8} />
+                <meshStandardMaterial color="#3a4b3c" roughness={0.9} />
             </mesh>
             <mesh position={[centerX, room.wallHeight/2, centerZ - depth/2]} castShadow receiveShadow>
-                <boxGeometry args={[width, room.wallHeight, 0.3]} />
-                <meshStandardMaterial color="#6a6a8a" roughness={0.8} />
+                <boxGeometry args={[width + 0.6, room.wallHeight, 0.3]} />
+                <meshStandardMaterial color="#3a4b3c" roughness={0.9} />
             </mesh>
             <mesh position={[centerX, room.wallHeight/2, centerZ + depth/2]} castShadow receiveShadow>
-                <boxGeometry args={[width, room.wallHeight, 0.3]} />
-                <meshStandardMaterial color="#6a6a8a" roughness={0.8} />
+                <boxGeometry args={[width + 0.6, room.wallHeight, 0.3]} />
+                <meshStandardMaterial color="#3a4b3c" roughness={0.9} />
             </mesh>
 
+            {/* Ceiling */}
             <mesh position={[centerX, room.wallHeight + 0.1, centerZ]} rotation={[-Math.PI / 2, 0, 0]}>
                 <planeGeometry args={[width, depth]} />
-                <meshStandardMaterial color="#5a5a7a" roughness={0.9} />
+                <meshStandardMaterial color="#111512" roughness={1.0} />
             </mesh>
         </group>
     );
@@ -209,8 +224,9 @@ function TrapSlotMesh({
 }) {
     const surfaceColor = slot.surface === TrapSurface.FLOOR ? '#22c55e' : 
                         slot.surface === TrapSurface.WALL ? '#f59e0b' : '#3b82f6';
-    const color = hasTrap ? '#8b5cf6' : selected ? surfaceColor : '#4ade8044';
+    const color = hasTrap ? '#8b5cf6' : selected ? surfaceColor : '#4ade80';
     const opacity = hasTrap ? 0.9 : selected ? 0.8 : 0.4;
+    const isWireframe = !hasTrap && !selected;
 
     const showEffectRange = showRange && selected && trapType && TRAP_DATA[trapType]?.range;
     const range = showEffectRange ? TRAP_DATA[trapType].range : 0;
@@ -221,13 +237,14 @@ function TrapSlotMesh({
                 position={[slot.position.x, slot.position.y, slot.position.z]}
                 onClick={onClick}
             >
-                <boxGeometry args={[1.2, 0.1, 1.2]} />
+                <boxGeometry args={[1.6, 0.1, 1.6]} />
                 <meshStandardMaterial 
                     color={color} 
                     transparent 
                     opacity={opacity}
                     emissive={hasTrap ? '#8b5cf6' : selected ? surfaceColor : '#000000'}
-                    emissiveIntensity={hasTrap ? 0.3 : selected ? 0.4 : 0}
+                    emissiveIntensity={hasTrap || selected ? 0.4 : 0}
+                    wireframe={isWireframe}
                 />
             </mesh>
             {showEffectRange && range > 0 && (
@@ -256,30 +273,34 @@ function GridOverlay({ room, show }: { room: KageroRoom | undefined, show: boole
     const depth = bounds.maxZ - bounds.minZ;
     const centerX = (bounds.minX + bounds.maxX) / 2 * CELL_SIZE;
     const centerZ = (bounds.minZ + bounds.maxZ) / 2 * CELL_SIZE;
+    const wallHeight = room.wallHeight;
+    const gridColor = "#00ff00";
     
     return (
         <group>
-            {Array.from({ length: width }).map((_, x) =>
-                Array.from({ length: depth }).map((_, z) => {
-                    const worldX = (bounds.minX + x + 0.5) * CELL_SIZE;
-                    const worldZ = (bounds.minZ + z + 0.5) * CELL_SIZE;
-                    return (
-                        <mesh
-                            key={`grid_${x}_${z}`}
-                            position={[worldX, 0.02, worldZ]}
-                            rotation={[-Math.PI / 2, 0, 0]}
-                        >
-                            <planeGeometry args={[CELL_SIZE * 0.95, CELL_SIZE * 0.95]} />
-                            <meshBasicMaterial 
-                                color="#ffffff"
-                                transparent 
-                                opacity={0.08}
-                                side={THREE.DoubleSide}
-                            />
-                        </mesh>
-                    );
-                })
-            )}
+            {/* Floor grid */}
+            <mesh position={[centerX, 0.02, centerZ]} rotation={[-Math.PI / 2, 0, 0]}>
+                <planeGeometry args={[width * CELL_SIZE, depth * CELL_SIZE, width, depth]} />
+                <meshBasicMaterial color={gridColor} wireframe transparent opacity={0.3} />
+            </mesh>
+            
+            {/* Wall grids */}
+            <mesh position={[centerX, wallHeight / 2, bounds.minZ * CELL_SIZE + 0.02]}>
+               <planeGeometry args={[width * CELL_SIZE, wallHeight, width, Math.ceil(wallHeight / CELL_SIZE)]} />
+               <meshBasicMaterial color={gridColor} wireframe transparent opacity={0.2} />
+            </mesh>
+            <mesh position={[centerX, wallHeight / 2, bounds.maxZ * CELL_SIZE - 0.02]} rotation={[0, Math.PI, 0]}>
+               <planeGeometry args={[width * CELL_SIZE, wallHeight, width, Math.ceil(wallHeight / CELL_SIZE)]} />
+               <meshBasicMaterial color={gridColor} wireframe transparent opacity={0.2} />
+            </mesh>
+            <mesh position={[bounds.minX * CELL_SIZE + 0.02, wallHeight / 2, centerZ]} rotation={[0, Math.PI / 2, 0]}>
+               <planeGeometry args={[depth * CELL_SIZE, wallHeight, depth, Math.ceil(wallHeight / CELL_SIZE)]} />
+               <meshBasicMaterial color={gridColor} wireframe transparent opacity={0.2} />
+            </mesh>
+            <mesh position={[bounds.maxX * CELL_SIZE - 0.02, wallHeight / 2, centerZ]} rotation={[0, -Math.PI / 2, 0]}>
+               <planeGeometry args={[depth * CELL_SIZE, wallHeight, depth, Math.ceil(wallHeight / CELL_SIZE)]} />
+               <meshBasicMaterial color={gridColor} wireframe transparent opacity={0.2} />
+            </mesh>
         </group>
     );
 }
@@ -361,25 +382,34 @@ function EnemyMesh({ enemy }: { enemy: KageroEnemyState }) {
     );
 }
 
-function Lighting() {
+function Lighting({ isTactical }: { isTactical?: boolean }) {
+    if (isTactical) {
+        return (
+            <>
+                <ambientLight intensity={0.05} color="#050510" />
+                <pointLight position={[0, 15, 0]} intensity={0.5} color="#222233" distance={50} />
+                <fog attach="fog" args={['#000000', 5, 40]} />
+            </>
+        );
+    }
+
     return (
         <>
-            <ambientLight intensity={0.8} color="#e8e8ff" />
+            <ambientLight intensity={0.2} color="#1a1f24" />
             <directionalLight 
                 position={[10, 25, 10]} 
-                intensity={1.5} 
-                color="#fff5e6"
+                intensity={0.4} 
+                color="#3d4959"
                 castShadow 
-                shadow-mapSize={[2048, 2048]}
+                shadow-mapSize={[1024, 1024]}
                 shadow-camera-far={60}
                 shadow-camera-left={-30}
                 shadow-camera-right={30}
                 shadow-camera-top={30}
                 shadow-camera-bottom={-30}
             />
-            <pointLight position={[10, 8, 10]} intensity={1.5} color="#ffefd5" distance={30} />
-            <hemisphereLight args={['#b4d7ff', '#5a5a7a', 0.6]} />
-            <fog attach="fog" args={['#1a1a2e', 15, 50]} />
+            <hemisphereLight args={['#24201a', '#050a0f', 0.4]} />
+            <fog attach="fog" args={['#020406', 10, 35]} />
         </>
     );
 }
@@ -423,19 +453,36 @@ function CorridorMesh({ from, to }: { from: KageroRoom, to: KageroRoom }) {
     const length = (to.bounds.minZ - from.bounds.maxZ) * CELL_SIZE;
     const centerX = from.center.x;
     
+    const corridorWidth = 4; // strictly 4 units width
+    
     return (
         <group>
+            {/* Corridor Floor */}
             <mesh position={[centerX, -0.1, midZ]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-                <planeGeometry args={[4, Math.abs(length)]} />
-                <meshStandardMaterial color="#1a1a2e" roughness={1} />
+                <planeGeometry args={[corridorWidth, Math.abs(length)]} />
+                <meshStandardMaterial color="#2d241e" roughness={0.95} />
             </mesh>
-            <mesh position={[centerX - 2, 2.5, midZ]} castShadow receiveShadow>
-                <boxGeometry args={[0.3, 5, Math.abs(length)]} />
-                <meshStandardMaterial color="#2d2d44" roughness={0.9} />
+            
+            {/* Corridor Carpet */}
+            <mesh position={[centerX, -0.05, midZ]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+                <planeGeometry args={[1.6, Math.abs(length)]} />
+                <meshStandardMaterial color="#6b1111" roughness={0.8} />
             </mesh>
-            <mesh position={[centerX + 2, 2.5, midZ]} castShadow receiveShadow>
+
+            {/* Corridor Walls */}
+            <mesh position={[centerX - corridorWidth/2, 2.5, midZ]} castShadow receiveShadow>
                 <boxGeometry args={[0.3, 5, Math.abs(length)]} />
-                <meshStandardMaterial color="#2d2d44" roughness={0.9} />
+                <meshStandardMaterial color="#3a4b3c" roughness={0.9} />
+            </mesh>
+            <mesh position={[centerX + corridorWidth/2, 2.5, midZ]} castShadow receiveShadow>
+                <boxGeometry args={[0.3, 5, Math.abs(length)]} />
+                <meshStandardMaterial color="#3a4b3c" roughness={0.9} />
+            </mesh>
+            
+            {/* Corridor Ceiling */}
+            <mesh position={[centerX, 5.1, midZ]} rotation={[-Math.PI / 2, 0, 0]}>
+                <planeGeometry args={[corridorWidth, Math.abs(length)]} />
+                <meshStandardMaterial color="#111512" roughness={1.0} />
             </mesh>
         </group>
     );
@@ -463,8 +510,7 @@ function SceneContent({
 
     return (
         <>
-            <Lighting />
-            <TimeFrozenOverlay active={timeFrozen} />
+            <Lighting isTactical={timeFrozen} />
             
             {mission?.rooms.map(room => (
                 <RoomGeometry key={room.id} room={room} />
@@ -481,6 +527,7 @@ function SceneContent({
             <PlayerController 
                 playerRef={playerRef} 
                 canMove={canMove}
+                isTactical={timeFrozen}
                 mission={mission}
             />
             
