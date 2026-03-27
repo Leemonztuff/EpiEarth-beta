@@ -310,11 +310,12 @@ function SceneContent({
     onDoorEnter,
     playerRef,
     enemies,
-    triggeringTraps 
+    triggeringTraps,
+    timeFrozen
 }: any) {
-    const canMove = missionState === KageroMissionState.EXPLORATION || 
-                   missionState === KageroMissionState.KAGERO_PLAYER_LURE;
-    const showTrapSlots = missionState === KageroMissionState.TACTICAL_SETUP;
+    const canMove = !timeFrozen && (missionState === KageroMissionState.EXPLORATION || 
+                   missionState === KageroMissionState.KAGERO_PLAYER_LURE);
+    const showTrapSlots = missionState === KageroMissionState.TACTICAL_SETUP || timeFrozen;
 
     const currentRoom = mission?.rooms.find(r => r.id === mission.currentRoomId);
     const currentRoomDoors = mission?.doors.filter(d => d.fromRoomId === currentRoom?.id) || [];
@@ -322,6 +323,7 @@ function SceneContent({
     return (
         <>
             <Lighting />
+            <TimeFrozenOverlay active={timeFrozen} />
             
             {mission?.rooms.map(room => (
                 <RoomGeometry key={room.id} room={room} />
@@ -415,6 +417,46 @@ function TrapEffect({ effect }: { effect: TrapEffectData }) {
     );
 }
 
+function TrapTrajectory({ trap }: { trap: PlacedKageroTrap }) {
+    const { launchDirection, launchForce } = trap;
+    
+    if (!launchForce || launchForce === 0) return null;
+    
+    const endX = trap.position.x + launchDirection.x * launchForce * 3;
+    const endZ = trap.position.z + launchDirection.z * launchForce * 3;
+    const endY = trap.position.y + launchDirection.y * launchForce * 3;
+    
+    const points = useMemo(() => {
+        return [
+            new THREE.Vector3(trap.position.x, trap.position.y, trap.position.z),
+            new THREE.Vector3(endX, endY, endZ),
+        ];
+    }, [trap.position, endX, endY, endZ]);
+    
+    const lineGeometry = useMemo(() => {
+        const geometry = new THREE.BufferGeometry().setFromPoints(points);
+        return geometry;
+    }, [points]);
+    
+    return (
+        <primitive object={new THREE.Line(
+            lineGeometry,
+            new THREE.LineBasicMaterial({ color: '#ff6b6b', transparent: true, opacity: 0.7 })
+        )} />
+    );
+}
+
+function TimeFrozenOverlay({ active }: { active: boolean }) {
+    if (!active) return null;
+    
+    return (
+        <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <planeGeometry args={[1000, 1000]} />
+            <meshBasicMaterial color="#000000" transparent opacity={0.15} />
+        </mesh>
+    );
+}
+
 export default function Exploration3DScene() {
     const explorationState = useGameStore(s => s.explorationState);
     const setGameState = useGameStore(s => s.setGameState);
@@ -429,6 +471,9 @@ export default function Exploration3DScene() {
     const [selectedSurface, setSelectedSurface] = useState<TrapSurface>(TrapSurface.FLOOR);
     const [selectedTrapType, setSelectedTrapType] = useState<TrapType>(TrapType.SPIKE);
     const [triggeringTraps, setTriggeringTraps] = useState<TrapEffectData[]>([]);
+    const [timeFrozen, setTimeFrozen] = useState(false);
+    const [tutorialStep, setTutorialStep] = useState(0);
+    const [showTutorial, setShowTutorial] = useState(true);
     const playerRef = useRef<PlayerState>({
         position: new THREE.Vector3(0, 0.8, 0),
         rotation: 0,
@@ -437,6 +482,23 @@ export default function Exploration3DScene() {
     const [currentStep, setCurrentStep] = useState(0);
     const [comboCount, setComboCount] = useState(0);
     const [maxCombo, setMaxCombo] = useState(0);
+
+    const TUTORIAL_STEPS = [
+        { key: 'T', text: 'Presiona [T] para entrar en MODO TACTICO' },
+        { key: '1-3', text: 'Usa [1-2-3] para seleccionar superficie (Piso/Pared/Techo)' },
+        { key: 'QWER', text: 'Usa [Q-W-E-R] para seleccionar tipo de trampa' },
+        { key: 'CLICK', text: 'Haz CLICK en un slot verde para COLOCAR la trampa' },
+        { key: 'E', text: 'Presiona [E] para ACTIVAR trampas manualmente' },
+        { key: 'WASD', text: 'Usa [WASD] para MOVER al personaje y atraer enemigos' },
+    ];
+
+    const advanceTutorial = () => {
+        if (tutorialStep < TUTORIAL_STEPS.length - 1) {
+            setTutorialStep(t => t + 1);
+        } else {
+            setShowTutorial(false);
+        }
+    };
 
     const TRAP_TYPES_BY_SURFACE = useMemo(() => ({
         [TrapSurface.FLOOR]: [TrapType.SPIKE, TrapType.FIRE, TrapType.ICE, TrapType.POISON, TrapType.EXPLOSIVE, TrapType.TRAP_DOOR],
@@ -481,19 +543,23 @@ export default function Exploration3DScene() {
                 setSelectedSurface(TrapSurface.FLOOR);
                 setSelectedTrapType(TrapType.SPIKE);
                 addLog('PISO - Spike', 'info');
+                advanceTutorial();
             } else if (e.key === '2') {
                 setSelectedSurface(TrapSurface.WALL);
                 setSelectedTrapType(TrapType.STUN);
                 addLog('PARED - Stun', 'info');
+                advanceTutorial();
             } else if (e.key === '3') {
                 setSelectedSurface(TrapSurface.CEILING);
                 setSelectedTrapType(TrapType.EXPLOSIVE);
                 addLog('TECHO - Explosivo', 'info');
+                advanceTutorial();
             }
             
             if (e.key === 'q' || e.key === 'Q') {
                 setSelectedTrapType(TrapType.SPIKE);
                 addLog('Trampa: Spike', 'info');
+                advanceTutorial();
             } else if (e.key === 'w' || e.key === 'W') {
                 setSelectedTrapType(TrapType.FIRE);
                 addLog('Trampa: Fuego', 'info');
@@ -508,16 +574,28 @@ export default function Exploration3DScene() {
             if (e.key.toLowerCase() === 't') {
                 if (missionState === KageroMissionState.EXPLORATION) {
                     setMissionState(KageroMissionState.TACTICAL_SETUP);
-                    addLog('>>> Modo Tactico: Coloca trampas', 'info');
+                    setTimeFrozen(true);
+                    addLog('>>> TIEMPO DETENIDO: Coloca trampas', 'combat');
+                    advanceTutorial();
                 } else if (missionState === KageroMissionState.TACTICAL_SETUP) {
                     setMissionState(KageroMissionState.EXPLORATION);
-                    addLog('<<< Explorando...', 'info');
+                    setTimeFrozen(false);
+                    addLog('<<< TIEMPO REANUDADO', 'combat');
+                }
+                advanceTutorial();
+            }
+            
+            if (e.key === ' ' || e.key.toLowerCase() === 'activate') {
+                if (missionState === KageroMissionState.EXPLORATION && mission) {
+                    activateNearestTrap();
+                    advanceTutorial();
                 }
             }
             
             if (e.key === 'Escape') {
                 if (missionState === KageroMissionState.TACTICAL_SETUP) {
                     setMissionState(KageroMissionState.EXPLORATION);
+                    setTimeFrozen(false);
                     setSelectedSlot(null);
                 } else {
                     setMissionState(KageroMissionState.RETURN_TO_HEX);
@@ -527,6 +605,89 @@ export default function Exploration3DScene() {
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [missionState, addLog]);
+
+    const activateNearestTrap = useCallback(() => {
+        if (!mission) return;
+        
+        const playerPos = playerRef.current.position;
+        let nearestTrap: PlacedKageroTrap | null = null;
+        let nearestDist = Infinity;
+        
+        for (const trap of mission.placedTraps) {
+            if (trap.triggered) continue;
+            const dist = Math.sqrt(
+                Math.pow(trap.position.x - playerPos.x, 2) + 
+                Math.pow(trap.position.z - playerPos.z, 2)
+            );
+            if (dist < nearestDist && dist < 8) {
+                nearestDist = dist;
+                nearestTrap = trap;
+            }
+        }
+        
+        if (nearestTrap) {
+            setMission(prev => {
+                if (!prev) return prev;
+                const updatedTraps = prev.placedTraps.map(t => 
+                    t.id === nearestTrap!.id ? { ...t, triggered: true, triggeredAtStep: currentStep } : t
+                );
+                return { ...prev, placedTraps: updatedTraps };
+            });
+            
+            setTriggeringTraps(prev => [...prev, {
+                id: `${nearestTrap!.id}_manual_${Date.now()}`,
+                position: new THREE.Vector3(nearestTrap!.position.x, nearestTrap!.position.y, nearestTrap!.position.z),
+                trapType: nearestTrap!.trapType,
+                startTime: Date.now(),
+            }]);
+            
+            addLog(`>>> TRAMPA ACTIVADA: ${TRAP_DATA[nearestTrap!.trapType].name}`, 'combat');
+            
+            let enemiesHit = 0;
+            setMission(prev => {
+                if (!prev) return prev;
+                
+                const updatedEnemies = prev.enemies.map(enemy => {
+                    if (!enemy.isAlive) return enemy;
+                    
+                    const dist = Math.sqrt(
+                        Math.pow(enemy.position.x - nearestTrap!.position.x, 2) + 
+                        Math.pow(enemy.position.z - nearestTrap!.position.z, 2)
+                    );
+                    
+                    if (dist < 3) {
+                        enemiesHit++;
+                        const trapData = TRAP_DATA[nearestTrap!.trapType];
+                        let damage = Math.floor(trapData.damage * (1 - enemy.resistances.physical / 100));
+                        const finalHp = Math.max(0, enemy.hp - damage);
+                        
+                        addLog(`${enemy.name} alcanzado! -${damage} HP`, 'combat');
+                        
+                        if (finalHp <= 0) {
+                            addLog(`${enemy.name} derrotado!`, 'combat');
+                            return { ...enemy, hp: 0, isAlive: false };
+                        }
+                        
+                        return { ...enemy, hp: finalHp };
+                    }
+                    return enemy;
+                });
+                
+                return { ...prev, enemies: updatedEnemies };
+            });
+            
+            if (enemiesHit > 1) {
+                setComboCount(c => {
+                    const newCombo = c + enemiesHit;
+                    setMaxCombo(m => Math.max(m, newCombo));
+                    return newCombo;
+                });
+                addLog(`>>> COMBO x${enemiesHit}!`, 'combat');
+            }
+        } else {
+            addLog('No hay trampas cerca para activar', 'info');
+        }
+    }, [mission, currentStep, addLog]);
 
     const handleDoorEnter = useCallback((door: KageroDoor) => {
         if (!mission) return;
@@ -861,10 +1022,11 @@ export default function Exploration3DScene() {
     const enemiesAlive = mission?.enemies.filter(e => e.isAlive).length || 0;
 
     const getStateLabel = () => {
+        if (timeFrozen) return 'TIEMPO DETENIDO';
         switch (missionState) {
             case KageroMissionState.LOADING: return 'CARGANDO...';
             case KageroMissionState.EXPLORATION: return 'EXPLORANDO';
-            case KageroMissionState.TACTICAL_SETUP: return 'MODO TACTICO';
+            case KageroMissionState.TACTICAL_SETUP: return 'COLOCAR TRAMPAS';
             case KageroMissionState.KAGERO_ENEMY_PATROL: return 'ENEMIGOS PATRULLANDO';
             case KageroMissionState.KAGERO_PLAYER_LURE: return '¡ENEMIGO CERCA!';
             case KageroMissionState.TRAP_TRIGGER: return 'TRAMPA ACTIVADA';
@@ -878,6 +1040,7 @@ export default function Exploration3DScene() {
     };
 
     const getStateColor = () => {
+        if (timeFrozen) return 'text-cyan-400';
         if ([KageroMissionState.TRAP_TRIGGER, KageroMissionState.COMBO_RESOLUTION].includes(missionState)) return 'text-red-500';
         if (missionState === KageroMissionState.TACTICAL_SETUP) return 'text-green-500';
         if (missionState === KageroMissionState.KAGERO_PLAYER_LURE) return 'text-orange-500';
@@ -897,6 +1060,7 @@ export default function Exploration3DScene() {
                     playerRef={playerRef}
                     enemies={mission?.enemies || []}
                     triggeringTraps={triggeringTraps}
+                    timeFrozen={timeFrozen}
                 />
             </Canvas>
 
@@ -928,23 +1092,60 @@ export default function Exploration3DScene() {
             <div className="absolute bottom-4 left-4 bg-slate-900/95 rounded-lg p-3 text-white border border-slate-700">
                 <div className="text-xs text-slate-400 space-y-1">
                     <div><kbd className="bg-slate-700 px-1.5 py-0.5 rounded font-mono">T</kbd> Tactico</div>
-                    <div><kbd className="bg-slate-700 px-1.5 py-0.5 rounded font-mono">1</kbd> Piso</div>
-                    <div><kbd className="bg-slate-700 px-1.5 py-0.5 rounded font-mono">2</kbd> Pared</div>
-                    <div><kbd className="bg-slate-700 px-1.5 py-0.5 rounded font-mono">3</kbd> Techo</div>
+                    <div><kbd className="bg-slate-700 px-1.5 py-0.5 rounded font-mono">1-3</kbd> Superficie</div>
+                    <div><kbd className="bg-slate-700 px-1.5 py-0.5 rounded font-mono">QWER</kbd> Trampa</div>
+                    <div><kbd className="bg-slate-700 px-1.5 py-0.5 rounded font-mono">ESPACIO</kbd> Activar</div>
                     <div><kbd className="bg-slate-700 px-1.5 py-0.5 rounded font-mono">WASD</kbd> Mover</div>
                     <div><kbd className="bg-slate-700 px-1.5 py-0.5 rounded font-mono">Click</kbd> Colocar</div>
                 </div>
             </div>
 
-            {missionState === KageroMissionState.TACTICAL_SETUP && (
-                <div className="absolute bottom-4 right-4 bg-slate-900/95 rounded-lg p-4 text-white border border-green-700 shadow-xl max-w-[280px]">
-                    <h4 className="text-green-400 font-bold mb-2 text-sm">MODO TACTICO</h4>
+            {showTutorial && (
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-slate-900/98 rounded-xl p-6 text-white border-2 border-cyan-500 shadow-2xl z-50 max-w-md">
+                    <div className="text-center mb-4">
+                        <div className="text-4xl mb-2">🎯</div>
+                        <h3 className="text-xl font-bold text-cyan-400">TUTORIAL</h3>
+                    </div>
+                    <div className="text-center mb-4">
+                        <p className="text-slate-300">{TUTORIAL_STEPS[tutorialStep]?.text}</p>
+                    </div>
+                    <div className="flex justify-center gap-2 mb-4">
+                        {TUTORIAL_STEPS.map((_, idx) => (
+                            <div 
+                                key={idx} 
+                                className={`w-2 h-2 rounded-full ${
+                                    idx === tutorialStep ? 'bg-cyan-400' : 
+                                    idx < tutorialStep ? 'bg-green-500' : 'bg-slate-600'
+                                }`}
+                            />
+                        ))}
+                    </div>
+                    <button
+                        onClick={advanceTutorial}
+                        className="w-full px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg font-bold transition-all"
+                    >
+                        {tutorialStep < TUTORIAL_STEPS.length - 1 ? 'SIGUIENTE' : 'ENTENDIDO'}
+                    </button>
+                    <button
+                        onClick={() => setShowTutorial(false)}
+                        className="w-full mt-2 px-4 py-1 text-slate-500 hover:text-slate-300 text-sm transition-all"
+                    >
+                        Saltar Tutorial
+                    </button>
+                </div>
+            )}
+
+            {(missionState === KageroMissionState.TACTICAL_SETUP || timeFrozen) && (
+                <div className="absolute bottom-4 right-4 bg-slate-900/95 rounded-lg p-4 text-white border border-cyan-700 shadow-xl max-w-[280px]">
+                    <h4 className={`font-bold mb-2 text-sm ${timeFrozen ? 'text-cyan-400' : 'text-green-400'}`}>
+                        {timeFrozen ? '⏸ TIEMPO DETENIDO' : 'MODO TACTICO'}
+                    </h4>
                     <div className="text-xs text-slate-400 mb-2">
-                        Haz clic en un slot para colocar la trampa seleccionada
+                        {timeFrozen ? 'Coloca trampas mientras el tiempo esta detenido' : 'Haz clic en un slot para colocar la trampa'}
                     </div>
                     <div className="border-t border-slate-700 pt-2 mb-2">
                         <div className="text-xs mb-1">
-                            Superficie: <span className="text-green-400 font-mono">{selectedSurface.toUpperCase()}</span>
+                            Superficie: <span className={`font-mono ${timeFrozen ? 'text-cyan-400' : 'text-green-400'}`}>{selectedSurface.toUpperCase()}</span>
                         </div>
                     </div>
                     <div className="border-t border-slate-700 pt-2">
