@@ -139,20 +139,42 @@ function PlayerController({
             {/* Flashlight/Aura emitting from player */}
             <pointLight 
                 position={[0, 3, 0]} 
-                intensity={2.0} 
-                distance={20} 
+                intensity={1.5} 
+                distance={30} 
                 color="#fff3d6"
-                castShadow
+                // No castShadow to avoid body generating huge sharp self-shadows
             />
-            {/* Taller human-like placeholder shape */}
-            <mesh castShadow position={[0, 0.9, 0]}>
-                <cylinderGeometry args={[0.25, 0.3, 1.8, 8]} />
-                <meshStandardMaterial color="#1e3a8a" metalness={0.2} roughness={0.8} />
-            </mesh>
-            <mesh position={[0, 1.95, 0]}>
-                <sphereGeometry args={[0.2, 12, 12]} />
-                <meshStandardMaterial color="#fca5a5" />
-            </mesh>
+            {/* Humanoid placeholder shape */}
+            <group position={[0, 0.9, 0]}>
+                {/* Torso */}
+                <mesh castShadow position={[0, 0.2, 0]}>
+                    <boxGeometry args={[0.5, 0.8, 0.3]} />
+                    <meshStandardMaterial color="#1e3a8a" metalness={0.2} roughness={0.8} />
+                </mesh>
+                {/* Head */}
+                <mesh castShadow position={[0, 0.85, 0]}>
+                    <sphereGeometry args={[0.22, 16, 16]} />
+                    <meshStandardMaterial color="#fca5a5" roughness={0.6} />
+                </mesh>
+                {/* Legs */}
+                <mesh castShadow position={[-0.15, -0.5, 0]}>
+                    <cylinderGeometry args={[0.1, 0.08, 0.8, 8]} />
+                    <meshStandardMaterial color="#111827" roughness={0.9} />
+                </mesh>
+                <mesh castShadow position={[0.15, -0.5, 0]}>
+                    <cylinderGeometry args={[0.1, 0.08, 0.8, 8]} />
+                    <meshStandardMaterial color="#111827" roughness={0.9} />
+                </mesh>
+                {/* Arms */}
+                <mesh castShadow position={[-0.35, 0.1, 0]}>
+                    <cylinderGeometry args={[0.08, 0.06, 0.7, 8]} />
+                    <meshStandardMaterial color="#fca5a5" roughness={0.7} />
+                </mesh>
+                <mesh castShadow position={[0.35, 0.1, 0]}>
+                    <cylinderGeometry args={[0.08, 0.06, 0.7, 8]} />
+                    <meshStandardMaterial color="#fca5a5" roughness={0.7} />
+                </mesh>
+            </group>
         </group>
     );
 }
@@ -164,42 +186,103 @@ function RoomGeometry({ room }: { room: KageroRoom }) {
     const centerX = (bounds.minX + bounds.maxX) / 2 * CELL_SIZE;
     const centerZ = (bounds.minZ + bounds.maxZ) / 2 * CELL_SIZE;
 
+    if (room.layout) {
+        return (
+            <group>
+                {/* Ceiling spanning the whole room bounds */}
+                <mesh position={[centerX, room.wallHeight + 0.1, centerZ]} rotation={[-Math.PI / 2, 0, 0]}>
+                    <planeGeometry args={[width, depth]} />
+                    <meshStandardMaterial color="#1a201c" roughness={1.0} />
+                </mesh>
+
+                {room.layout.map((row, zIndex) => 
+                    row.map((tile, xIndex) => {
+                        if (tile === 0 /* EMPTY */) return null;
+                        
+                        const tileX = bounds.minX * CELL_SIZE + xIndex * CELL_SIZE + CELL_SIZE / 2;
+                        const tileZ = bounds.minZ * CELL_SIZE + zIndex * CELL_SIZE + CELL_SIZE / 2;
+                        
+                        return (
+                            <group key={`tile_${xIndex}_${zIndex}`}>
+                                {/* Base Floor for Walkable/Elevated/Stairs */}
+                                {(tile === 1 || tile === 3 || tile >= 4) && (
+                                    <mesh position={[tileX, -0.1, tileZ]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+                                        <planeGeometry args={[CELL_SIZE, CELL_SIZE]} />
+                                        <meshStandardMaterial color="#403025" roughness={0.9} metalness={0.1} />
+                                    </mesh>
+                                )}
+                                
+                                {/* Elevated Platform Block */}
+                                {tile === 3 && (
+                                    <mesh position={[tileX, 0.5, tileZ]} receiveShadow castShadow>
+                                        <boxGeometry args={[CELL_SIZE, 1.2, CELL_SIZE]} />
+                                        <meshStandardMaterial color="#403025" roughness={0.9} metalness={0.1} />
+                                    </mesh>
+                                )}
+
+                                {/* Wall Block */}
+                                {tile === 2 && (
+                                    <mesh position={[tileX, room.wallHeight/2, tileZ]} receiveShadow castShadow>
+                                        <boxGeometry args={[CELL_SIZE, room.wallHeight, CELL_SIZE]} />
+                                        <meshStandardMaterial color="#4a5b4c" roughness={0.8} metalness={0.15} />
+                                    </mesh>
+                                )}
+                                
+                                {/* Stairs (Slope placeholder) */}
+                                {tile >= 4 && tile <= 7 && (
+                                    <mesh position={[tileX, 0.2, tileZ]} rotation={[
+                                        tile === 4 ? -Math.PI/6 : tile === 6 ? Math.PI/6 : 0, 
+                                        0, 
+                                        tile === 5 ? -Math.PI/6 : tile === 7 ? Math.PI/6 : 0
+                                    ]} receiveShadow castShadow>
+                                        <boxGeometry args={[CELL_SIZE, 0.2, CELL_SIZE]} />
+                                        <meshStandardMaterial color="#403025" roughness={0.9} metalness={0.1} />
+                                    </mesh>
+                                )}
+                            </group>
+                        );
+                    })
+                )}
+            </group>
+        );
+    }
+
     return (
         <group>
             {/* Ground / Floor - Dark wood/stone */}
             <mesh position={[centerX, -0.1, centerZ]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
                 <planeGeometry args={[width, depth]} />
-                <meshStandardMaterial color="#2d241e" roughness={0.95} />
+                <meshStandardMaterial color="#403025" roughness={0.9} metalness={0.1} />
             </mesh>
             
             {/* Red Carpet - Slightly raised above floor */}
             <mesh position={[centerX, -0.05, centerZ]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
                 <planeGeometry args={[width * 0.4, depth]} />
-                <meshStandardMaterial color="#6b1111" roughness={0.8} />
+                <meshStandardMaterial color="#941616" roughness={0.9} metalness={0.05} />
             </mesh>
 
             {/* Walls - Dark greenish stone */}
             <mesh position={[centerX - width/2, room.wallHeight/2, centerZ]} castShadow receiveShadow>
                 <boxGeometry args={[0.3, room.wallHeight, depth]} />
-                <meshStandardMaterial color="#3a4b3c" roughness={0.9} />
+                <meshStandardMaterial color="#4a5b4c" roughness={0.8} metalness={0.15} />
             </mesh>
             <mesh position={[centerX + width/2, room.wallHeight/2, centerZ]} castShadow receiveShadow>
                 <boxGeometry args={[0.3, room.wallHeight, depth]} />
-                <meshStandardMaterial color="#3a4b3c" roughness={0.9} />
+                <meshStandardMaterial color="#4a5b4c" roughness={0.8} metalness={0.15} />
             </mesh>
             <mesh position={[centerX, room.wallHeight/2, centerZ - depth/2]} castShadow receiveShadow>
                 <boxGeometry args={[width + 0.6, room.wallHeight, 0.3]} />
-                <meshStandardMaterial color="#3a4b3c" roughness={0.9} />
+                <meshStandardMaterial color="#4a5b4c" roughness={0.8} metalness={0.15} />
             </mesh>
             <mesh position={[centerX, room.wallHeight/2, centerZ + depth/2]} castShadow receiveShadow>
                 <boxGeometry args={[width + 0.6, room.wallHeight, 0.3]} />
-                <meshStandardMaterial color="#3a4b3c" roughness={0.9} />
+                <meshStandardMaterial color="#4a5b4c" roughness={0.8} metalness={0.15} />
             </mesh>
 
             {/* Ceiling */}
             <mesh position={[centerX, room.wallHeight + 0.1, centerZ]} rotation={[-Math.PI / 2, 0, 0]}>
                 <planeGeometry args={[width, depth]} />
-                <meshStandardMaterial color="#111512" roughness={1.0} />
+                <meshStandardMaterial color="#1a201c" roughness={1.0} />
             </mesh>
         </group>
     );
@@ -395,11 +478,11 @@ function Lighting({ isTactical }: { isTactical?: boolean }) {
 
     return (
         <>
-            <ambientLight intensity={0.2} color="#1a1f24" />
+            <ambientLight intensity={0.5} color="#2a323c" />
             <directionalLight 
                 position={[10, 25, 10]} 
-                intensity={0.4} 
-                color="#3d4959"
+                intensity={0.6} 
+                color="#5d6979"
                 castShadow 
                 shadow-mapSize={[1024, 1024]}
                 shadow-camera-far={60}
@@ -408,8 +491,8 @@ function Lighting({ isTactical }: { isTactical?: boolean }) {
                 shadow-camera-top={30}
                 shadow-camera-bottom={-30}
             />
-            <hemisphereLight args={['#24201a', '#050a0f', 0.4]} />
-            <fog attach="fog" args={['#020406', 10, 35]} />
+            <hemisphereLight args={['#34302a', '#101a22', 0.5]} />
+            <fog attach="fog" args={['#05080c', 18, 55]} />
         </>
     );
 }
@@ -460,29 +543,29 @@ function CorridorMesh({ from, to }: { from: KageroRoom, to: KageroRoom }) {
             {/* Corridor Floor */}
             <mesh position={[centerX, -0.1, midZ]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
                 <planeGeometry args={[corridorWidth, Math.abs(length)]} />
-                <meshStandardMaterial color="#2d241e" roughness={0.95} />
+                <meshStandardMaterial color="#403025" roughness={0.9} metalness={0.1} />
             </mesh>
             
             {/* Corridor Carpet */}
             <mesh position={[centerX, -0.05, midZ]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
                 <planeGeometry args={[1.6, Math.abs(length)]} />
-                <meshStandardMaterial color="#6b1111" roughness={0.8} />
+                <meshStandardMaterial color="#941616" roughness={0.9} metalness={0.05} />
             </mesh>
 
             {/* Corridor Walls */}
             <mesh position={[centerX - corridorWidth/2, 2.5, midZ]} castShadow receiveShadow>
                 <boxGeometry args={[0.3, 5, Math.abs(length)]} />
-                <meshStandardMaterial color="#3a4b3c" roughness={0.9} />
+                <meshStandardMaterial color="#4a5b4c" roughness={0.8} metalness={0.15} />
             </mesh>
             <mesh position={[centerX + corridorWidth/2, 2.5, midZ]} castShadow receiveShadow>
                 <boxGeometry args={[0.3, 5, Math.abs(length)]} />
-                <meshStandardMaterial color="#3a4b3c" roughness={0.9} />
+                <meshStandardMaterial color="#4a5b4c" roughness={0.8} metalness={0.15} />
             </mesh>
             
             {/* Corridor Ceiling */}
             <mesh position={[centerX, 5.1, midZ]} rotation={[-Math.PI / 2, 0, 0]}>
                 <planeGeometry args={[corridorWidth, Math.abs(length)]} />
-                <meshStandardMaterial color="#111512" roughness={1.0} />
+                <meshStandardMaterial color="#1a201c" roughness={1.0} />
             </mesh>
         </group>
     );

@@ -7,7 +7,8 @@ import {
     KageroEnemyState, 
     KageroEnemyType,
     TrapResistances,
-    TrapType 
+    TrapType,
+    KageroTileType
 } from '../types';
 
 const CELL_SIZE = 2;
@@ -21,6 +22,7 @@ interface RoomTemplate {
     width: number;
     depth: number;
     trapSlotCount: number;
+    layout?: KageroTileType[][];
 }
 
 const ROOM_TEMPLATES: RoomTemplate[] = [
@@ -106,10 +108,43 @@ function generateDungeonLayout(seed: string, dungeonType: 'castle' | 'dungeon' |
     const random = mulberry32(hashSeed(seed));
     const layouts: Record<string, RoomTemplate[]> = {
         castle: [
-            { id: 'entry', name: 'Patio de Entrada', type: 'entry', width: 12, depth: 12, trapSlotCount: 5 },
+            { 
+                id: 'entry', name: 'Patio de Entrada', type: 'entry', width: 12, depth: 12, trapSlotCount: 5,
+                layout: [
+                    [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
+                    [2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2],
+                    [2, 1, 3, 3, 1, 1, 1, 1, 3, 3, 1, 2],
+                    [2, 1, 3, 3, 1, 1, 1, 1, 3, 3, 1, 2],
+                    [2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2],
+                    [2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2],
+                    [2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2],
+                    [2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2],
+                    [2, 1, 4, 4, 1, 1, 1, 1, 4, 4, 1, 2],
+                    [2, 1, 3, 3, 1, 1, 1, 1, 3, 3, 1, 2],
+                    [2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2],
+                    [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]
+                ]
+            },
             { id: 'corridor_long', name: 'Gran Salon', type: 'combat', width: 4, depth: 16, trapSlotCount: 3 },
             { id: 'combat_small', name: 'Torre Norte', type: 'combat', width: 10, depth: 10, trapSlotCount: 6 },
-            { id: 'combat_large', name: 'Salon Principal', type: 'combat', width: 14, depth: 14, trapSlotCount: 8 },
+            { id: 'combat_large', name: 'Salon Principal', type: 'combat', width: 14, depth: 14, trapSlotCount: 8,
+                layout: [
+                    [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
+                    [2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2],
+                    [2, 1, 1, 1, 1, 2, 1, 1, 2, 1, 1, 1, 1, 2],
+                    [2, 1, 1, 1, 1, 2, 1, 1, 2, 1, 1, 1, 1, 2],
+                    [2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2],
+                    [2, 1, 2, 2, 1, 1, 1, 1, 1, 1, 2, 2, 1, 2],
+                    [2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2],
+                    [2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2],
+                    [2, 1, 2, 2, 1, 1, 1, 1, 1, 1, 2, 2, 1, 2],
+                    [2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2],
+                    [2, 1, 1, 1, 1, 2, 1, 1, 2, 1, 1, 1, 1, 2],
+                    [2, 1, 1, 1, 1, 2, 1, 1, 2, 1, 1, 1, 1, 2],
+                    [2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2],
+                    [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]
+                ]
+            },
             { id: 'boss', name: 'Trono del Senor', type: 'boss', width: 16, depth: 16, trapSlotCount: 10 },
         ],
         dungeon: [
@@ -313,6 +348,7 @@ export function generateKageroMission(
             wallHeight: 5,
             isCleared: roomTemplate.type === 'entry',
             enemySpawnPoints: [],
+            layout: roomTemplate.layout,
         };
         
         const enemies = generateEnemiesForRoom(roomId, roomTemplate.type, roomTemplate, currentX, currentZ, seed, tier);

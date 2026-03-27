@@ -667,6 +667,17 @@ export interface TrapResistances {
     freeze: number;        // resistance to freeze
 }
 
+export enum KageroTileType {
+    EMPTY = 0,      // Void, nothing rendered (or solid wall bounds)
+    FLOOR = 1,      // Standard walkable floor
+    WALL = 2,       // Solid interior block/pillar
+    ELEVATED = 3,   // Raised platform (+1 height approx)
+    STAIRS_N = 4,   // Stairs facing North
+    STAIRS_E = 5,   // Stairs facing East
+    STAIRS_S = 6,   // Stairs facing South
+    STAIRS_W = 7    // Stairs facing West
+}
+
 export interface KageroRoom {
     id: string;
     name: string;
@@ -687,6 +698,7 @@ export interface KageroRoom {
     wallHeight: number;
     isCleared: boolean;
     enemySpawnPoints: { x: number; z: number }[];
+    layout?: KageroTileType[][];
 }
 
 export interface KageroDoor {
