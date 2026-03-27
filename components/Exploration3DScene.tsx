@@ -1,70 +1,49 @@
 import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { useGameStore } from '../store/gameStore';
-import { GameState, TrapType, EnemyAiState, KageroMissionState, TrapPlacementSurface, PlacedTrap, KageroEnemyState, KageroTrapSlot } from '../types';
+import { 
+    GameState, 
+    KageroMissionState, 
+    KageroMission, 
+    KageroRoom,
+    KageroEnemyState,
+    TrapSlot,
+    TrapSurface,
+    KageroEnemyAIState,
+    KageroDoor,
+    TrapType,
+    PlacedKageroTrap
+} from '../types';
+import { generateKageroMission, getMissionForTile } from '../services/KageroDungeonGenerator';
 import { TRAP_DATA } from '../data/trapsData';
-import { generateTacticalMap, TACTICAL_MAP_SIZE } from '../services/trapHuntMap';
 import * as THREE from 'three';
 
 const CELL_SIZE = 2;
-const GRID_OFFSET = (TACTICAL_MAP_SIZE * CELL_SIZE) / 2;
-const PLAYER_HEIGHT = 1.6;
-const DETECTION_RADIUS = 4;
-const TRAP_TRIGGER_RADIUS = 1.2;
-const COMBO_WINDOW_STEPS = 3;
+const TRAP_TRIGGER_DISTANCE = 1.0;
 
-const TRAP_COLORS: Record<TrapType, string> = {
-    [TrapType.SPIKE]: '#8b5cf6',
-    [TrapType.FIRE]: '#ef4444',
-    [TrapType.ICE]: '#06b6d4',
-    [TrapType.POISON]: '#22c55e',
-    [TrapType.EXPLOSIVE]: '#f97316',
-    [TrapType.STUN]: '#eab308',
-    [TrapType.TELEPORT]: '#a855f7',
-    [TrapType.DECOY]: '#ec4899',
-    [TrapType.TRAP_DOOR]: '#64748b',
-    [TrapType.ALARM]: '#3b82f6',
-};
-
-function gridToWorld(gridX: number, gridZ: number, y: number = 0): [number, number, number] {
-    return [
-        gridX * CELL_SIZE - GRID_OFFSET + CELL_SIZE / 2,
-        y,
-        gridZ * CELL_SIZE - GRID_OFFSET + CELL_SIZE / 2
-    ];
-}
-
-function worldToGrid(worldX: number, worldZ: number): { x: number; z: number } {
-    return {
-        x: Math.round((worldX + GRID_OFFSET - CELL_SIZE / 2) / CELL_SIZE),
-        z: Math.round((worldZ + GRID_OFFSET - CELL_SIZE / 2) / CELL_SIZE)
-    };
+interface PlayerState {
+    position: THREE.Vector3;
+    rotation: number;
+    roomId: string;
 }
 
 function PlayerController({ 
-    position, 
-    onPositionChange, 
+    playerRef, 
     canMove,
-    rotation 
+    mission 
 }: { 
-    position: [number, number, number], 
-    onPositionChange: (p: [number, number, number]) => void, 
+    playerRef: React.MutableRefObject<PlayerState>, 
     canMove: boolean,
-    rotation: React.MutableRefObject<number>
+    mission: KageroMission | null
 }) {
     const meshRef = useRef<THREE.Group>(null);
     const { camera } = useThree();
     const keysPressed = useRef<Set<string>>(new Set());
-    const moveSpeed = 0.1;
+    const moveSpeed = 0.12;
     const smoothRotation = useRef(0);
 
     useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            const key = e.key.toLowerCase();
-            if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
-                keysPressed.current.add(key);
-            }
-        };
+        const handleKeyDown = (e: KeyboardEvent) => keysPressed.current.add(e.key.toLowerCase());
         const handleKeyUp = (e: KeyboardEvent) => keysPressed.current.delete(e.key.toLowerCase());
         window.addEventListener('keydown', handleKeyDown);
         window.addEventListener('keyup', handleKeyUp);
@@ -75,7 +54,7 @@ function PlayerController({
     }, []);
 
     useFrame(() => {
-        if (!canMove) return;
+        if (!canMove || !meshRef.current) return;
 
         let dx = 0, dz = 0;
         if (keysPressed.current.has('w') || keysPressed.current.has('arrowup')) dz -= moveSpeed;
@@ -88,185 +67,123 @@ function PlayerController({
             dx = (dx / len) * moveSpeed;
             dz = (dz / len) * moveSpeed;
 
-            const bounds = GRID_OFFSET - CELL_SIZE;
-            const newX = Math.max(-bounds, Math.min(bounds, position[0] + dx));
-            const newZ = Math.max(-bounds, Math.min(bounds, position[2] + dz));
+            const newX = playerRef.current.position.x + dx;
+            const newZ = playerRef.current.position.z + dz;
             
-            onPositionChange([newX, position[1], newZ]);
+            if (mission) {
+                const currentRoom = mission.rooms.find(r => r.id === mission.currentRoomId);
+                if (currentRoom) {
+                    const bounds = currentRoom.bounds;
+                    const margin = 2;
+                    if (newX >= bounds.minX * CELL_SIZE + margin && 
+                        newX <= bounds.maxX * CELL_SIZE - margin &&
+                        newZ >= bounds.minZ * CELL_SIZE + margin && 
+                        newZ <= bounds.maxZ * CELL_SIZE - margin) {
+                        playerRef.current.position.x = newX;
+                        playerRef.current.position.z = newZ;
+                    }
+                }
+            } else {
+                playerRef.current.position.x = newX;
+                playerRef.current.position.z = newZ;
+            }
             
-            rotation.current = Math.atan2(dx, dz);
+            playerRef.current.rotation = Math.atan2(dx, dz);
         }
 
-        const targetRot = rotation.current;
-        smoothRotation.current += (targetRot - smoothRotation.current) * 0.15;
+        smoothRotation.current += (playerRef.current.rotation - smoothRotation.current) * 0.12;
+        meshRef.current.rotation.y = smoothRotation.current;
+        meshRef.current.position.copy(playerRef.current.position);
 
-        if (meshRef.current) {
-            meshRef.current.rotation.y = smoothRotation.current;
-        }
-
-        const cameraOffset = 5;
-        const cameraHeight = 7;
+        const offsetDist = 5;
+        const camHeight = 7;
         camera.position.set(
-            position[0] - Math.sin(smoothRotation.current) * cameraOffset,
-            cameraHeight,
-            position[2] + Math.cos(smoothRotation.current) * cameraOffset
+            playerRef.current.position.x - Math.sin(smoothRotation.current) * offsetDist,
+            camHeight,
+            playerRef.current.position.z + Math.cos(smoothRotation.current) * offsetDist
         );
-        camera.lookAt(position[0], position[1] + 0.5, position[2]);
+        camera.lookAt(playerRef.current.position.x, playerRef.current.position.y, playerRef.current.position.z);
     });
 
     return (
-        <group ref={meshRef} position={position}>
-            <mesh castShadow>
-                <cylinderGeometry args={[0.35, 0.4, PLAYER_HEIGHT, 8]} />
+        <group ref={meshRef}>
+            <mesh castShadow position={[0, 0.7, 0]}>
+                <cylinderGeometry args={[0.3, 0.35, 1.4, 8]} />
                 <meshStandardMaterial color="#fbbf24" metalness={0.3} roughness={0.7} />
             </mesh>
-            <mesh position={[0, PLAYER_HEIGHT / 2 + 0.15, 0]}>
-                <sphereGeometry args={[0.28, 12, 12]} />
+            <mesh position={[0, 1.5, 0]}>
+                <sphereGeometry args={[0.25, 12, 12]} />
                 <meshStandardMaterial color="#fef3c7" />
             </mesh>
-            <mesh position={[0.4, PLAYER_HEIGHT / 2 - 0.2, 0]} rotation={[0, 0, -Math.PI / 6]}>
-                <coneGeometry args={[0.1, 0.5, 6]} />
-                <meshStandardMaterial color="#92400e" />
-            </mesh>
         </group>
     );
 }
 
-function DungeonEnvironment({ map }: { map: any[][] }) {
+function RoomGeometry({ room }: { room: KageroRoom }) {
+    const bounds = room.bounds;
+    const width = (bounds.maxX - bounds.minX) * CELL_SIZE;
+    const depth = (bounds.maxZ - bounds.minZ) * CELL_SIZE;
+    const centerX = (bounds.minX + bounds.maxX) / 2 * CELL_SIZE;
+    const centerZ = (bounds.minZ + bounds.maxZ) / 2 * CELL_SIZE;
+
     return (
         <group>
-            {map.map((row, x) =>
-                row.map((cell: any, z: number) => {
-                    if (cell.type === 'WALL') {
-                        const [wx, , wz] = gridToWorld(x, z);
-                        return (
-                            <mesh key={`wall-${x}-${z}`} position={[wx, cell.height / 2, wz]} castShadow receiveShadow>
-                                <boxGeometry args={[CELL_SIZE, cell.height, CELL_SIZE]} />
-                                <meshStandardMaterial color="#44403c" roughness={0.9} />
-                            </mesh>
-                        );
-                    }
-                    if (cell.type === 'STONE') {
-                        const [wx, , wz] = gridToWorld(x, z);
-                        return (
-                            <mesh key={`stone-${x}-${z}`} position={[wx, cell.height / 2, wz]} castShadow receiveShadow>
-                                <boxGeometry args={[CELL_SIZE * 0.6, cell.height, CELL_SIZE * 0.6]} />
-                                <meshStandardMaterial color="#78716c" roughness={0.95} />
-                            </mesh>
-                        );
-                    }
-                    return null;
-                })
-            )}
-            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]} receiveShadow>
-                <planeGeometry args={[TACTICAL_MAP_SIZE * CELL_SIZE, TACTICAL_MAP_SIZE * CELL_SIZE]} />
-                <meshStandardMaterial color="#1c1917" roughness={1} />
+            <mesh position={[centerX, -0.1, centerZ]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+                <planeGeometry args={[width, depth]} />
+                <meshStandardMaterial color="#1a1a2e" roughness={1} />
+            </mesh>
+
+            <mesh position={[centerX - width/2, room.wallHeight/2, centerZ]} castShadow receiveShadow>
+                <boxGeometry args={[0.3, room.wallHeight, depth]} />
+                <meshStandardMaterial color="#2d2d44" roughness={0.9} />
+            </mesh>
+            <mesh position={[centerX + width/2, room.wallHeight/2, centerZ]} castShadow receiveShadow>
+                <boxGeometry args={[0.3, room.wallHeight, depth]} />
+                <meshStandardMaterial color="#2d2d44" roughness={0.9} />
+            </mesh>
+            <mesh position={[centerX, room.wallHeight/2, centerZ - depth/2]} castShadow receiveShadow>
+                <boxGeometry args={[width, room.wallHeight, 0.3]} />
+                <meshStandardMaterial color="#2d2d44" roughness={0.9} />
+            </mesh>
+            <mesh position={[centerX, room.wallHeight/2, centerZ + depth/2]} castShadow receiveShadow>
+                <boxGeometry args={[width, room.wallHeight, 0.3]} />
+                <meshStandardMaterial color="#2d2d44" roughness={0.9} />
+            </mesh>
+
+            <mesh position={[centerX, room.wallHeight + 0.1, centerZ]} rotation={[-Math.PI / 2, 0, 0]}>
+                <planeGeometry args={[width, depth]} />
+                <meshStandardMaterial color="#1a1a2e" roughness={1} />
             </mesh>
         </group>
     );
 }
 
-function TacticalGridOverlay({ 
-    map, 
-    visible, 
-    surface, 
-    onCellClick, 
-    trapPlacements, 
-    selectedTrap,
-    hoveredCell 
+function TrapSlotMesh({ 
+    slot, 
+    onClick, 
+    selected, 
+    hasTrap 
 }: { 
-    map: any[][], 
-    visible: boolean, 
-    surface: TrapPlacementSurface,
-    onCellClick: (x: number, z: number) => void, 
-    trapPlacements: PlacedTrap[], 
-    selectedTrap: TrapType | null,
-    hoveredCell: { x: number; z: number } | null
+    slot: TrapSlot, 
+    onClick: () => void, 
+    selected: boolean,
+    hasTrap: boolean 
 }) {
-    if (!visible) return null;
+    const color = hasTrap ? '#8b5cf6' : selected ? '#22c55e' : '#4ade8044';
+    const opacity = hasTrap ? 0.9 : selected ? 0.6 : 0.3;
 
     return (
-        <group>
-            {map.map((row, x) =>
-                row.map((cell: any, z: number) => {
-                    const isWall = cell.type === 'WALL';
-                    const isStone = cell.type === 'STONE';
-                    
-                    let canPlace = false;
-                    let y = 0.02;
-                    
-                    if (surface === 'floor' && !isWall && !isStone) {
-                        canPlace = true;
-                        y = 0.02;
-                    } else if (surface === 'wall' && isWall) {
-                        canPlace = true;
-                        y = cell.height / 2;
-                    } else if (surface === 'ceiling') {
-                        canPlace = true;
-                        y = 6;
-                    }
-
-                    const existingTrap = trapPlacements.find(t => t.gridX === x && t.gridZ === z && t.surface === surface);
-                    const isHovered = hoveredCell?.x === x && hoveredCell?.z === z;
-                    
-                    let color = '#22c55e22';
-                    let opacity = 0.15;
-                    
-                    if (existingTrap) {
-                        color = TRAP_COLORS[existingTrap.trapType];
-                        opacity = 0.7;
-                    } else if (isHovered && canPlace && selectedTrap) {
-                        color = TRAP_COLORS[selectedTrap];
-                        opacity = 0.5;
-                    } else if (!canPlace) {
-                        color = '#ef444422';
-                        opacity = 0.1;
-                    }
-
-                    const [wx, , wz] = gridToWorld(x, z);
-                    
-                    return (
-                        <mesh
-                            key={`tgrid-${surface}-${x}-${z}`}
-                            position={[wx, y, wz]}
-                            rotation={surface === 'wall' ? [-Math.PI / 2, 0, 0] : surface === 'ceiling' ? [Math.PI / 2, 0, 0] : [-Math.PI / 2, 0, 0]}
-                            onClick={() => canPlace && onCellClick(x, z)}
-                            onPointerEnter={() => {}}
-                            onPointerLeave={() => {}}
-                        >
-                            <planeGeometry args={[CELL_SIZE * 0.92, CELL_SIZE * 0.92]} />
-                            <meshBasicMaterial color={color} transparent opacity={opacity} />
-                        </mesh>
-                    );
-                })
-            )}
-        </group>
-    );
-}
-
-function TrapMesh({ trap }: { trap: PlacedTrap }) {
-    const meshRef = useRef<THREE.Mesh>(null);
-    const color = trap.triggered ? '#444444' : TRAP_COLORS[trap.trapType];
-
-    useFrame(({ clock }) => {
-        if (meshRef.current && !trap.triggered) {
-            meshRef.current.rotation.y = clock.getElapsedTime() * 1.5;
-            const bounce = Math.sin(clock.getElapsedTime() * 4) * 0.05;
-            meshRef.current.position.y = trap.position.y + bounce;
-        }
-    });
-
-    const [wx, wy, wz] = gridToWorld(trap.gridX, trap.gridZ, trap.position.y);
-
-    return (
-        <mesh ref={meshRef} position={[wx, wy, wz]} castShadow>
-            <boxGeometry args={[0.5, 0.12, 0.5]} />
+        <mesh
+            position={[slot.position.x, slot.position.y, slot.position.z]}
+            onClick={onClick}
+        >
+            <boxGeometry args={[1.2, 0.1, 1.2]} />
             <meshStandardMaterial 
                 color={color} 
-                emissive={color} 
-                emissiveIntensity={trap.triggered ? 0 : 0.5}
-                metalness={0.4}
-                roughness={0.3}
+                transparent 
+                opacity={opacity}
+                emissive={hasTrap ? '#8b5cf6' : selected ? '#22c55e' : '#000000'}
+                emissiveIntensity={hasTrap ? 0.3 : selected ? 0.2 : 0}
             />
         </mesh>
     );
@@ -274,49 +191,44 @@ function TrapMesh({ trap }: { trap: PlacedTrap }) {
 
 function EnemyMesh({ enemy }: { enemy: KageroEnemyState }) {
     const groupRef = useRef<THREE.Group>(null);
-    const targetPos = useRef({ x: 0, z: 0 });
+    const targetPos = useRef(new THREE.Vector3());
 
     useEffect(() => {
-        targetPos.current = {
-            x: enemy.gridX * CELL_SIZE - GRID_OFFSET + CELL_SIZE / 2,
-            z: enemy.gridZ * CELL_SIZE - GRID_OFFSET + CELL_SIZE / 2
-        };
-    }, [enemy.gridX, enemy.gridZ]);
+        targetPos.current.set(enemy.position.x, enemy.position.y, enemy.position.z);
+    }, [enemy.position]);
 
     useFrame(() => {
         if (groupRef.current) {
-            const currentX = groupRef.current.position.x;
-            const currentZ = groupRef.current.position.z;
-            groupRef.current.position.x += (targetPos.current.x - currentX) * 0.12;
-            groupRef.current.position.z += (targetPos.current.z - currentZ) * 0.12;
+            groupRef.current.position.lerp(targetPos.current, 0.1);
         }
     });
 
-    const hpPercent = enemy.hp / enemy.maxHp;
-    const stateColor = enemy.aiState === EnemyAiState.PATROL ? '#ef4444' :
-                      enemy.aiState === EnemyAiState.INVESTIGATE ? '#eab308' :
-                      enemy.aiState === EnemyAiState.CHASE ? '#f97316' :
-                      enemy.aiState === EnemyAiState.STUNNED ? '#6b7280' :
-                      enemy.aiState === EnemyAiState.DECOYED ? '#ec4899' : '#ef4444';
+    if (!enemy.isAlive) return null;
 
-    const [wx, , wz] = gridToWorld(enemy.gridX, enemy.gridZ);
+    const hpPercent = enemy.hp / enemy.maxHp;
+    const stateColor = enemy.aiState === 'patrol' ? '#ef4444' :
+                      enemy.aiState === 'investigate' ? '#eab308' :
+                      enemy.aiState === 'chase' ? '#f97316' :
+                      enemy.aiState === 'stunned' ? '#6b7280' :
+                      enemy.aiState === 'confused' ? '#a855f7' : '#ef4444';
 
     return (
-        <group ref={groupRef} position={[wx, 0.6, wz]}>
+        <group ref={groupRef} position={[enemy.position.x, enemy.position.y, enemy.position.z]}>
             <mesh castShadow>
-                <boxGeometry args={[0.65, 1.0, 0.65]} />
+                <boxGeometry args={[0.7, 1.2, 0.7]} />
                 <meshStandardMaterial color={stateColor} />
             </mesh>
-            <mesh position={[0, 0.65, 0]}>
-                <sphereGeometry args={[0.22, 8, 8]} />
+            <mesh position={[0, 0.75, 0]}>
+                <sphereGeometry args={[0.25, 8, 8]} />
                 <meshStandardMaterial color={stateColor} />
             </mesh>
-            <mesh position={[0, 1.25, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-                <planeGeometry args={[0.5, 0.06]} />
+            
+            <mesh position={[0, 1.35, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+                <planeGeometry args={[0.5 * hpPercent, 0.08]} />
                 <meshBasicMaterial color="#22c55e" />
             </mesh>
-            <mesh position={[0, 1.25, 0.01]} rotation={[-Math.PI / 2, 0, 0]}>
-                <planeGeometry args={[0.52, 0.08]} />
+            <mesh position={[0, 1.35, 0.01]} rotation={[-Math.PI / 2, 0, 0]}>
+                <planeGeometry args={[0.52, 0.1]} />
                 <meshBasicMaterial color="#1f2937" />
             </mesh>
         </group>
@@ -327,59 +239,179 @@ function Lighting() {
     return (
         <>
             <ambientLight intensity={0.2} color="#fef3c7" />
-            <directionalLight position={[8, 12, 8]} intensity={0.6} castShadow shadow-mapSize={[2048, 2048]} />
+            <directionalLight position={[8, 12, 8]} intensity={0.5} castShadow shadow-mapSize={[2048, 2048]} />
             <pointLight position={[0, 5, 0]} intensity={0.3} color="#fef9c3" />
-            <pointLight position={[-6, 3, -6]} intensity={0.15} color="#ef4444" />
-            <pointLight position={[6, 3, 6]} intensity={0.15} color="#3b82f6" />
         </>
     );
 }
 
-function SceneContent({ 
-    missionState, 
-    map, 
-    trapPlacements, 
-    enemies, 
-    onCellClick, 
-    playerPos, 
-    setPlayerPos,
-    playerRotation,
-    selectedSurface,
-    hoveredCell
-}: any) {
-    const canMove = [
-        KageroMissionState.THIRD_PERSON_EXPLORATION,
-        KageroMissionState.ENEMY_APPROACH
-    ].includes(missionState);
+function DoorMesh({ 
+    door, 
+    onPlayerEnter 
+}: { 
+    door: KageroDoor, 
+    onPlayerEnter: (door: KageroDoor) => void 
+}) {
+    const [hovered, setHovered] = useState(false);
     
-    const showGrid = missionState === KageroMissionState.TACTICAL_MODE;
+    return (
+        <group 
+            position={[door.position.x, door.position.y, door.position.z]}
+            onClick={() => onPlayerEnter(door)}
+            onPointerEnter={() => setHovered(true)}
+            onPointerLeave={() => setHovered(false)}
+        >
+            <mesh castShadow>
+                <boxGeometry args={[2, 3, 0.3]} />
+                <meshStandardMaterial 
+                    color={hovered ? '#22c55e' : door.isLocked ? '#dc2626' : '#78716c'} 
+                    emissive={hovered ? '#22c55e' : '#000000'}
+                    emissiveIntensity={hovered ? 0.3 : 0}
+                />
+            </mesh>
+            {door.isLocked && (
+                <mesh position={[0.4, 0, 0.2]}>
+                    <sphereGeometry args={[0.15, 8, 8]} />
+                    <meshStandardMaterial color="#fbbf24" metalness={0.8} roughness={0.2} />
+                </mesh>
+            )}
+        </group>
+    );
+}
+
+function CorridorMesh({ from, to }: { from: KageroRoom, to: KageroRoom }) {
+    const midZ = ((from.bounds.maxZ + to.bounds.minZ) / 2) * CELL_SIZE;
+    const length = (to.bounds.minZ - from.bounds.maxZ) * CELL_SIZE;
+    const centerX = from.center.x;
+    
+    return (
+        <group>
+            <mesh position={[centerX, -0.1, midZ]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+                <planeGeometry args={[4, Math.abs(length)]} />
+                <meshStandardMaterial color="#1a1a2e" roughness={1} />
+            </mesh>
+            <mesh position={[centerX - 2, 2.5, midZ]} castShadow receiveShadow>
+                <boxGeometry args={[0.3, 5, Math.abs(length)]} />
+                <meshStandardMaterial color="#2d2d44" roughness={0.9} />
+            </mesh>
+            <mesh position={[centerX + 2, 2.5, midZ]} castShadow receiveShadow>
+                <boxGeometry args={[0.3, 5, Math.abs(length)]} />
+                <meshStandardMaterial color="#2d2d44" roughness={0.9} />
+            </mesh>
+        </group>
+    );
+}
+
+function SceneContent({ 
+    mission, 
+    missionState, 
+    selectedSlot, 
+    onSlotClick, 
+    onDoorEnter,
+    playerRef,
+    enemies,
+    triggeringTraps 
+}: any) {
+    const canMove = missionState === KageroMissionState.EXPLORATION || 
+                   missionState === KageroMissionState.KAGERO_PLAYER_LURE;
+    const showTrapSlots = missionState === KageroMissionState.TACTICAL_SETUP;
+
+    const currentRoom = mission?.rooms.find(r => r.id === mission.currentRoomId);
+    const currentRoomDoors = mission?.doors.filter(d => d.fromRoomId === currentRoom?.id) || [];
 
     return (
         <>
             <Lighting />
-            <DungeonEnvironment map={map} />
-            <PlayerController 
-                position={playerPos} 
-                onPositionChange={setPlayerPos} 
-                canMove={canMove}
-                rotation={playerRotation}
-            />
-            <TacticalGridOverlay 
-                visible={showGrid}
-                map={map}
-                surface={selectedSurface}
-                onCellClick={onCellClick}
-                trapPlacements={trapPlacements}
-                selectedTrap={null}
-                hoveredCell={hoveredCell}
-            />
-            {trapPlacements.map(trap => (
-                <TrapMesh key={trap.id} trap={trap} />
+            
+            {mission?.rooms.map(room => (
+                <RoomGeometry key={room.id} room={room} />
             ))}
+            
+            {mission && mission.rooms.length > 1 && (
+                <>
+                    {mission.rooms.slice(0, -1).map((room, idx) => (
+                        <CorridorMesh key={`corridor_${idx}`} from={room} to={mission.rooms[idx + 1]} />
+                    ))}
+                </>
+            )}
+            
+            <PlayerController 
+                playerRef={playerRef} 
+                canMove={canMove}
+                mission={mission}
+            />
+            
+            {showTrapSlots && currentRoom?.trapSlots.map(slot => {
+                const hasTrap = mission?.placedTraps.some(t => t.slotId === slot.id);
+                return (
+                    <TrapSlotMesh
+                        key={slot.id}
+                        slot={slot}
+                        onClick={() => onSlotClick(slot)}
+                        selected={selectedSlot?.id === slot.id}
+                        hasTrap={!!hasTrap}
+                    />
+                );
+            })}
+            
             {enemies.filter(e => e.isAlive).map(enemy => (
                 <EnemyMesh key={enemy.id} enemy={enemy} />
             ))}
+            
+            {currentRoomDoors.map(door => (
+                <DoorMesh key={door.id} door={door} onPlayerEnter={onDoorEnter} />
+            ))}
+            
+            {triggeringTraps.map(trapEffect => (
+                <TrapEffect key={trapEffect.id} effect={trapEffect} />
+            ))}
         </>
+    );
+}
+
+interface TrapEffectData {
+    id: string;
+    position: THREE.Vector3;
+    trapType: TrapType;
+    startTime: number;
+}
+
+function TrapEffect({ effect }: { effect: TrapEffectData }) {
+    const meshRef = useRef<THREE.Mesh>(null);
+    const [opacity, setOpacity] = useState(1);
+    
+    useFrame(() => {
+        const elapsed = Date.now() - effect.startTime;
+        const duration = 800;
+        if (elapsed > duration) {
+            setOpacity(0);
+        } else {
+            setOpacity(1 - (elapsed / duration));
+        }
+        if (meshRef.current) {
+            meshRef.current.scale.setScalar(1 + (elapsed / duration) * 2);
+        }
+    });
+    
+    const color = effect.trapType === TrapType.FIRE ? '#ef4444' :
+                  effect.trapType === TrapType.ICE ? '#60a5fa' :
+                  effect.trapType === TrapType.POISON ? '#a855f7' :
+                  effect.trapType === TrapType.EXPLOSIVE ? '#f97316' :
+                  effect.trapType === TrapType.STUN ? '#fbbf24' :
+                  effect.trapType === TrapType.SPIKE ? '#dc2626' :
+                  '#22c55e';
+    
+    return (
+        <mesh ref={meshRef} position={[effect.position.x, effect.position.y, effect.position.z]}>
+            <sphereGeometry args={[1.5, 16, 16]} />
+            <meshStandardMaterial 
+                color={color}
+                transparent
+                opacity={opacity * 0.6}
+                emissive={color}
+                emissiveIntensity={0.5}
+            />
+        </mesh>
     );
 }
 
@@ -390,126 +422,53 @@ export default function Exploration3DScene() {
     const clearCurrentEncounter = useGameStore(s => s.clearCurrentEncounter);
     const syncOverworldEnemies = useGameStore(s => s.syncOverworldEnemies);
 
-    const [missionState, setMissionState] = useState<KageroMissionState>(KageroMissionState.MISSION_LOAD);
+    const [missionState, setMissionState] = useState<KageroMissionState>(KageroMissionState.LOADING);
+    const [mission, setMission] = useState<KageroMission | null>(null);
+    const [selectedSlot, setSelectedSlot] = useState<TrapSlot | null>(null);
+    const [selectedSurface, setSelectedSurface] = useState<TrapSurface>(TrapSurface.FLOOR);
     const [selectedTrapType, setSelectedTrapType] = useState<TrapType>(TrapType.SPIKE);
-    const [selectedSurface, setSelectedSurface] = useState<TrapPlacementSurface>('floor');
-    const [trapPlacements, setTrapPlacements] = useState<PlacedTrap[]>([]);
-    const [enemies, setEnemies] = useState<KageroEnemyState[]>([]);
-    const [playerPos, setPlayerPos] = useState<[number, number, number]>([0, PLAYER_HEIGHT / 2, 0]);
-    const [playerRotation] = useState<React.MutableRefObject<number>>({ current: 0 });
-    const [hoveredCell, setHoveredCell] = useState<{ x: number; z: number } | null>(null);
+    const [triggeringTraps, setTriggeringTraps] = useState<TrapEffectData[]>([]);
+    const playerRef = useRef<PlayerState>({
+        position: new THREE.Vector3(0, 0.8, 0),
+        rotation: 0,
+        roomId: '',
+    });
+    const [currentStep, setCurrentStep] = useState(0);
     const [comboCount, setComboCount] = useState(0);
     const [maxCombo, setMaxCombo] = useState(0);
-    const [missionProgress, setMissionProgress] = useState(0);
-    const [currentStep, setCurrentStep] = useState(0);
-    const [comboTimeout, setComboTimeout] = useState<NodeJS.Timeout | null>(null);
-    
-    const mapSeed = explorationState.zoneContext?.poiId || 'kagero_default';
-    const map = useMemo(() => generateTacticalMap(mapSeed), [mapSeed]);
-    const totalEnemies = useMemo(() => enemies.length, [enemies]);
-    const enemiesAlive = useMemo(() => enemies.filter(e => e.isAlive).length, [enemies]);
 
-    const exitToHex = useCallback(() => {
-        if (missionState === KageroMissionState.MISSION_COMPLETE) {
-            clearCurrentEncounter();
-            addLog('Zona limpiada!', 'combat');
-        }
-        syncOverworldEnemies();
-        setGameState(GameState.OVERWORLD);
-    }, [missionState, clearCurrentEncounter, syncOverworldEnemies, setGameState, addLog]);
+    const TRAP_TYPES_BY_SURFACE = useMemo(() => ({
+        [TrapSurface.FLOOR]: [TrapType.SPIKE, TrapType.FIRE, TrapType.ICE, TrapType.POISON, TrapType.EXPLOSIVE, TrapType.TRAP_DOOR],
+        [TrapSurface.WALL]: [TrapType.STUN, TrapType.EXPLOSIVE, TrapType.ALARM],
+        [TrapSurface.CEILING]: [TrapType.STUN, TrapType.EXPLOSIVE, TrapType.TELEPORT],
+    }), []);
 
     useEffect(() => {
-        const zoneEnemies = explorationState.zoneEnemies || [];
+        const tier = explorationState.zoneContext?.tier || 1;
+        const { dungeonType, name } = getMissionForTile('dungeon', explorationState.currentBiome || 'dungeon', tier);
         
-        const spawnedEnemies: KageroEnemyState[] = zoneEnemies.map((e: any, idx: number) => {
-            const spawnX = 8 + Math.floor(Math.random() * 6);
-            const spawnZ = 8 + Math.floor(Math.random() * 6);
-            const patrolPath = [
-                { x: spawnX, z: spawnZ },
-                { x: spawnX + 3, z: spawnZ },
-                { x: spawnX + 3, z: spawnZ + 3 },
-                { x: spawnX, z: spawnZ + 3 },
-            ];
-            
-            return {
-                id: e.id || `enemy_${idx}`,
-                name: e.name || ['Goblin', 'Orco', 'Slime', 'Skeleton'][idx % 4],
-                hp: e.hp || 40,
-                maxHp: e.maxHp || e.hp || 40,
-                position: { x: 0, y: 0, z: 0 },
-                gridX: spawnX,
-                gridZ: spawnZ,
-                aiState: EnemyAiState.PATROL,
-                patrolPath,
-                patrolIndex: 0,
-                targetX: patrolPath[0].x,
-                targetZ: patrolPath[0].z,
-                detectionRadius: DETECTION_RADIUS,
-                moveSpeed: 0.8,
-                stunnedTurns: 0,
-                poisonTurns: 0,
-                knockedBack: false,
-                knockbackDir: null,
-                triggeredTrapIds: [],
-                isAlive: true,
-            };
-        });
-
-        if (spawnedEnemies.length === 0) {
-            spawnedEnemies.push({
-                id: 'patrol_01',
-                name: 'Patrullero',
-                hp: 35,
-                maxHp: 35,
-                position: { x: 0, y: 0, z: 0 },
-                gridX: 10,
-                gridZ: 10,
-                aiState: EnemyAiState.PATROL,
-                patrolPath: [{ x: 10, z: 10 }, { x: 14, z: 10 }, { x: 14, z: 14 }, { x: 10, z: 14 }],
-                patrolIndex: 0,
-                targetX: 10,
-                targetZ: 10,
-                detectionRadius: DETECTION_RADIUS,
-                moveSpeed: 0.7,
-                stunnedTurns: 0,
-                poisonTurns: 0,
-                knockedBack: false,
-                knockbackDir: null,
-                triggeredTrapIds: [],
-                isAlive: true,
-            });
-            spawnedEnemies.push({
-                id: 'patrol_02',
-                name: 'Explorador',
-                hp: 28,
-                maxHp: 28,
-                position: { x: 0, y: 0, z: 0 },
-                gridX: 6,
-                gridZ: 12,
-                aiState: EnemyAiState.PATROL,
-                patrolPath: [{ x: 6, z: 12 }, { x: 6, z: 6 }, { x: 12, z: 6 }],
-                patrolIndex: 0,
-                targetX: 6,
-                targetZ: 12,
-                detectionRadius: DETECTION_RADIUS + 1,
-                moveSpeed: 0.9,
-                stunnedTurns: 0,
-                poisonTurns: 0,
-                knockedBack: false,
-                knockbackDir: null,
-                triggeredTrapIds: [],
-                isAlive: true,
-            });
-        }
-
-        setEnemies(spawnedEnemies);
-        addLog(`=== MISION KAGERO INICIADA ===`, 'narrative');
-        addLog(`Zona: ${explorationState.zoneName || 'Calabozo'}`, 'narrative');
-        addLog(`Enemigos activos: ${spawnedEnemies.length}`, 'info');
-        addLog('[T] Modo Tactico | [1/2/3] Superficie', 'info');
+        const generatedMission = generateKageroMission(
+            explorationState.zoneContext?.poiId || `mission_${Date.now()}`,
+            dungeonType,
+            name || explorationState.zoneName || 'Mision',
+            tier
+        );
+        
+        setMission(generatedMission);
+        playerRef.current.position.set(
+            generatedMission.playerPosition.x,
+            generatedMission.playerPosition.y,
+            generatedMission.playerPosition.z
+        );
+        playerRef.current.roomId = generatedMission.currentRoomId;
+        
+        addLog(`=== ${generatedMission.missionName.toUpperCase()} ===`, 'narrative');
+        addLog(`Dungeon: ${generatedMission.dungeonType}`, 'narrative');
+        addLog(`Enemigos: ${generatedMission.totalEnemies}`, 'info');
+        addLog('[T] Modo Tactico | [1-3] Superficie | [WASD] Mover', 'info');
 
         const loadTimer = setTimeout(() => {
-            setMissionState(KageroMissionState.THIRD_PERSON_EXPLORATION);
+            setMissionState(KageroMissionState.EXPLORATION);
         }, 800);
 
         return () => clearTimeout(loadTimer);
@@ -518,29 +477,47 @@ export default function Exploration3DScene() {
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === '1') {
-                setSelectedSurface('floor');
-                addLog('Superficie: PISO', 'info');
+                setSelectedSurface(TrapSurface.FLOOR);
+                setSelectedTrapType(TrapType.SPIKE);
+                addLog('PISO - Spike', 'info');
             } else if (e.key === '2') {
-                setSelectedSurface('wall');
-                addLog('Superficie: PARED', 'info');
+                setSelectedSurface(TrapSurface.WALL);
+                setSelectedTrapType(TrapType.STUN);
+                addLog('PARED - Stun', 'info');
             } else if (e.key === '3') {
-                setSelectedSurface('ceiling');
-                addLog('Superficie: TECHO', 'info');
+                setSelectedSurface(TrapSurface.CEILING);
+                setSelectedTrapType(TrapType.EXPLOSIVE);
+                addLog('TECHO - Explosivo', 'info');
+            }
+            
+            if (e.key === 'q' || e.key === 'Q') {
+                setSelectedTrapType(TrapType.SPIKE);
+                addLog('Trampa: Spike', 'info');
+            } else if (e.key === 'w' || e.key === 'W') {
+                setSelectedTrapType(TrapType.FIRE);
+                addLog('Trampa: Fuego', 'info');
+            } else if (e.key === 'e' || e.key === 'E') {
+                setSelectedTrapType(TrapType.ICE);
+                addLog('Trampa: Hielo', 'info');
+            } else if (e.key === 'r' || e.key === 'R') {
+                setSelectedTrapType(TrapType.POISON);
+                addLog('Trampa: Veneno', 'info');
             }
             
             if (e.key.toLowerCase() === 't') {
-                if (missionState === KageroMissionState.THIRD_PERSON_EXPLORATION) {
-                    setMissionState(KageroMissionState.TACTICAL_MODE);
-                    addLog('>>> MODO TACTICO: Planifica trampas', 'info');
-                } else if (missionState === KageroMissionState.TACTICAL_MODE) {
-                    setMissionState(KageroMissionState.THIRD_PERSON_EXPLORATION);
+                if (missionState === KageroMissionState.EXPLORATION) {
+                    setMissionState(KageroMissionState.TACTICAL_SETUP);
+                    addLog('>>> Modo Tactico: Coloca trampas', 'info');
+                } else if (missionState === KageroMissionState.TACTICAL_SETUP) {
+                    setMissionState(KageroMissionState.EXPLORATION);
                     addLog('<<< Explorando...', 'info');
                 }
             }
             
             if (e.key === 'Escape') {
-                if (missionState === KageroMissionState.TACTICAL_MODE) {
-                    setMissionState(KageroMissionState.THIRD_PERSON_EXPLORATION);
+                if (missionState === KageroMissionState.TACTICAL_SETUP) {
+                    setMissionState(KageroMissionState.EXPLORATION);
+                    setSelectedSlot(null);
                 } else {
                     setMissionState(KageroMissionState.RETURN_TO_HEX);
                 }
@@ -550,238 +527,328 @@ export default function Exploration3DScene() {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [missionState, addLog]);
 
+    const handleDoorEnter = useCallback((door: KageroDoor) => {
+        if (!mission) return;
+        if (door.isLocked) {
+            addLog('Puerta bloqueada - Derrota a todos los enemigos primero', 'info');
+            return;
+        }
+        
+        const currentRoom = mission.rooms.find(r => r.id === mission.currentRoomId);
+        if (currentRoom && !currentRoom.isCleared) {
+            addLog('Derrota a todos los enemigos para desbloquear las puertas', 'info');
+            return;
+        }
+        
+        const nextRoomId = door.toRoomId;
+        const nextRoom = mission.rooms.find(r => r.id === nextRoomId);
+        if (!nextRoom) return;
+        
+        playerRef.current.position.set(nextRoom.center.x, 0.8, nextRoom.center.z);
+        setMission(prev => prev ? { ...prev, currentRoomId: nextRoomId } : prev);
+        addLog(`Entrando a: ${nextRoom.name}`, 'narrative');
+    }, [mission, addLog]);
+
+    const triggerTrap = useCallback((trap: PlacedKageroTrap, enemy: KageroEnemyState, currentCombo: number): { damage: number; effects: string[]; newCombo: number } => {
+        const trapData = TRAP_DATA[trap.trapType];
+        if (!trapData) return { damage: 0, effects: [], newCombo: currentCombo };
+        
+        const effects: string[] = [];
+        let damage = trapData.damage;
+        let newCombo = currentCombo;
+
+        switch (trap.trapType) {
+            case TrapType.FIRE:
+                damage = Math.floor(damage * (1 - enemy.resistances.magical / 100));
+                effects.push('Fuego');
+                break;
+            case TrapType.ICE:
+                damage = Math.floor(damage * (1 - enemy.resistances.freeze / 100));
+                if (enemy.frozenTurns === 0) effects.push('Congelado');
+                break;
+            case TrapType.POISON:
+                damage = Math.floor(damage * (1 - enemy.resistances.poison / 100));
+                if (enemy.poisonTurns === 0) effects.push('Envenenado');
+                break;
+            case TrapType.STUN:
+                damage = Math.floor(damage * (1 - enemy.resistances.stun / 100));
+                if (enemy.stunnedTurns === 0) effects.push('Aturdido');
+                break;
+            case TrapType.SPIKE:
+            case TrapType.EXPLOSIVE:
+                damage = Math.floor(damage * (1 - enemy.resistances.physical / 100));
+                effects.push('Dano');
+                break;
+            default:
+                effects.push('Efecto');
+        }
+
+        if (trap.trapType === TrapType.ALARM) {
+            effects.push('Alarma');
+        }
+
+        const comboBonus = Math.min(currentCombo * 5, 50);
+        damage = Math.floor(damage * (1 + comboBonus / 100));
+        
+        if (currentCombo > 0) {
+            newCombo = currentCombo + 1;
+            effects.push(`Cadena x${newCombo}`);
+        } else {
+            newCombo = 1;
+        }
+        
+        setTriggeringTraps(prev => [...prev, {
+            id: `${trap.id}_${Date.now()}`,
+            position: new THREE.Vector3(trap.position.x, trap.position.y, trap.position.z),
+            trapType: trap.trapType,
+            startTime: Date.now(),
+        }]);
+        
+        return { damage, effects, newCombo };
+    }, []);
+
     useEffect(() => {
-        if (missionState !== KageroMissionState.THIRD_PERSON_EXPLORATION && 
-            missionState !== KageroMissionState.ENEMY_APPROACH) return;
+        if (missionState !== KageroMissionState.EXPLORATION && 
+            missionState !== KageroMissionState.KAGERO_PLAYER_LURE) return;
 
         const interval = setInterval(() => {
             setCurrentStep(s => s + 1);
 
-            const playerGrid = worldToGrid(playerPos[0], playerPos[2]);
+            if (!mission) return;
 
-            setEnemies(prevEnemies => {
-                let anyChasing = false;
+            setMission(prev => {
+                if (!prev) return prev;
 
-                const updated = prevEnemies.map(enemy => {
-                    if (!enemy.isAlive || enemy.stunnedTurns > 0) {
-                        return enemy.stunnedTurns > 0 
-                            ? { ...enemy, stunnedTurns: enemy.stunnedTurns - 1, aiState: EnemyAiState.STUNNED }
-                            : enemy;
+                const playerPos = playerRef.current.position;
+                let localComboCount = 0;
+                let updatedEnemies = [...prev.enemies];
+                let updatedTraps = prev.placedTraps.map(t => ({ ...t }));
+                
+                updatedEnemies = updatedEnemies.map(enemy => {
+                    if (!enemy.isAlive) return enemy;
+                    if (enemy.stunnedTurns > 0) {
+                        return { ...enemy, stunnedTurns: enemy.stunnedTurns - 1, aiState: 'stunned' as KageroEnemyAIState };
+                    }
+                    if (enemy.confusedTurns > 0) {
+                        return { ...enemy, confusedTurns: enemy.confusedTurns - 1, aiState: 'confused' as KageroEnemyAIState };
+                    }
+                    if (enemy.poisonTurns > 0) {
+                        const poisonDmg = Math.floor(enemy.maxHp * 0.05);
+                        return { ...enemy, hp: Math.max(0, enemy.hp - poisonDmg), poisonTurns: enemy.poisonTurns - 1 };
+                    }
+                    if (enemy.frozenTurns > 0) {
+                        return { ...enemy, frozenTurns: enemy.frozenTurns - 1, aiState: 'frozen' as KageroEnemyAIState };
                     }
 
                     const distToPlayer = Math.sqrt(
-                        Math.pow(enemy.gridX - playerGrid.x, 2) + 
-                        Math.pow(enemy.gridZ - playerGrid.z, 2)
-                    );
+                        Math.pow(enemy.position.x - playerPos.x, 2) + 
+                        Math.pow(enemy.position.z - playerPos.z, 2)
+                    ) / CELL_SIZE;
 
                     let newAiState = enemy.aiState;
-                    let newGridX = enemy.gridX;
-                    let newGridZ = enemy.gridZ;
-                    let newTargetX = enemy.targetX;
-                    let newTargetZ = enemy.targetZ;
-                    let newPatrolIndex = enemy.patrolIndex;
+                    let newPos = { ...enemy.position };
+                    let newTargetPos = enemy.targetPosition;
+                    let triggerResult: { damage: number; effects: string[]; newCombo: number } | null = null;
 
-                    if (distToPlayer < enemy.detectionRadius) {
-                        newAiState = EnemyAiState.CHASE;
-                        anyChasing = true;
+                    for (const trap of updatedTraps) {
+                        if (trap.currentCooldown > 0) continue;
+                        if (trap.slotId && !trap.slotId.includes(enemy.roomId)) continue;
                         
-                        const dx = playerGrid.x - enemy.gridX;
-                        const dz = playerGrid.z - enemy.gridZ;
-                        
-                        if (Math.abs(dx) > Math.abs(dz)) {
-                            newGridX = Math.max(1, Math.min(TACTICAL_MAP_SIZE - 2, enemy.gridX + Math.sign(dx)));
-                        } else {
-                            newGridZ = Math.max(1, Math.min(TACTICAL_MAP_SIZE - 2, enemy.gridZ + Math.sign(dz)));
-                        }
-                    } else {
-                        if (enemy.aiState === EnemyAiState.CHASE) {
-                            newAiState = EnemyAiState.PATROL;
-                        }
-
-                        const distToTarget = Math.sqrt(
-                            Math.pow(enemy.gridX - enemy.targetX, 2) + 
-                            Math.pow(enemy.gridZ - enemy.targetZ, 2)
+                        const distToTrap = Math.sqrt(
+                            Math.pow(enemy.position.x - trap.position.x, 2) + 
+                            Math.pow(enemy.position.z - trap.position.z, 2)
                         );
-
-                        if (distToTarget < 1) {
-                            newPatrolIndex = (enemy.patrolIndex + 1) % enemy.patrolPath.length;
-                            newTargetX = enemy.patrolPath[newPatrolIndex].x;
-                            newTargetZ = enemy.patrolPath[newPatrolIndex].z;
-                        }
-
-                        const pdx = newTargetX - enemy.gridX;
-                        const pdz = newTargetZ - enemy.gridZ;
                         
-                        if (Math.abs(pdx) > Math.abs(pdz)) {
-                            newGridX = Math.max(1, Math.min(TACTICAL_MAP_SIZE - 2, enemy.gridX + Math.sign(pdx)));
-                        } else {
-                            newGridZ = Math.max(1, Math.min(TACTICAL_MAP_SIZE - 2, enemy.gridZ + Math.sign(pdz)));
+                        if (distToTrap < TRAP_TRIGGER_DISTANCE) {
+                            triggerResult = triggerTrap(trap, enemy, localComboCount);
+                            trap.currentCooldown = trap.cooldown;
+                            trap.triggered = true;
+                            trap.triggeredAtStep = currentStep;
+                            trap.comboChain = triggerResult.newCombo;
+                            break;
                         }
                     }
 
-                    const nearTrap = trapPlacements.find(t => 
-                        !t.triggered &&
-                        t.surface === 'floor' &&
-                        Math.abs(t.gridX - newGridX) <= 1 && 
-                        Math.abs(t.gridZ - newGridZ) <= 1 &&
-                        !enemy.triggeredTrapIds.includes(t.id)
-                    );
-
-                    if (nearTrap && distToPlayer < TRAP_TRIGGER_RADIUS * 2) {
-                        const trapData = TRAP_DATA[nearTrap.trapType];
+                    if (triggerResult) {
+                        localComboCount = triggerResult.newCombo;
+                        setMaxCombo(m => Math.max(m, triggerResult!.newCombo));
                         
-                        setMissionState(KageroMissionState.TRAP_TRIGGER);
-                        
-                        setTrapPlacements(tp => tp.map(t => 
-                            t.id === nearTrap.id ? { ...t, triggered: true, triggeredAtStep: currentStep } : t
-                        ));
-
-                        const damage = trapData.damage + Math.floor(Math.random() * 10);
-                        const newHp = Math.max(0, enemy.hp - damage);
-                        
-                        let newStunned = enemy.stunnedTurns;
-                        let newKnockedBack = enemy.knockedBack;
-                        let newKnockbackDir = enemy.knockbackDir;
-
-                        if (trapData.stateEffect === 'stun') {
-                            newStunned = 2;
-                            newAiState = EnemyAiState.STUNNED;
-                        } else if (trapData.stateEffect === 'knockback') {
-                            newKnockedBack = true;
-                            newKnockbackDir = { x: Math.sign(newGridX - enemy.gridX) || 1, z: Math.sign(newGridZ - enemy.gridZ) || 1 };
+                        const trapEffects: string[] = [];
+                        if (triggerResult.damage > 0) {
+                            newPos.y = 0.5;
                         }
-
-                        setTimeout(() => {
-                            setMissionState(KageroMissionState.COMBO_RESOLUTION);
-                            
-                            setComboCount(c => {
-                                const newCombo = c + 1;
-                                setMaxCombo(m => Math.max(m, newCombo));
-                                addLog(`>>> CADENA x${newCombo}: ${trapData.triggerMessage}`, 'combat');
-                                setMissionProgress(p => Math.min(100, p + 10));
-                                return newCombo;
-                            });
-
-                            if (newHp <= 0) {
-                                addLog(`>>> ELIMINADO: ${enemy.name}`, 'combat');
-                                setMissionProgress(p => Math.min(100, p + 25));
-                            }
-
-                            setTimeout(() => {
-                                setMissionState(KageroMissionState.VICTORY_CHECK);
-                            }, 400);
-                        }, 200);
-
+                        
+                        if (triggerResult.effects.includes('Congelado')) {
+                            newAiState = 'frozen';
+                        } else if (triggerResult.effects.includes('Aturdido')) {
+                            newAiState = 'stunned';
+                        } else if (triggerResult.effects.includes('Envenenado')) {
+                            trapEffects.push('Veneno');
+                        }
+                        
+                        const finalHp = Math.max(0, enemy.hp - triggerResult.damage);
+                        
+                        addLog(`${enemy.name} activa ${trapEffects.join(', ') || 'trampa'}! -${triggerResult.damage} HP`, 'combat');
+                        
+                        if (finalHp <= 0) {
+                            addLog(`${enemy.name} derrotado! +${enemy.goldReward} oro`, 'combat');
+                            return { ...enemy, hp: 0, isAlive: false };
+                        }
+                        
                         return {
                             ...enemy,
-                            hp: newHp,
-                            gridX: newKnockedBack ? Math.max(1, Math.min(TACTICAL_MAP_SIZE - 2, enemy.gridX + (newKnockbackDir?.x || 0) * 2)) : newGridX,
-                            gridZ: newKnockedBack ? Math.max(1, Math.min(TACTICAL_MAP_SIZE - 2, enemy.gridZ + (newKnockbackDir?.z || 0) * 2)) : newGridZ,
+                            hp: finalHp,
+                            position: newPos,
                             aiState: newAiState,
-                            stunnedTurns: newStunned,
-                            knockedBack: newKnockedBack,
-                            knockbackDir: newKnockbackDir,
-                            triggeredTrapIds: [...enemy.triggeredTrapIds, nearTrap.id],
-                            isAlive: newHp > 0,
+                            targetPosition: newTargetPos,
+                            stunnedTurns: triggerResult.effects.includes('Aturdido') ? 2 : enemy.stunnedTurns,
+                            frozenTurns: triggerResult.effects.includes('Congelado') ? 3 : enemy.frozenTurns,
+                            poisonTurns: triggerResult.effects.includes('Envenenado') ? 5 : enemy.poisonTurns,
                         };
                     }
 
-                    return {
-                        ...enemy,
-                        gridX: newGridX,
-                        gridZ: newGridZ,
-                        aiState: newAiState,
-                        targetX: newTargetX,
-                        targetZ: newTargetZ,
-                        patrolIndex: newPatrolIndex,
-                    };
+                    if (distToPlayer < enemy.detectionRadius) {
+                        newAiState = 'chase';
+                        const dx = playerPos.x - enemy.position.x;
+                        const dz = playerPos.z - enemy.position.z;
+                        const len = Math.sqrt(dx * dx + dz * dz) || 1;
+                        newPos = {
+                            x: enemy.position.x + (dx / len) * enemy.moveSpeed * 0.5,
+                            y: enemy.position.y,
+                            z: enemy.position.z + (dz / len) * enemy.moveSpeed * 0.5,
+                        };
+                    } else if (enemy.aiState === 'chase') {
+                        newAiState = 'patrol';
+                    }
+
+                    if ((enemy.aiState === 'patrol' || enemy.aiState === 'investigate') && enemy.patrolPath.length > 0) {
+                        const target = enemy.patrolPath[enemy.patrolIndex];
+                        const targetX = target.x * CELL_SIZE;
+                        const targetZ = target.z * CELL_SIZE;
+                        const distToTarget = Math.sqrt(
+                            Math.pow(enemy.position.x - targetX, 2) + 
+                            Math.pow(enemy.position.z - targetZ, 2)
+                        );
+                        
+                        if (distToTarget < CELL_SIZE) {
+                            const nextIndex = (enemy.patrolIndex + 1) % enemy.patrolPath.length;
+                            newTargetPos = enemy.patrolPath[nextIndex];
+                        } else {
+                            newTargetPos = target;
+                            const tdx = targetX - enemy.position.x;
+                            const tdz = targetZ - enemy.position.z;
+                            const tlen = Math.sqrt(tdx * tdx + tdz * tdz) || 1;
+                            newPos = {
+                                x: enemy.position.x + (tdx / tlen) * enemy.moveSpeed * 0.3,
+                                y: enemy.position.y,
+                                z: enemy.position.z + (tdz / tlen) * enemy.moveSpeed * 0.3,
+                            };
+                        }
+                    }
+
+                    return { ...enemy, position: newPos, aiState: newAiState, targetPosition: newTargetPos };
                 });
 
-                const allDead = updated.every(e => !e.isAlive);
-                if (allDead && updated.length > 0) {
-                    setTimeout(() => {
-                        setMissionState(KageroMissionState.MISSION_COMPLETE);
-                        addLog('=== MISION COMPLETADA ===', 'combat');
-                    }, 600);
-                } else if (anyChasing) {
-                    setMissionState(KageroMissionState.ENEMY_APPROACH);
-                } else {
-                    setMissionState(KageroMissionState.THIRD_PERSON_EXPLORATION);
+                updatedTraps = updatedTraps.map(trap => ({
+                    ...trap,
+                    currentCooldown: Math.max(0, trap.currentCooldown - 1),
+                }));
+
+                setComboCount(localComboCount);
+                if (localComboCount === 0) {
+                    setComboCount(0);
                 }
 
-                return updated;
+                const allDead = updatedEnemies.every(e => !e.isAlive);
+                if (allDead && updatedEnemies.length > 0 && prev.totalEnemies > 0) {
+                    const currentRoom = prev.rooms.find(r => r.id === prev.currentRoomId);
+                    if (currentRoom) {
+                        currentRoom.isCleared = true;
+                    }
+                    updatedTraps = updatedTraps.map(t => ({ ...t, triggered: false }));
+                    
+                    const goldEarned = updatedEnemies.reduce((sum, e) => sum + (e.isAlive ? 0 : e.goldReward), 0);
+                    setTimeout(() => {
+                        setMissionState(KageroMissionState.MISSION_COMPLETE);
+                        addLog(`=== MISION COMPLETADA === +${goldEarned} oro`, 'combat');
+                    }, 500);
+                }
+
+                return { ...prev, enemies: updatedEnemies, placedTraps: updatedTraps };
             });
-        }, 700);
+        }, 600);
 
         return () => clearInterval(interval);
-    }, [missionState, playerPos, trapPlacements, currentStep, addLog]);
-
-    useEffect(() => {
-        if (missionState === KageroMissionState.VICTORY_CHECK) {
-            const alive = enemies.filter(e => e.isAlive).length;
-            if (alive > 0) {
-                setTimeout(() => {
-                    setMissionState(KageroMissionState.THIRD_PERSON_EXPLORATION);
-                }, 500);
-            }
-        }
-    }, [missionState, enemies]);
+    }, [missionState, mission, addLog, triggerTrap, currentStep]);
 
     useEffect(() => {
         if (missionState === KageroMissionState.RETURN_TO_HEX) {
-            exitToHex();
+            const allDead = mission?.enemies.every(e => !e.isAlive);
+            if (allDead) {
+                clearCurrentEncounter();
+                const goldEarned = mission?.enemies.reduce((sum, e) => sum + (e.isAlive ? 0 : e.goldReward), 0) || 0;
+                addLog(`Oro ganado: ${goldEarned}`, 'combat');
+            }
+            syncOverworldEnemies();
+            setGameState(GameState.OVERWORLD);
         }
-    }, [missionState, exitToHex]);
+    }, [missionState, mission, clearCurrentEncounter, syncOverworldEnemies, setGameState, addLog]);
 
-    const handleCellClick = useCallback((gridX: number, gridZ: number) => {
-        if (missionState !== KageroMissionState.TACTICAL_MODE) return;
-        if (trapPlacements.filter(t => !t.triggered).length >= 5) {
-            addLog('Max 5 trampas activas', 'info');
-            return;
-        }
+    const handleSlotClick = useCallback((slot: TrapSlot) => {
+        if (missionState !== KageroMissionState.TACTICAL_SETUP) return;
+        if (!mission) return;
 
-        const existing = trapPlacements.find(t => 
-            t.gridX === gridX && t.gridZ === gridZ && t.surface === selectedSurface
-        );
-
-        if (existing) {
-            setTrapPlacements(prev => prev.filter(t => t.id !== existing.id));
-            addLog(`Trampa removida (${gridX}, ${gridZ})`, 'info');
+        const existingTrap = mission.placedTraps.find(t => t.slotId === slot.id);
+        
+        if (existingTrap) {
+            setMission(prev => prev ? {
+                ...prev,
+                placedTraps: prev.placedTraps.filter(t => t.id !== existingTrap.id),
+            } : prev);
+            addLog(`Trampa removida de ${slot.surface}`, 'info');
             return;
         }
 
         const trapData = TRAP_DATA[selectedTrapType];
-        let y = selectedSurface === 'floor' ? 0.1 : selectedSurface === 'wall' ? 2.5 : 6;
-
-        const newTrap: PlacedTrap = {
-            id: `trap_${Date.now()}_${gridX}_${gridZ}`,
+        
+        const newTrap = {
+            id: `trap_${Date.now()}`,
             trapType: selectedTrapType,
-            surface: selectedSurface,
-            position: { x: 0, y, z: 0 },
-            gridX,
-            gridZ,
-            trigger: trapData.triggerMode || 'auto',
-            effects: trapData.stateEffect ? [trapData.stateEffect] : ['none'],
+            slotId: slot.id,
+            roomId: slot.roomId,
+            surface: slot.surface,
+            position: slot.position,
+            effects: [trapData.stateEffect || 'damage'] as any[],
             damage: trapData.damage,
+            launchDirection: trapData.forceVector ? { x: trapData.forceVector.x, y: 0, z: trapData.forceVector.z } : { x: 0, y: 0, z: 1 },
+            launchForce: trapData.forceVector ? 1 : 0,
+            stunDuration: trapData.stateEffect === 'stun' ? trapData.duration : 0,
             cooldown: trapData.cooldown || 3,
             currentCooldown: 0,
             triggered: false,
             triggeredAtStep: -1,
-            chainTargets: [],
+            comboChain: 0,
+            arkCost: trapData.manaCost || 0,
         };
 
-        setTrapPlacements(prev => [...prev, newTrap]);
-        addLog(`[${selectedSurface}] ${trapData.name} en (${gridX}, ${gridZ})`, 'info');
-    }, [missionState, selectedTrapType, selectedSurface, trapPlacements, addLog]);
+        setMission(prev => prev ? {
+            ...prev,
+            placedTraps: [...prev.placedTraps, newTrap],
+        } : prev);
+        addLog(`${trapData.name} en ${slot.surface} (${Math.round(slot.position.x)}, ${Math.round(slot.position.z)})`, 'info');
+    }, [missionState, mission, addLog, selectedTrapType]);
 
-    const defeatedCount = totalEnemies - enemiesAlive;
+    const defeatedCount = mission?.enemies.filter(e => !e.isAlive).length || 0;
+    const totalEnemies = mission?.totalEnemies || 0;
+    const enemiesAlive = mission?.enemies.filter(e => e.isAlive).length || 0;
 
     const getStateLabel = () => {
         switch (missionState) {
-            case KageroMissionState.MISSION_LOAD: return 'CARGANDO...';
-            case KageroMissionState.THIRD_PERSON_EXPLORATION: return 'EXPLORANDO';
-            case KageroMissionState.TACTICAL_MODE: return 'MODO TACTICO';
-            case KageroMissionState.ENEMY_APPROACH: return '¡ENEMIGO ACERCA!';
+            case KageroMissionState.LOADING: return 'CARGANDO...';
+            case KageroMissionState.EXPLORATION: return 'EXPLORANDO';
+            case KageroMissionState.TACTICAL_SETUP: return 'MODO TACTICO';
+            case KageroMissionState.KAGERO_ENEMY_PATROL: return 'ENEMIGOS PATRULLANDO';
+            case KageroMissionState.KAGERO_PLAYER_LURE: return '¡ENEMIGO CERCA!';
             case KageroMissionState.TRAP_TRIGGER: return 'TRAMPA ACTIVADA';
             case KageroMissionState.COMBO_RESOLUTION: return `CADENA x${comboCount}`;
             case KageroMissionState.VICTORY_CHECK: return 'VERIFICANDO...';
@@ -794,8 +861,8 @@ export default function Exploration3DScene() {
 
     const getStateColor = () => {
         if ([KageroMissionState.TRAP_TRIGGER, KageroMissionState.COMBO_RESOLUTION].includes(missionState)) return 'text-red-500';
-        if (missionState === KageroMissionState.TACTICAL_MODE) return 'text-green-500';
-        if (missionState === KageroMissionState.ENEMY_APPROACH) return 'text-orange-500';
+        if (missionState === KageroMissionState.TACTICAL_SETUP) return 'text-green-500';
+        if (missionState === KageroMissionState.KAGERO_PLAYER_LURE) return 'text-orange-500';
         if (missionState === KageroMissionState.MISSION_COMPLETE) return 'text-amber-500';
         return 'text-blue-400';
     };
@@ -804,23 +871,19 @@ export default function Exploration3DScene() {
         <div className="fixed inset-0 bg-slate-950 z-50">
             <Canvas shadows camera={{ position: [0, 8, 10], fov: 55 }}>
                 <SceneContent
+                    mission={mission}
                     missionState={missionState}
-                    map={map}
-                    trapPlacements={trapPlacements}
-                    enemies={enemies}
-                    onCellClick={handleCellClick}
-                    playerPos={playerPos}
-                    setPlayerPos={setPlayerPos}
-                    playerRotation={playerRotation}
-                    selectedSurface={selectedSurface}
-                    hoveredCell={hoveredCell}
+                    selectedSlot={selectedSlot}
+                    onSlotClick={handleSlotClick}
+                    onDoorEnter={handleDoorEnter}
+                    playerRef={playerRef}
+                    enemies={mission?.enemies || []}
+                    triggeringTraps={triggeringTraps}
                 />
             </Canvas>
 
             <div className="absolute top-4 left-4 bg-slate-900/95 rounded-lg p-4 text-white border border-slate-700 shadow-xl min-w-[200px]">
-                <h3 className="text-amber-500 font-bold mb-2 text-lg">
-                    {explorationState.zoneName || 'Zona de Caza'}
-                </h3>
+                <h3 className="text-amber-500 font-bold mb-2 text-lg">{mission?.missionName || 'Mision'}</h3>
                 <div className="text-sm space-y-2">
                     <div className="flex justify-between">
                         <span className="text-slate-400">Enemigos:</span>
@@ -832,25 +895,13 @@ export default function Exploration3DScene() {
                     </div>
                     <div className="flex justify-between">
                         <span className="text-slate-400">Trampas:</span>
-                        <span className="font-mono">{trapPlacements.filter(t => !t.triggered).length}/5</span>
-                    </div>
-                    <div className="w-full bg-slate-700 rounded-full h-3 mt-2">
-                        <div 
-                            className="bg-gradient-to-r from-green-500 to-emerald-400 h-3 rounded-full transition-all duration-300 shadow-lg shadow-green-500/30" 
-                            style={{ width: `${missionProgress}%` }} 
-                        />
-                    </div>
-                    <div className="flex justify-between text-xs">
-                        <span className="text-slate-500">Progreso</span>
-                        <span className="text-green-400">{missionProgress}%</span>
+                        <span className="font-mono">{mission?.placedTraps.length || 0}</span>
                     </div>
                 </div>
             </div>
 
             <div className="absolute top-4 right-4 bg-slate-900/95 rounded-lg p-4 text-white border border-slate-700 shadow-xl">
-                <div className={`text-sm font-bold ${getStateColor()}`}>
-                    [{getStateLabel()}]
-                </div>
+                <div className={`text-sm font-bold ${getStateColor()}`}>[{getStateLabel()}]</div>
                 <div className="text-xs text-slate-400 mt-1">
                     <span className="text-amber-400">Cadena:</span> x{comboCount} <span className="text-slate-500">(max: x{maxCombo})</span>
                 </div>
@@ -864,35 +915,42 @@ export default function Exploration3DScene() {
                     <div><kbd className="bg-slate-700 px-1.5 py-0.5 rounded font-mono">3</kbd> Techo</div>
                     <div><kbd className="bg-slate-700 px-1.5 py-0.5 rounded font-mono">WASD</kbd> Mover</div>
                     <div><kbd className="bg-slate-700 px-1.5 py-0.5 rounded font-mono">Click</kbd> Colocar</div>
-                    <div><kbd className="bg-slate-700 px-1.5 py-0.5 rounded font-mono">ESC</kbd> Salir</div>
                 </div>
             </div>
 
-            {missionState === KageroMissionState.TACTICAL_MODE && (
-                <div className="absolute bottom-4 right-4 bg-slate-900/95 rounded-lg p-4 text-white border border-green-700 shadow-xl min-w-[220px]">
-                    <h4 className="text-green-400 font-bold mb-2 text-sm flex items-center gap-2">
-                        <span className="w-3 h-3 bg-green-500 rounded-full animate-pulse" />
-                        TRAMPAS
-                    </h4>
-                    <div className="grid grid-cols-2 gap-1.5">
-                        {Object.entries(TRAP_DATA).slice(0, 6).map(([key, data]) => (
-                            <button
-                                key={key}
-                                onClick={() => setSelectedTrapType(key as TrapType)}
-                                className={`p-2 rounded text-xs flex items-center gap-1.5 transition-all ${
-                                    selectedTrapType === key 
-                                        ? 'bg-green-600 text-white shadow-lg shadow-green-600/30' 
-                                        : 'bg-slate-700 hover:bg-slate-600 text-slate-200'
-                                }`}
-                            >
-                                <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: TRAP_COLORS[key as TrapType] }} />
-                                <span>{data.name}</span>
-                            </button>
-                        ))}
+            {missionState === KageroMissionState.TACTICAL_SETUP && (
+                <div className="absolute bottom-4 right-4 bg-slate-900/95 rounded-lg p-4 text-white border border-green-700 shadow-xl max-w-[280px]">
+                    <h4 className="text-green-400 font-bold mb-2 text-sm">MODO TACTICO</h4>
+                    <div className="text-xs text-slate-400 mb-2">
+                        Haz clic en un slot para colocar la trampa seleccionada
                     </div>
-                    <div className="mt-2 pt-2 border-t border-slate-700">
-                        <div className="text-xs text-slate-400">
-                            Superficie: <span className="text-white font-mono">{selectedSurface.toUpperCase()}</span>
+                    <div className="border-t border-slate-700 pt-2 mb-2">
+                        <div className="text-xs mb-1">
+                            Superficie: <span className="text-green-400 font-mono">{selectedSurface.toUpperCase()}</span>
+                        </div>
+                    </div>
+                    <div className="border-t border-slate-700 pt-2">
+                        <div className="text-xs text-slate-400 mb-1">TRAMPA:</div>
+                        <div className="grid grid-cols-3 gap-1">
+                            {Object.entries(TRAP_DATA).slice(0, 6).map(([type, data]) => (
+                                <button
+                                    key={type}
+                                    onClick={() => setSelectedTrapType(type as TrapType)}
+                                    className={`px-2 py-1 text-xs rounded border ${
+                                        selectedTrapType === type 
+                                            ? 'bg-green-700 border-green-500 text-white' 
+                                            : 'bg-slate-800 border-slate-600 text-slate-300 hover:bg-slate-700'
+                                    }`}
+                                    title={data.name}
+                                >
+                                    {data.name.slice(0, 4)}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                    <div className="border-t border-slate-700 mt-2 pt-2">
+                        <div className="text-xs text-slate-500">
+                            <div><kbd className="bg-slate-700 px-1 rounded">Q</kbd> <kbd className="bg-slate-700 px-1 rounded">W</kbd> <kbd className="bg-slate-700 px-1 rounded">E</kbd> <kbd className="bg-slate-700 px-1 rounded">R</kbd> Trampas</div>
                         </div>
                     </div>
                 </div>
@@ -900,13 +958,12 @@ export default function Exploration3DScene() {
 
             <div className="absolute top-1/2 -translate-y-1/2 left-4 bg-slate-900/90 rounded-lg p-2 text-white">
                 <div className="text-xs space-y-1">
-                    {enemies.filter(e => e.isAlive).map(e => (
+                    {mission?.enemies.filter(e => e.isAlive).map(e => (
                         <div key={e.id} className="flex items-center gap-2">
                             <div className={`w-2 h-2 rounded-full ${
-                                e.aiState === EnemyAiState.PATROL ? 'bg-red-500' :
-                                e.aiState === EnemyAiState.INVESTIGATE ? 'bg-yellow-500' :
-                                e.aiState === EnemyAiState.CHASE ? 'bg-orange-500 animate-pulse' :
-                                e.aiState === EnemyAiState.STUNNED ? 'bg-gray-500' : 'bg-red-500'
+                                e.aiState === 'patrol' ? 'bg-red-500' :
+                                e.aiState === 'chase' ? 'bg-orange-500 animate-pulse' :
+                                e.aiState === 'stunned' ? 'bg-gray-500' : 'bg-yellow-500'
                             }`} />
                             <span className="text-slate-300 text-xs">{e.name}</span>
                         </div>
@@ -916,7 +973,7 @@ export default function Exploration3DScene() {
 
             {missionState === KageroMissionState.MISSION_COMPLETE && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/70 z-60">
-                    <div className="bg-slate-900 rounded-xl p-8 text-center border-2 border-amber-500 shadow-2xl shadow-amber-500/20">
+                    <div className="bg-slate-900 rounded-xl p-8 text-center border-2 border-amber-500 shadow-2xl">
                         <div className="text-7xl mb-4">🏆</div>
                         <h2 className="text-4xl font-bold text-amber-500 mb-2">MISION COMPLETADA</h2>
                         <p className="text-slate-400 mb-6">Has eliminado a todos los enemigos</p>
@@ -930,13 +987,13 @@ export default function Exploration3DScene() {
                                 <div className="text-xs text-slate-500">Enemigos</div>
                             </div>
                             <div className="text-center">
-                                <div className="text-3xl font-bold text-purple-400">{trapPlacements.length}</div>
+                                <div className="text-3xl font-bold text-purple-400">{mission?.placedTraps.length}</div>
                                 <div className="text-xs text-slate-500">Trampas</div>
                             </div>
                         </div>
                         <button
                             onClick={() => setMissionState(KageroMissionState.RETURN_TO_HEX)}
-                            className="px-8 py-3 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-lg transition-all shadow-lg shadow-amber-600/30"
+                            className="px-8 py-3 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-lg transition-all"
                         >
                             Volver al Mapa
                         </button>

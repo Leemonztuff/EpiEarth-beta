@@ -506,94 +506,6 @@ export interface DamagePopup { id: string; position: [number, number, number]; a
 
 export interface LootDrop { id: string; position: PositionComponent; rarity: ItemRarity; items: Item[]; }
 
-export interface KageroPosition3D {
-    x: number;
-    y: number;
-    z: number;
-}
-
-export interface KageroTrapSlot {
-    id: string;
-    surface: TrapPlacementSurface;
-    position: { x: number; y: number; z: number };
-    gridX: number;
-    gridZ: number;
-    occupied: boolean;
-    occupiedBy: string | null;
-}
-
-export interface PlacedTrap {
-    id: string;
-    trapType: TrapType;
-    surface: TrapPlacementSurface;
-    position: KageroPosition3D;
-    gridX: number;
-    gridZ: number;
-    trigger: TrapTriggerMode;
-    effects: TrapStateEffect[];
-    damage: number;
-    cooldown: number;
-    currentCooldown: number;
-    triggered: boolean;
-    triggeredAtStep: number;
-    chainTargets: string[];
-}
-
-export interface KageroEnemyState {
-    id: string;
-    name: string;
-    hp: number;
-    maxHp: number;
-    position: KageroPosition3D;
-    gridX: number;
-    gridZ: number;
-    aiState: EnemyAiState;
-    patrolPath: { x: number; z: number }[];
-    patrolIndex: number;
-    targetX: number;
-    targetZ: number;
-    detectionRadius: number;
-    moveSpeed: number;
-    stunnedTurns: number;
-    poisonTurns: number;
-    knockedBack: boolean;
-    knockbackDir: { x: number; z: number } | null;
-    triggeredTrapIds: string[];
-    isAlive: boolean;
-}
-
-export interface KageroRoom {
-    id: string;
-    name: string;
-    gridBounds: { minX: number; maxX: number; minZ: number; maxZ: number };
-    entrances: { x: number; z: number }[];
-    trapSlots: KageroTrapSlot[];
-    enemies: KageroEnemyState[];
-    cleared: boolean;
-}
-
-export interface KageroMission {
-    missionId: string;
-    map3DId: string;
-    zoneName: string;
-    biomeTag: string;
-    playerMode: KageroPlayerMode;
-    currentRoomId: string;
-    rooms: KageroRoom[];
-    allTrapSlots: KageroTrapSlot[];
-    placedTraps: PlacedTrap[];
-    totalEnemies: number;
-    enemiesAlive: number;
-    enemiesDefeated: number;
-    currentStep: number;
-    comboCount: number;
-    maxCombo: number;
-    missionProgress: number;
-    missionComplete: boolean;
-    missionFailed: boolean;
-    narrativeObjective: string | null;
-}
-
 export interface GameStateData {
     gameState: GameState;
     inputMode: InputMode;
@@ -632,3 +544,201 @@ export interface GameStateData {
     inspectedEntityId: string | null;
     eternumShards: number;
 }
+
+// ============================================================================
+// KAGERO 2-STYLE MISSION SYSTEM
+// ============================================================================
+
+export enum KageroMissionState {
+    LOADING = 'LOADING',
+    EXPLORATION = 'EXPLORATION',
+    TACTICAL_SETUP = 'TACTICAL_SETUP',
+    KAGERO_ENEMY_ENTER = 'KAGERO_ENEMY_ENTER',
+    KAGERO_ENEMY_PATROL = 'KAGERO_ENEMY_PATROL',
+    KAGERO_PLAYER_LURE = 'KAGERO_PLAYER_LURE',
+    KAGERO_TRAP_TRIGGER = 'KAGERO_TRAP_TRIGGER',
+    KAGERO_COMBO_RESOLUTION = 'KAGERO_COMBO_RESOLUTION',
+    KAGERO_ENEMY_STUNNED = 'KAGERO_ENEMY_STUNNED',
+    KAGERO_ENEMY_RECOVERY = 'KAGERO_ENEMY_RECOVERY',
+    KAGERO_VICTORY_CHECK = 'KAGERO_VICTORY_CHECK',
+    KAGERO_MISSION_COMPLETE = 'KAGERO_MISSION_COMPLETE',
+    KAGERO_MISSION_FAILED = 'KAGERO_MISSION_FAILED',
+    KAGERO_RETURN_TO_HEX = 'KAGERO_RETURN_TO_HEX',
+}
+
+export enum TrapSurface {
+    FLOOR = 'floor',
+    WALL = 'wall',
+    CEILING = 'ceiling',
+}
+
+export enum TrapEffectType {
+    DAMAGE = 'damage',
+    LAUNCH = 'launch',
+    TRAP_ENTITY = 'trap_entity',
+    STUN = 'stun',
+    KNOCKBACK = 'knockback',
+    CONFUSE = 'confuse',
+    POISON = 'poison',
+    FREEZE = 'freeze',
+}
+
+export enum KageroEnemyType {
+    GUARD = 'guard',         // Standard patrol, balanced resistances
+    BRUTE = 'brute',         // Slow, high HP, weak to launch/trap
+    ROGUE = 'rogue',         // Fast, low HP, resistant to traps
+    MAGE = 'mage',           // Medium speed, weak to stun/trap
+    ELITE = 'elite',         // High everything, immune to some effects
+    BOSS = 'boss',           // Very high HP, unique patterns
+}
+
+export interface TrapSlot {
+    id: string;
+    roomId: string;
+    surface: TrapSurface;
+    position: { x: number; y: number; z: number };
+    rotation: number;
+    occupied: boolean;
+    occupiedBy: string | null;
+    trapId: string | null;
+    validForSurface: TrapSurface[];
+}
+
+export interface PlacedKageroTrap {
+    id: string;
+    trapType: TrapType;
+    slotId: string;
+    roomId: string;
+    surface: TrapSurface;
+    position: { x: number; y: number; z: number };
+    effects: TrapEffectType[];
+    damage: number;
+    launchDirection: { x: number; y: number; z: number };
+    launchForce: number;
+    stunDuration: number;
+    cooldown: number;
+    currentCooldown: number;
+    triggered: boolean;
+    triggeredAtStep: number;
+    comboChain: number;
+    arkCost: number;
+}
+
+export interface KageroEnemyState {
+    id: string;
+    name: string;
+    type: KageroEnemyType;
+    hp: number;
+    maxHp: number;
+    position: { x: number; y: number; z: number };
+    roomId: string;
+    aiState: KageroEnemyAIState;
+    patrolPath: { x: number; z: number }[];
+    patrolIndex: number;
+    targetPosition: { x: number; z: number } | null;
+    detectionRadius: number;
+    moveSpeed: number;
+    alertLevel: number;
+    stunnedTurns: number;
+    poisonTurns: number;
+    confusedTurns: number;
+    frozenTurns: number;
+    resistances: TrapResistances;
+    goldReward: number;
+    isAlive: boolean;
+    isStunnedByTrap: string | null;
+}
+
+export type KageroEnemyAIState = 
+    | 'idle'
+    | 'patrol'
+    | 'investigate'
+    | 'chase'
+    | 'trapped'
+    | 'stunned'
+    | 'confused'
+    | 'frozen'
+    | 'dead';
+
+export interface TrapResistances {
+    physical: number;      // 0-100% damage reduction from physical traps
+    magical: number;      // 0-100% damage reduction from magical traps
+    launch: number;        // resistance to launch effects
+    stun: number;          // resistance to stun effects
+    poison: number;        // resistance to poison
+    freeze: number;        // resistance to freeze
+}
+
+export interface KageroRoom {
+    id: string;
+    name: string;
+    roomType: 'entry' | 'corridor' | 'combat' | 'treasure' | 'boss';
+    bounds: {
+        minX: number;
+        maxX: number;
+        minY: number;
+        maxY: number;
+        minZ: number;
+        maxZ: number;
+    };
+    center: { x: number; y: number; z: number };
+    trapSlots: TrapSlot[];
+    connectedRooms: string[];
+    doors: KageroDoor[];
+    floorHeight: number;
+    wallHeight: number;
+    isCleared: boolean;
+    enemySpawnPoints: { x: number; z: number }[];
+}
+
+export interface KageroDoor {
+    id: string;
+    fromRoomId: string;
+    toRoomId: string;
+    position: { x: number; y: number; z: number };
+    rotation: number;
+    isOpen: boolean;
+    isLocked: boolean;
+}
+
+export interface KageroMission {
+    missionId: string;
+    missionName: string;
+    dungeonType: 'castle' | 'dungeon' | 'mansion' | 'prison';
+    seed: string;
+    rooms: KageroRoom[];
+    currentRoomId: string;
+    enemies: KageroEnemyState[];
+    placedTraps: PlacedKageroTrap[];
+    totalEnemies: number;
+    enemiesAlive: number;
+    enemiesDefeated: number;
+    currentStep: number;
+    comboCount: number;
+    maxCombo: number;
+    missionProgress: number;
+    goldEarned: number;
+    missionComplete: boolean;
+    missionFailed: boolean;
+    playerPosition: { x: number; y: number; z: number };
+    playerRoomId: string;
+}
+
+export interface KageroTrapDefinition {
+    id: string;
+    name: string;
+    type: TrapType;
+    surface: TrapSurface;
+    description: string;
+    baseDamage: number;
+    effects: TrapEffectType[];
+    launchForce: number;
+    launchDirection: { x: number; y: number; z: number };
+    stunDuration: number;
+    cooldown: number;
+    goldCost: number;
+    validSurfaces: TrapSurface[];
+    icon: string;
+    color: string;
+}
+
