@@ -179,6 +179,60 @@ function PlayerController({
     );
 }
 
+// Procedural Retro Textures using raw pixel data (PS1 style)
+function createProceduralTexture(type: 'stone' | 'wood' | 'carpet'): THREE.DataTexture {
+    const size = 16;
+    const data = new Uint8Array(size * size * 4);
+    
+    for (let i = 0; i < size * size; i++) {
+        const x = i % size;
+        const y = Math.floor(i / size);
+        let r = 0, g = 0, b = 0, a = 255;
+        
+        if (type === 'stone') {
+            // Dark mossy stone blocks
+            const isBorder = (y % 8 === 0) || ((y < 8 ? x % 8 === 0 : (x + 4) % 8 === 0)); // simple brick pattern
+            const noise = Math.random() * 20 - 10;
+            r = isBorder ? 20 : 58 + noise;
+            g = isBorder ? 30 : 75 + noise;
+            b = isBorder ? 20 : 60 + noise;
+        } else if (type === 'wood') {
+             // Dark wood floor planks
+             const isPlankEdge = (x % 4 === 0) || (y % 16 === 0);
+             const grain = (x * 3 + y) % 6 === 0 ? -15 : 0;
+             const noise = Math.random() * 10 - 5;
+             r = isPlankEdge ? 30 : 64 + grain + noise;
+             g = isPlankEdge ? 20 : 48 + grain + noise;
+             b = isPlankEdge ? 10 : 37 + grain + noise;
+        } else if (type === 'carpet') {
+             // Red carpet with gold trim
+             const isTrim = (x < 2 || x > 13);
+             const noise = Math.random() * 10 - 5;
+             r = isTrim ? 200 + noise : 148 + noise;
+             g = isTrim ? 180 + noise : 22 + noise;
+             b = isTrim ? 50 : 22 + noise;
+        }
+        
+        data[i * 4] = Math.max(0, Math.min(255, r));
+        data[i * 4 + 1] = Math.max(0, Math.min(255, g));
+        data[i * 4 + 2] = Math.max(0, Math.min(255, b));
+        data[i * 4 + 3] = a;
+    }
+    
+    const texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+    texture.magFilter = THREE.NearestFilter;
+    texture.minFilter = THREE.NearestFilter;
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.needsUpdate = true;
+    return texture;
+}
+
+const stoneTexture = createProceduralTexture('stone');
+const woodTexture = createProceduralTexture('wood');
+const carpetTexture = createProceduralTexture('carpet');
+
 function RoomGeometry({ room }: { room: KageroRoom }) {
     const bounds = room.bounds;
     const width = (bounds.maxX - bounds.minX) * CELL_SIZE;
@@ -208,7 +262,7 @@ function RoomGeometry({ room }: { room: KageroRoom }) {
                                 {(tile === 1 || tile === 3 || tile >= 4) && (
                                     <mesh position={[tileX, -0.1, tileZ]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
                                         <planeGeometry args={[CELL_SIZE, CELL_SIZE]} />
-                                        <meshStandardMaterial color="#403025" roughness={0.9} metalness={0.1} />
+                                        <meshStandardMaterial map={woodTexture} roughness={0.9} metalness={0.1} />
                                     </mesh>
                                 )}
                                 
@@ -216,7 +270,7 @@ function RoomGeometry({ room }: { room: KageroRoom }) {
                                 {tile === 3 && (
                                     <mesh position={[tileX, 0.5, tileZ]} receiveShadow castShadow>
                                         <boxGeometry args={[CELL_SIZE, 1.2, CELL_SIZE]} />
-                                        <meshStandardMaterial color="#403025" roughness={0.9} metalness={0.1} />
+                                        <meshStandardMaterial map={woodTexture} roughness={0.9} metalness={0.1} />
                                     </mesh>
                                 )}
 
@@ -224,7 +278,7 @@ function RoomGeometry({ room }: { room: KageroRoom }) {
                                 {tile === 2 && (
                                     <mesh position={[tileX, room.wallHeight/2, tileZ]} receiveShadow castShadow>
                                         <boxGeometry args={[CELL_SIZE, room.wallHeight, CELL_SIZE]} />
-                                        <meshStandardMaterial color="#4a5b4c" roughness={0.8} metalness={0.15} />
+                                        <meshStandardMaterial map={stoneTexture} roughness={0.8} metalness={0.15} />
                                     </mesh>
                                 )}
                                 
@@ -252,31 +306,31 @@ function RoomGeometry({ room }: { room: KageroRoom }) {
             {/* Ground / Floor - Dark wood/stone */}
             <mesh position={[centerX, -0.1, centerZ]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
                 <planeGeometry args={[width, depth]} />
-                <meshStandardMaterial color="#403025" roughness={0.9} metalness={0.1} />
+                <meshStandardMaterial map={woodTexture} roughness={0.9} metalness={0.1} />
             </mesh>
             
             {/* Red Carpet - Slightly raised above floor */}
             <mesh position={[centerX, -0.05, centerZ]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
                 <planeGeometry args={[width * 0.4, depth]} />
-                <meshStandardMaterial color="#941616" roughness={0.9} metalness={0.05} />
+                <meshStandardMaterial map={carpetTexture} roughness={0.9} metalness={0.05} />
             </mesh>
 
             {/* Walls - Dark greenish stone */}
             <mesh position={[centerX - width/2, room.wallHeight/2, centerZ]} castShadow receiveShadow>
                 <boxGeometry args={[0.3, room.wallHeight, depth]} />
-                <meshStandardMaterial color="#4a5b4c" roughness={0.8} metalness={0.15} />
+                <meshStandardMaterial map={stoneTexture} roughness={0.8} metalness={0.15} />
             </mesh>
             <mesh position={[centerX + width/2, room.wallHeight/2, centerZ]} castShadow receiveShadow>
                 <boxGeometry args={[0.3, room.wallHeight, depth]} />
-                <meshStandardMaterial color="#4a5b4c" roughness={0.8} metalness={0.15} />
+                <meshStandardMaterial map={stoneTexture} roughness={0.8} metalness={0.15} />
             </mesh>
             <mesh position={[centerX, room.wallHeight/2, centerZ - depth/2]} castShadow receiveShadow>
                 <boxGeometry args={[width + 0.6, room.wallHeight, 0.3]} />
-                <meshStandardMaterial color="#4a5b4c" roughness={0.8} metalness={0.15} />
+                <meshStandardMaterial map={stoneTexture} roughness={0.8} metalness={0.15} />
             </mesh>
             <mesh position={[centerX, room.wallHeight/2, centerZ + depth/2]} castShadow receiveShadow>
                 <boxGeometry args={[width + 0.6, room.wallHeight, 0.3]} />
-                <meshStandardMaterial color="#4a5b4c" roughness={0.8} metalness={0.15} />
+                <meshStandardMaterial map={stoneTexture} roughness={0.8} metalness={0.15} />
             </mesh>
 
             {/* Ceiling */}
@@ -543,23 +597,23 @@ function CorridorMesh({ from, to }: { from: KageroRoom, to: KageroRoom }) {
             {/* Corridor Floor */}
             <mesh position={[centerX, -0.1, midZ]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
                 <planeGeometry args={[corridorWidth, Math.abs(length)]} />
-                <meshStandardMaterial color="#403025" roughness={0.9} metalness={0.1} />
+                <meshStandardMaterial map={woodTexture} roughness={0.9} metalness={0.1} />
             </mesh>
             
             {/* Corridor Carpet */}
             <mesh position={[centerX, -0.05, midZ]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
                 <planeGeometry args={[1.6, Math.abs(length)]} />
-                <meshStandardMaterial color="#941616" roughness={0.9} metalness={0.05} />
+                <meshStandardMaterial map={carpetTexture} roughness={0.9} metalness={0.05} />
             </mesh>
 
             {/* Corridor Walls */}
             <mesh position={[centerX - corridorWidth/2, 2.5, midZ]} castShadow receiveShadow>
                 <boxGeometry args={[0.3, 5, Math.abs(length)]} />
-                <meshStandardMaterial color="#4a5b4c" roughness={0.8} metalness={0.15} />
+                <meshStandardMaterial map={stoneTexture} roughness={0.8} metalness={0.15} />
             </mesh>
             <mesh position={[centerX + corridorWidth/2, 2.5, midZ]} castShadow receiveShadow>
                 <boxGeometry args={[0.3, 5, Math.abs(length)]} />
-                <meshStandardMaterial color="#4a5b4c" roughness={0.8} metalness={0.15} />
+                <meshStandardMaterial map={stoneTexture} roughness={0.8} metalness={0.15} />
             </mesh>
             
             {/* Corridor Ceiling */}
